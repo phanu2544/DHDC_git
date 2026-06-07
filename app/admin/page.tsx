@@ -1,0 +1,1464 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import Navbar from '@/components/Navbar'
+import { getSession } from '@/lib/storage'
+import type { User, KPIReport, KPIStatus, KPICategory, MophCatalogEntry } from '@/lib/types'
+
+// หมวดหมู่จะถูกโหลดจาก DB ผ่าน /api/categories (ดูใน state)
+const STATUSES: KPIStatus[] = ['in_progress', 'completed', 'overdue']
+const STATUS_TH: Record<KPIStatus, string> = {
+  in_progress: 'กำลังดำเนินการ',
+  completed: 'ดำเนินการเสร็จแล้ว',
+  overdue: 'เกินระยะเวลา',
+}
+const CALC_MODES = [
+  { value: 'percent', label: 'ร้อยละ (valueField/targetField × 100)' },
+  { value: 'sum', label: 'ผลรวม (sum valueField)' },
+  { value: 'raw', label: 'ค่าดิบ (ค่าแรกที่พบ)' },
+]
+
+// Buddhist year list (2567-2569)
+const BY_YEARS = ['2569', '2568', '2567', '2566', '2565']
+
+// Province codes
+const PROVINCES = [
+  { code: '66', name: 'พิจิตร' },
+  { code: '10', name: 'กรุงเทพมหานคร' },
+  { code: '11', name: 'สมุทรปราการ' },
+  { code: '12', name: 'นนทบุรี' },
+  { code: '13', name: 'ปทุมธานี' },
+  { code: '14', name: 'พระนครศรีอยุธยา' },
+  { code: '15', name: 'อ่างทอง' },
+  { code: '16', name: 'ลพบุรี' },
+  { code: '17', name: 'สิงห์บุรี' },
+  { code: '18', name: 'ชัยนาท' },
+  { code: '19', name: 'สระบุรี' },
+  { code: '20', name: 'ชลบุรี' },
+  { code: '21', name: 'ระยอง' },
+  { code: '22', name: 'จันทบุรี' },
+  { code: '23', name: 'ตราด' },
+  { code: '24', name: 'ฉะเชิงเทรา' },
+  { code: '25', name: 'ปราจีนบุรี' },
+  { code: '26', name: 'นครนายก' },
+  { code: '27', name: 'สระแก้ว' },
+  { code: '30', name: 'นครราชสีมา' },
+  { code: '31', name: 'บุรีรัมย์' },
+  { code: '32', name: 'สุรินทร์' },
+  { code: '33', name: 'ศรีสะเกษ' },
+  { code: '34', name: 'อุบลราชธานี' },
+  { code: '35', name: 'ยโสธร' },
+  { code: '36', name: 'ชัยภูมิ' },
+  { code: '37', name: 'อำนาจเจริญ' },
+  { code: '38', name: 'บึงกาฬ' },
+  { code: '39', name: 'หนองบัวลำภู' },
+  { code: '40', name: 'ขอนแก่น' },
+  { code: '41', name: 'อุดรธานี' },
+  { code: '42', name: 'เลย' },
+  { code: '43', name: 'หนองคาย' },
+  { code: '44', name: 'มหาสารคาม' },
+  { code: '45', name: 'ร้อยเอ็ด' },
+  { code: '46', name: 'กาฬสินธุ์' },
+  { code: '47', name: 'สกลนคร' },
+  { code: '48', name: 'นครพนม' },
+  { code: '49', name: 'มุกดาหาร' },
+  { code: '50', name: 'เชียงใหม่' },
+  { code: '51', name: 'ลำพูน' },
+  { code: '52', name: 'ลำปาง' },
+  { code: '53', name: 'อุตรดิตถ์' },
+  { code: '54', name: 'แพร่' },
+  { code: '55', name: 'น่าน' },
+  { code: '56', name: 'พะเยา' },
+  { code: '57', name: 'เชียงราย' },
+  { code: '58', name: 'แม่ฮ่องสอน' },
+  { code: '60', name: 'นครสวรรค์' },
+  { code: '61', name: 'อุทัยธานี' },
+  { code: '62', name: 'กำแพงเพชร' },
+  { code: '63', name: 'ตาก' },
+  { code: '64', name: 'สุโขทัย' },
+  { code: '65', name: 'พิษณุโลก' },
+  { code: '67', name: 'เพชรบูรณ์' },
+  { code: '70', name: 'ราชบุรี' },
+  { code: '71', name: 'กาญจนบุรี' },
+  { code: '72', name: 'สุพรรณบุรี' },
+  { code: '73', name: 'นครปฐม' },
+  { code: '74', name: 'สมุทรสาคร' },
+  { code: '75', name: 'สมุทรสงคราม' },
+  { code: '76', name: 'เพชรบุรี' },
+  { code: '77', name: 'ประจวบคีรีขันธ์' },
+  { code: '80', name: 'นครศรีธรรมราช' },
+  { code: '81', name: 'กระบี่' },
+  { code: '82', name: 'พังงา' },
+  { code: '83', name: 'ภูเก็ต' },
+  { code: '84', name: 'สุราษฎร์ธานี' },
+  { code: '85', name: 'ระนอง' },
+  { code: '86', name: 'ชุมพร' },
+  { code: '90', name: 'สงขลา' },
+  { code: '91', name: 'สตูล' },
+  { code: '92', name: 'ตรัง' },
+  { code: '93', name: 'พัทลุง' },
+  { code: '94', name: 'ปัตตานี' },
+  { code: '95', name: 'ยะลา' },
+  { code: '96', name: 'นราธิวาส' },
+]
+
+function emptyForm(): Omit<KPIReport, 'id'> {
+  return { name: '', category: 'NCD', mophUrl: '', mophTable: '', mophValueField: '', mophTargetField: 'target', mophCalcMode: 'percent', owner: '', deadline: '', status: 'in_progress', target: 0, unit: '%', description: '' }
+}
+
+interface MophPreview {
+  ok: boolean; rows: number; fields: string[]; sample: Record<string, unknown>[]
+  sumValue?: number; sumTarget?: number; calcValue?: number; calcMode?: string; savedMonth?: string | null
+  message?: string
+}
+
+interface BatchResult {
+  ok: boolean; savedMonth?: string; total?: number; saved?: number; failed?: number; message?: string
+  results?: {
+    kpiId?: string; kpiName?: string
+    reportId?: string; reportName?: string
+    status: 'ok' | 'error'; calcValue?: number; rows?: number; error?: string
+  }[]
+}
+
+export default function AdminPage() {
+  const router = useRouter()
+  const [user, setUser] = useState<User | null>(null)
+  const [kpis, setKpis] = useState<KPIReport[]>([])
+  const [users, setUsers] = useState<User[]>([])
+  const [tab, setTab] = useState<'kpi' | 'users' | 'moph' | 'catalog' | 'db'>('kpi')
+  const [showForm, setShowForm] = useState(false)
+  const [editKPI, setEditKPI] = useState<KPIReport | null>(null)
+  const [form, setForm] = useState(emptyForm())
+  const [msg, setMsg] = useState({ text: '', type: 'success' as 'success' | 'error' })
+  const [loading, setLoading] = useState(true)
+  const [dbStatus, setDbStatus] = useState<{ ok: boolean; counts?: { users: number; kpis: number; monthly: number; catalog: number; snapshot: number }; message?: string } | null>(null)
+
+  // MOPH state
+  const [mophKpiId, setMophKpiId] = useState('')
+  const [mophTable, setMophTable] = useState('')
+  const [mophYear, setMophYear] = useState('2569')
+  const [mophProvince, setMophProvince] = useState('66')
+  const [mophHospcode, setMophHospcode] = useState('')
+  const [mophAreacode, setMophAreacode] = useState('6611')  // จังหวัด66 + อำเภอ11
+  const [mophValueField, setMophValueField] = useState('result')
+  const [mophTargetField, setMophTargetField] = useState('target')
+  const [mophCalcMode, setMophCalcMode] = useState('percent')
+  const [mophMonth, setMophMonth] = useState(() => {
+    const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  })
+  const [mophPreview, setMophPreview] = useState<MophPreview | null>(null)
+  const [mophLoading, setMophLoading] = useState(false)
+  const [mophSaveKpiId, setMophSaveKpiId] = useState('')
+  const [batchResult, setBatchResult] = useState<BatchResult | null>(null)
+  const [batchLoading, setBatchLoading] = useState(false)
+  // ติดตาม field config ที่บันทึกใน DB ของ KPI ที่เลือก (สำหรับ dirty indicator)
+  const [savedFieldConfig, setSavedFieldConfig] = useState<{ valueField: string; targetField: string; calcMode: string } | null>(null)
+
+  // Categories state
+  const [categories, setCategories] = useState<string[]>([])
+  const [newCatInput, setNewCatInput] = useState('')
+
+  // User management state
+  const [showUserForm, setShowUserForm] = useState(false)
+  const [userForm, setUserForm] = useState({ email: '', name: '', password: '', role: 'staff' as 'admin' | 'staff', department: '' })
+  const [changePwModal, setChangePwModal] = useState<{ user: User; newPw: string } | null>(null)
+
+  // Catalog state
+  const [catalog, setCatalog] = useState<MophCatalogEntry[]>([])
+  const [catLoading, setCatLoading] = useState(false)
+  const [catSnapshotLoading, setCatSnapshotLoading] = useState(false)
+  const [catSnapResult, setCatSnapResult] = useState<BatchResult | null>(null)
+  const [catYear, setCatYear] = useState('2569')
+  const [catMonth, setCatMonth] = useState(() => {
+    const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  })
+  const [showCatForm, setShowCatForm] = useState(false)
+  const [catForm, setCatForm] = useState({
+    id: '', name: '', mophTable: '', valueField: 'result', targetField: 'target',
+    calcMode: 'percent', category: 'NCD', province: '66', hospcode: '', areacode: '6611', description: '',
+  })
+
+  useEffect(() => {
+    const session = getSession()
+    if (!session) { router.push('/login'); return }
+    if (session.role !== 'admin') { router.push('/dashboard'); return }
+    setUser(session)
+    loadData()
+  }, [router])
+
+  async function loadData() {
+    setLoading(true)
+    const [kRes, uRes, catRes] = await Promise.all([fetch('/api/kpis'), fetch('/api/users'), fetch('/api/categories')])
+    const kData = await kRes.json()
+    setKpis(kData)
+    setUsers(await uRes.json())
+    if (catRes.ok) setCategories(await catRes.json())
+    setLoading(false)
+    // auto-fill moph fields from first KPI that has mophTable
+    const withMoph = kData.find((k: KPIReport) => k.mophTable)
+    if (withMoph && !mophTable) {
+      setMophKpiId(withMoph.id)
+      setMophTable(withMoph.mophTable || '')
+      setMophValueField(withMoph.mophValueField || 'result')
+      setMophTargetField(withMoph.mophTargetField || 'target')
+      setMophCalcMode(withMoph.mophCalcMode || 'percent')
+    }
+  }
+
+  async function loadCatalog() {
+    setCatLoading(true)
+    const res = await fetch('/api/moph/catalog')
+    if (res.ok) setCatalog(await res.json())
+    setCatLoading(false)
+  }
+
+  async function saveCatalogEntry() {
+    if (!catForm.id || !catForm.name || !catForm.mophTable) {
+      showMsg('กรุณากรอก ID, ชื่อ และ Table Name', 'error'); return
+    }
+    const res = await fetch('/api/moph/catalog', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: catForm.id, name: catForm.name, mophTable: catForm.mophTable,
+        valueField: catForm.valueField, targetField: catForm.targetField,
+        calcMode: catForm.calcMode, category: catForm.category,
+        province: catForm.province, hospcode: catForm.hospcode,
+        areacode: catForm.areacode,
+        description: catForm.description,
+      }),
+    })
+    const data = await res.json()
+    if (res.ok) { showMsg('บันทึกรายงานสำเร็จ'); setShowCatForm(false); loadCatalog() }
+    else showMsg(data.message, 'error')
+  }
+
+  async function deleteCatalogEntry(id: string) {
+    if (!confirm(`ลบรายงาน ${id}?`)) return
+    const res = await fetch(`/api/moph/catalog?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
+    if (res.ok) { showMsg('ลบสำเร็จ'); loadCatalog() }
+    else showMsg('ลบไม่สำเร็จ', 'error')
+  }
+
+  async function snapshotAll() {
+    setCatSnapshotLoading(true); setCatSnapResult(null)
+    const res = await fetch('/api/moph/snapshot', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ year: catYear, month: catMonth }),
+    })
+    const data: BatchResult = await res.json()
+    setCatSnapResult(data); setCatSnapshotLoading(false)
+    if (data.ok) showMsg(`Snapshot สำเร็จ ${data.saved}/${data.total} รายงาน เดือน ${data.savedMonth}`)
+    else showMsg(data.message || 'เกิดข้อผิดพลาด', 'error')
+  }
+
+  function showMsg(text: string, type: 'success' | 'error' = 'success') {
+    setMsg({ text, type })
+    setTimeout(() => setMsg({ text: '', type: 'success' }), 5000)
+  }
+
+  function openAdd() { setEditKPI(null); setForm(emptyForm()); setShowForm(true) }
+  function openEdit(kpi: KPIReport) {
+    setEditKPI(kpi)
+    setForm({
+      name: kpi.name, category: kpi.category,
+      mophUrl: kpi.mophUrl ?? '', mophTable: kpi.mophTable ?? '',
+      mophValueField: kpi.mophValueField ?? '', mophTargetField: kpi.mophTargetField ?? 'target',
+      mophCalcMode: kpi.mophCalcMode ?? 'percent',
+      owner: kpi.owner, deadline: kpi.deadline, status: kpi.status,
+      target: kpi.target, unit: kpi.unit, description: kpi.description ?? '',
+    })
+    setShowForm(true)
+  }
+
+  async function saveForm() {
+    if (!form.name || !form.owner || !form.deadline) { showMsg('กรุณากรอกข้อมูลที่จำเป็น', 'error'); return }
+    const res = editKPI
+      ? await fetch(`/api/kpis/${editKPI.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })
+      : await fetch('/api/kpis', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })
+    if (!res.ok) { const d = await res.json(); showMsg(d.message, 'error'); return }
+    await loadData(); setShowForm(false)
+    showMsg(editKPI ? 'แก้ไข KPI สำเร็จ' : 'เพิ่ม KPI สำเร็จ')
+  }
+
+  async function deleteKPI(id: string) {
+    if (!confirm('ยืนยันการลบ KPI?')) return
+    const res = await fetch(`/api/kpis/${id}`, { method: 'DELETE' })
+    if (res.ok) { await loadData(); showMsg('ลบ KPI สำเร็จ') }
+    else showMsg('ลบไม่สำเร็จ', 'error')
+  }
+
+  // ─── User management ────────────────────────────────────────────────────
+  function openAddUser() {
+    setUserForm({ email: '', name: '', password: '', role: 'staff', department: '' })
+    setShowUserForm(true)
+  }
+
+  async function saveUser() {
+    if (!userForm.email || !userForm.name || !userForm.password) {
+      showMsg('กรุณากรอก email, ชื่อ และรหัสผ่าน', 'error'); return
+    }
+    const res = await fetch('/api/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(userForm),
+    })
+    const data = await res.json()
+    if (!res.ok) { showMsg(data.message, 'error'); return }
+    setShowUserForm(false)
+    showMsg('เพิ่มผู้ใช้สำเร็จ')
+    const uRes = await fetch('/api/users')
+    setUsers(await uRes.json())
+  }
+
+  async function deleteUser(id: string, name: string) {
+    if (!confirm(`ลบผู้ใช้ "${name}"?\nการกระทำนี้ไม่สามารถย้อนกลับได้`)) return
+    const res = await fetch(`/api/users/${id}`, { method: 'DELETE' })
+    const data = await res.json()
+    if (!res.ok) { showMsg(data.message, 'error'); return }
+    setUsers((prev) => prev.filter((u) => u.id !== id))
+    showMsg('ลบผู้ใช้สำเร็จ')
+  }
+
+  async function confirmChangePassword() {
+    if (!changePwModal) return
+    if (!changePwModal.newPw) { showMsg('กรุณากรอกรหัสผ่านใหม่', 'error'); return }
+    const res = await fetch(`/api/users/${changePwModal.user.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: changePwModal.newPw }),
+    })
+    const data = await res.json()
+    if (!res.ok) { showMsg(data.message, 'error'); return }
+    setChangePwModal(null)
+    showMsg(`เปลี่ยนรหัสผ่านของ "${changePwModal.user.name}" สำเร็จ`)
+  }
+
+  // ─── Category management ─────────────────────────────────────────────────
+  async function addCategory() {
+    const name = newCatInput.trim()
+    if (!name) return
+    const res = await fetch('/api/categories', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    })
+    const data = await res.json()
+    if (!res.ok) { showMsg(data.message, 'error'); return }
+    setCategories((prev) => [...prev, name])
+    setNewCatInput('')
+    showMsg(`เพิ่มหมวดหมู่ "${name}" สำเร็จ`)
+  }
+
+  async function deleteCategory(name: string) {
+    const res = await fetch(`/api/categories?name=${encodeURIComponent(name)}`, { method: 'DELETE' })
+    const data = await res.json()
+    if (!res.ok) { showMsg(data.message, 'error'); return }
+    setCategories((prev) => prev.filter((c) => c !== name))
+    showMsg(`ลบหมวดหมู่ "${name}" สำเร็จ`)
+  }
+
+  async function changeStatus(kpi: KPIReport, status: KPIStatus) {
+    await fetch(`/api/kpis/${kpi.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) })
+    setKpis((prev) => prev.map((k) => k.id === kpi.id ? { ...k, status } : k))
+  }
+
+  async function initDb() {
+    const res = await fetch('/api/init', { method: 'POST' })
+    const data = await res.json()
+    if (res.ok) { showMsg('สร้างตาราง + Seed สำเร็จ'); await loadData() }
+    else showMsg(data.message, 'error')
+    checkDb()
+  }
+
+  async function checkDb() {
+    const res = await fetch('/api/init')
+    setDbStatus(await res.json())
+  }
+
+  // MOPH functions
+  function onMophKpiChange(kpiId: string) {
+    setMophKpiId(kpiId)
+    setMophPreview(null)
+    const kpi = kpis.find((k) => k.id === kpiId)
+    if (kpi?.mophTable) {
+      setMophTable(kpi.mophTable)
+      const vf = kpi.mophValueField || 'result'
+      const tf = kpi.mophTargetField || 'target'
+      const cm = kpi.mophCalcMode || 'percent'
+      setMophValueField(vf)
+      setMophTargetField(tf)
+      setMophCalcMode(cm)
+      setSavedFieldConfig({ valueField: vf, targetField: tf, calcMode: cm })
+    } else {
+      setSavedFieldConfig(null)
+    }
+  }
+
+  async function saveMophFieldConfig() {
+    if (!mophKpiId) { showMsg('กรุณาเลือก KPI ก่อน', 'error'); return }
+    const res = await fetch(`/api/kpis/${mophKpiId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mophValueField, mophTargetField, mophCalcMode }),
+    })
+    if (res.ok) {
+      setSavedFieldConfig({ valueField: mophValueField, targetField: mophTargetField, calcMode: mophCalcMode })
+      setKpis((prev) => prev.map((k) =>
+        k.id === mophKpiId ? { ...k, mophValueField, mophTargetField, mophCalcMode } : k
+      ))
+      showMsg('🔒 บันทึก Field Config เรียบร้อย — Batch Save จะใช้ค่านี้')
+    } else {
+      showMsg('บันทึกไม่สำเร็จ', 'error')
+    }
+  }
+
+  async function deleteMonthlyEntry(kpiId: string, month: string, kpiName?: string) {
+    if (!confirm(`ลบข้อมูลเดือน ${month}${kpiName ? `\n(${kpiName})` : ''}\nข้อมูลจะหายถาวร`)) return
+    const res = await fetch(`/api/monthly?kpiId=${encodeURIComponent(kpiId)}&month=${encodeURIComponent(month)}`, { method: 'DELETE' })
+    if (res.ok) {
+      setBatchResult((prev) => prev
+        ? { ...prev, results: prev.results?.filter((r) => r.kpiId !== kpiId), saved: Math.max(0, (prev.saved ?? 1) - 1) }
+        : null
+      )
+      showMsg(`ลบข้อมูล ${month} สำเร็จ`)
+    } else {
+      showMsg('ลบไม่สำเร็จ', 'error')
+    }
+  }
+
+  async function mophPreviewFetch() {
+    if (!mophTable) { showMsg('กรุณาระบุ Table Name', 'error'); return }
+    setMophLoading(true); setMophPreview(null)
+    const params = new URLSearchParams({ tableName: mophTable, year: mophYear, province: mophProvince })
+    if (mophHospcode) params.set('hospcode', mophHospcode)
+    if (mophAreacode) params.set('areacode', mophAreacode)
+    const res = await fetch(`/api/moph?${params}`)
+    setMophPreview(await res.json())
+    setMophLoading(false)
+  }
+
+  async function mophSave() {
+    const kpiId = mophSaveKpiId || mophKpiId
+    if (!kpiId) { showMsg('กรุณาเลือก KPI ที่จะบันทึก', 'error'); return }
+    setMophLoading(true)
+    const res = await fetch('/api/moph', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kpiId, tableName: mophTable, year: mophYear, province: mophProvince,
+        hospcode: mophHospcode || undefined,
+        areacode: mophAreacode || undefined,
+        valueField: mophValueField, targetField: mophTargetField,
+        calcMode: mophCalcMode, month: mophMonth,
+      }),
+    })
+    const data: MophPreview = await res.json()
+    setMophLoading(false)
+    if (res.ok) {
+      setMophPreview(data)
+      showMsg(`บันทึกค่า ${data.calcValue} สำหรับเดือน ${data.savedMonth} สำเร็จ`)
+    } else {
+      showMsg(data.message || 'เกิดข้อผิดพลาด', 'error')
+    }
+  }
+
+  async function mophBatchFetch() {
+    // batch อ่าน valueField/targetField จาก DB ของแต่ละ KPI
+    // → sync field ที่เลือกบนหน้าจอ (ตาราง/ฟอร์ม) ลง DB ของ KPI ที่กำลังโฟกัสก่อนเสมอ
+    const activeKpiId = mophKpiId || mophSaveKpiId
+    if (activeKpiId) {
+      await fetch(`/api/kpis/${activeKpiId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mophValueField, mophTargetField, mophCalcMode }),
+      })
+      setKpis((prev) => prev.map((k) =>
+        k.id === activeKpiId ? { ...k, mophValueField, mophTargetField, mophCalcMode } : k
+      ))
+      if (activeKpiId === mophKpiId) {
+        setSavedFieldConfig({ valueField: mophValueField, targetField: mophTargetField, calcMode: mophCalcMode })
+      }
+    }
+
+    setBatchLoading(true); setBatchResult(null)
+    const res = await fetch('/api/moph/batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        year: mophYear, province: mophProvince,
+        hospcode: mophHospcode || undefined,
+        areacode: mophAreacode || undefined,
+        month: mophMonth,
+      }),
+    })
+    const data: BatchResult = await res.json()
+    setBatchResult(data)
+    setBatchLoading(false)
+    if (data.ok) showMsg(`บันทึกสำเร็จ ${data.saved}/${data.total} KPI สำหรับเดือน ${data.savedMonth}`)
+    else showMsg(data.message || 'เกิดข้อผิดพลาด', 'error')
+  }
+
+  if (!user) return null
+
+  const isFieldDirty = !!(mophKpiId && savedFieldConfig && (
+    mophValueField !== savedFieldConfig.valueField ||
+    mophTargetField !== savedFieldConfig.targetField ||
+    mophCalcMode !== savedFieldConfig.calcMode
+  ))
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <Navbar user={user} />
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-gray-900">จัดการระบบ</h1>
+          <p className="text-gray-500 text-sm mt-1">🗄️ MariaDB: 192.168.0.236 / dhdc</p>
+        </div>
+
+        {msg.text && (
+          <div className={`mb-4 px-4 py-2.5 rounded-lg text-sm border ${msg.type === 'success' ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+            {msg.text}
+          </div>
+        )}
+
+        {/* Tabs */}
+        <div className="flex flex-wrap gap-2 mb-6">
+          {([
+            { key: 'kpi', label: `📋 KPI (${kpis.length})` },
+            { key: 'catalog', label: `📊 Catalog (${catalog.length})` },
+            { key: 'moph', label: '🌐 ดึงข้อมูล MOPH' },
+            { key: 'users', label: `👥 ผู้ใช้ (${users.length})` },
+            { key: 'db', label: '🗄️ Database' },
+          ] as { key: typeof tab; label: string }[]).map(({ key, label }) => (
+            <button key={key} onClick={() => { setTab(key); if (key === 'db') checkDb(); if (key === 'catalog') loadCatalog() }}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tab === key ? 'bg-blue-800 text-white' : 'bg-white text-gray-600 hover:bg-gray-100 border'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* ===== KPI TAB ===== */}
+        {tab === 'kpi' && (
+          <>
+            {/* Category Management */}
+            <div className="bg-white rounded-xl shadow-sm border p-4 mb-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-700">🏷️ จัดการหมวดหมู่</h3>
+                <span className="text-xs text-gray-400">{categories.length} หมวดหมู่</span>
+              </div>
+              {/* รายการหมวดหมู่ */}
+              <div className="flex flex-wrap gap-2 mb-3">
+                {categories.map((cat) => (
+                  <span key={cat} className="inline-flex items-center gap-1 bg-blue-50 border border-blue-200 text-blue-800 text-xs font-medium px-2.5 py-1 rounded-full">
+                    {cat}
+                    <button
+                      onClick={() => deleteCategory(cat)}
+                      className="ml-0.5 text-blue-400 hover:text-red-500 transition-colors font-bold leading-none"
+                      title={`ลบ ${cat}`}>
+                      ×
+                    </button>
+                  </span>
+                ))}
+                {categories.length === 0 && (
+                  <span className="text-xs text-gray-400 italic">ยังไม่มีหมวดหมู่ — กด Migrate &amp; Seed หรือเพิ่มด้านล่าง</span>
+                )}
+              </div>
+              {/* เพิ่มหมวดหมู่ใหม่ */}
+              <div className="flex gap-2">
+                <input
+                  value={newCatInput}
+                  onChange={(e) => setNewCatInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && addCategory()}
+                  placeholder="ชื่อหมวดหมู่ใหม่ เช่น เวชศาสตร์ครอบครัว"
+                  className="flex-1 border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  onClick={addCategory}
+                  disabled={!newCatInput.trim()}
+                  className="bg-blue-800 hover:bg-blue-700 disabled:bg-gray-300 text-white text-sm px-4 py-1.5 rounded-lg font-medium transition-colors">
+                  + เพิ่ม
+                </button>
+              </div>
+            </div>
+
+            <div className="flex justify-end mb-4">
+              <button onClick={openAdd} className="bg-blue-800 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg">+ เพิ่ม KPI ใหม่</button>
+            </div>
+            <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+              {loading ? <div className="text-center py-16 text-gray-400">กำลังโหลด...</div> : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 border-b">
+                      <tr>
+                        <th className="text-left px-4 py-3 font-medium text-gray-600">ชื่อ KPI</th>
+                        <th className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell">ผู้รับผิดชอบ</th>
+                        <th className="text-center px-4 py-3 font-medium text-gray-600">MOPH Table</th>
+                        <th className="text-left px-4 py-3 font-medium text-gray-600">สถานะ</th>
+                        <th className="px-4 py-3 text-right font-medium text-gray-600">การดำเนินการ</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {kpis.map((kpi) => (
+                        <tr key={kpi.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3">
+                            <p className="font-medium text-gray-900 text-xs line-clamp-2">{kpi.name}</p>
+                            <p className="text-gray-400 text-xs">{kpi.category}</p>
+                          </td>
+                          <td className="px-4 py-3 text-gray-600 text-xs hidden md:table-cell">{kpi.owner}</td>
+                          <td className="px-4 py-3 text-center">
+                            {kpi.mophTable
+                              ? <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs font-mono">{kpi.mophTable}</span>
+                              : <span className="text-gray-300 text-xs">ไม่ได้ตั้ง</span>}
+                          </td>
+                          <td className="px-4 py-3">
+                            <select value={kpi.status} onChange={(e) => changeStatus(kpi, e.target.value as KPIStatus)}
+                              className="text-xs border rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                              {STATUSES.map((s) => <option key={s} value={s}>{STATUS_TH[s]}</option>)}
+                            </select>
+                          </td>
+                          <td className="px-4 py-3 text-right space-x-1">
+                            <button onClick={() => { onMophKpiChange(kpi.id); setTab('moph') }}
+                              className="text-green-600 hover:text-green-800 text-xs font-medium px-2 py-1 rounded hover:bg-green-50">🌐</button>
+                            <button onClick={() => openEdit(kpi)}
+                              className="text-blue-600 hover:text-blue-800 text-xs font-medium px-2 py-1 rounded hover:bg-blue-50">แก้ไข</button>
+                            <button onClick={() => deleteKPI(kpi.id)}
+                              className="text-red-500 hover:text-red-700 text-xs font-medium px-2 py-1 rounded hover:bg-red-50">ลบ</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* ===== CATALOG TAB ===== */}
+        {tab === 'catalog' && (
+          <div className="space-y-5">
+            {/* Header row */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="font-semibold text-gray-800">📊 คลังรายงาน MOPH (Province 66)</h2>
+                <p className="text-xs text-gray-400 mt-0.5">ลงทะเบียนรายงาน → ดึงข้อมูลทีเดียว → ผูกกับ KPI</p>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => { setCatForm({ id: '', name: '', mophTable: '', valueField: 'result', targetField: 'target', calcMode: 'percent', category: 'NCD', province: '66', hospcode: '', areacode: '6611', description: '' }); setShowCatForm(true) }}
+                  className="bg-blue-800 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg">+ เพิ่มรายงาน</button>
+              </div>
+            </div>
+
+            {/* Snapshot controls */}
+            <div className="bg-white rounded-xl shadow-sm border p-5">
+              <h3 className="font-semibold text-gray-800 mb-3">🗄️ ดึงข้อมูลทั้ง Catalog → Snapshot DB</h3>
+              <div className="flex flex-wrap gap-3 items-end">
+                <div>
+                  <label className="text-xs font-medium text-gray-600 mb-1 block">ปีงบประมาณ</label>
+                  <select value={catYear} onChange={(e) => setCatYear(e.target.value)}
+                    className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    {BY_YEARS.map((y) => <option key={y}>{y}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600 mb-1 block">เดือนที่บันทึก</label>
+                  <input type="month" value={catMonth} onChange={(e) => setCatMonth(e.target.value)}
+                    className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <button onClick={snapshotAll} disabled={catSnapshotLoading}
+                  className="bg-indigo-700 hover:bg-indigo-600 disabled:bg-indigo-400 text-white text-sm px-5 py-2 rounded-lg font-medium">
+                  {catSnapshotLoading ? '⏳ กำลังดึง...' : '🚀 Snapshot ทั้งหมด'}
+                </button>
+              </div>
+              <p className="text-xs text-gray-400 mt-2">ดึงข้อมูลจาก MOPH ทุกรายงานใน catalog แล้วเก็บใน moph_snapshot</p>
+            </div>
+
+            {/* Snapshot result */}
+            {catSnapResult && (
+              <div className="bg-white rounded-xl shadow-sm border p-5">
+                <h3 className="font-semibold text-gray-800 mb-3">
+                  {catSnapResult.ok ? '✅ ผล Snapshot' : '❌ เกิดข้อผิดพลาด'}
+                </h3>
+                {catSnapResult.ok ? (
+                  <>
+                    <div className="grid grid-cols-3 gap-3 mb-3">
+                      <InfoBox label="รายงานทั้งหมด" value={String(catSnapResult.total ?? 0)} />
+                      <InfoBox label="บันทึกสำเร็จ" value={String(catSnapResult.saved ?? 0)} highlight />
+                      <InfoBox label="ล้มเหลว" value={String(catSnapResult.failed ?? 0)} />
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead className="bg-gray-50"><tr>
+                          <th className="text-left px-3 py-2 font-medium text-gray-600">ชื่อรายงาน</th>
+                          <th className="text-center px-3 py-2 font-medium text-gray-600">Rows</th>
+                          <th className="text-center px-3 py-2 font-medium text-gray-600">ค่า</th>
+                          <th className="text-center px-3 py-2 font-medium text-gray-600">สถานะ</th>
+                        </tr></thead>
+                        <tbody className="divide-y">
+                          {catSnapResult.results?.map((r) => (
+                            <tr key={r.kpiId || r.reportId} className={r.status === 'error' ? 'bg-red-50' : ''}>
+                              <td className="px-3 py-2 text-gray-700">{r.kpiName || r.reportName}</td>
+                              <td className="px-3 py-2 text-center text-gray-500">{r.rows ?? '-'}</td>
+                              <td className="px-3 py-2 text-center font-mono font-medium text-blue-700">{r.calcValue ?? '-'}</td>
+                              <td className="px-3 py-2 text-center">
+                                {r.status === 'ok'
+                                  ? <span className="text-green-600 font-medium">✅ OK</span>
+                                  : <span className="text-red-500" title={r.error}>❌ {r.error?.slice(0, 40)}</span>}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                ) : <p className="text-red-600 text-sm">{catSnapResult.message}</p>}
+              </div>
+            )}
+
+            {/* Catalog list */}
+            <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+              {catLoading ? (
+                <div className="text-center py-12 text-gray-400">กำลังโหลด...</div>
+              ) : catalog.length === 0 ? (
+                <div className="text-center py-12 text-gray-400">ยังไม่มีรายงาน — กด &quot;+ เพิ่มรายงาน&quot; หรือ Migrate & Seed เพื่อโหลดข้อมูลเริ่มต้น</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 border-b">
+                      <tr>
+                        <th className="text-left px-4 py-3 font-medium text-gray-600">ชื่อรายงาน</th>
+                        <th className="text-left px-4 py-3 font-medium text-gray-600">MOPH Table</th>
+                        <th className="text-center px-4 py-3 font-medium text-gray-600">Field</th>
+                        <th className="text-center px-4 py-3 font-medium text-gray-600">Filter</th>
+                        <th className="text-left px-4 py-3 font-medium text-gray-600">ID (รหัสรายงาน)</th>
+                        <th className="px-4 py-3"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {catalog.map((c) => (
+                        <tr key={c.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3">
+                            <p className="font-medium text-gray-900 text-xs">{c.name}</p>
+                            <span className="text-gray-400 text-xs">{c.category}</span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs font-mono">{c.mophTable}</span>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <span className="font-mono text-xs text-gray-700">{c.valueField}</span>
+                            <span className="text-gray-400 text-xs"> / {c.targetField}</span>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {(c as MophCatalogEntry & { areacode?: string }).areacode
+                              ? <span className="bg-indigo-100 text-indigo-700 font-mono text-xs px-2 py-0.5 rounded">areacode: {(c as MophCatalogEntry & { areacode?: string }).areacode}*</span>
+                              : c.hospcode
+                              ? <span className="bg-orange-100 text-orange-700 font-mono text-xs px-2 py-0.5 rounded">hosp: {c.hospcode}</span>
+                              : <span className="text-gray-300 text-xs">ทั้งจังหวัด</span>}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="font-mono text-xs text-gray-400 break-all">{c.id.slice(0, 20)}…</span>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <button onClick={() => deleteCatalogEntry(c.id)}
+                              className="text-red-500 hover:text-red-700 text-xs px-2 py-1 rounded hover:bg-red-50">ลบ</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ===== MOPH TAB ===== */}
+        {tab === 'moph' && (
+          <div className="space-y-5">
+            {/* Config */}
+            <div className="bg-white rounded-xl shadow-sm border p-6">
+              <h2 className="font-semibold text-gray-800 mb-4">🌐 ดึงข้อมูลจาก MOPH Open Data API</h2>
+              <p className="text-xs text-gray-500 mb-4">Endpoint: <code className="bg-gray-100 px-1 rounded">POST https://opendata.moph.go.th/api/report_data</code></p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-xs font-medium text-gray-600 mb-1 block">KPI (auto-fill config)</label>
+                  <select value={mophKpiId} onChange={(e) => onMophKpiChange(e.target.value)}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="">-- เลือก KPI --</option>
+                    {kpis.map((k) => <option key={k.id} value={k.id}>{k.name.slice(0, 50)}</option>)}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-gray-600 mb-1 block">Table Name <span className="text-red-500">*</span></label>
+                  <input value={mophTable} onChange={(e) => setMophTable(e.target.value)}
+                    placeholder="เช่น s_dm_hba1c, s_dm_control"
+                    className="w-full border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-gray-600 mb-1 block">ปีงบประมาณ (พ.ศ.)</label>
+                  <select value={mophYear} onChange={(e) => setMophYear(e.target.value)}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    {BY_YEARS.map((y) => <option key={y}>{y}</option>)}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-gray-600 mb-1 block">จังหวัด (Province Code)</label>
+                  <select value={mophProvince} onChange={(e) => setMophProvince(e.target.value)}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    {PROVINCES.map((p) => <option key={p.code} value={p.code}>{p.code} - {p.name}</option>)}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-gray-600 mb-1 block">
+                    รหัสอำเภอ <span className="text-gray-400 font-normal">(areacode prefix เช่น จ.66 อ.11 → <code>6611</code>)</span>
+                  </label>
+                  <div className="flex gap-2 items-center">
+                    <span className="text-xs text-gray-500 font-mono bg-gray-100 px-2 py-2 rounded-lg border">{mophProvince}</span>
+                    <span className="text-gray-400">+</span>
+                    <input value={mophAreacode.replace(mophProvince, '')}
+                      onChange={(e) => setMophAreacode(mophProvince + e.target.value.replace(/\D/g, '').slice(0, 2))}
+                      placeholder="11"
+                      maxLength={2}
+                      className="w-20 border rounded-lg px-3 py-2 text-sm font-mono text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <span className="text-xs text-gray-400">→ prefix: <strong>{mophAreacode || '(ทั้งจังหวัด)'}</strong></span>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600 mb-1 block">
+                    Hospcode <span className="text-gray-400 font-normal">(เว้นว่าง = ไม่กรอง)</span>
+                  </label>
+                  <input value={mophHospcode} onChange={(e) => setMophHospcode(e.target.value)}
+                    placeholder="เช่น 27980 (ถ้าต้องการ)"
+                    className="w-full border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-gray-600 mb-1 flex items-center gap-1.5">
+                    Value Field (field ที่ใช้เป็นค่า)
+                    {savedFieldConfig && (
+                      mophValueField !== savedFieldConfig.valueField
+                        ? <span className="text-orange-500 font-bold" title="ยังไม่ได้บันทึก">●</span>
+                        : <span className="text-green-500" title="ตรงกับที่บันทึกไว้">🔒</span>
+                    )}
+                  </label>
+                  <input value={mophValueField} onChange={(e) => setMophValueField(e.target.value)}
+                    placeholder="เช่น hba1c, result, count"
+                    className={`w-full border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 ${savedFieldConfig && mophValueField !== savedFieldConfig.valueField ? 'border-orange-300 bg-orange-50' : ''}`} />
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-gray-600 mb-1 flex items-center gap-1.5">
+                    Target Field
+                    {savedFieldConfig && (
+                      mophTargetField !== savedFieldConfig.targetField
+                        ? <span className="text-orange-500 font-bold" title="ยังไม่ได้บันทึก">●</span>
+                        : <span className="text-green-500" title="ตรงกับที่บันทึกไว้">🔒</span>
+                    )}
+                  </label>
+                  <input value={mophTargetField} onChange={(e) => setMophTargetField(e.target.value)}
+                    placeholder="เช่น target"
+                    className={`w-full border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 ${savedFieldConfig && mophTargetField !== savedFieldConfig.targetField ? 'border-orange-300 bg-orange-50' : ''}`} />
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-gray-600 mb-1 flex items-center gap-1.5">
+                    วิธีคำนวณ
+                    {savedFieldConfig && (
+                      mophCalcMode !== savedFieldConfig.calcMode
+                        ? <span className="text-orange-500 font-bold" title="ยังไม่ได้บันทึก">●</span>
+                        : <span className="text-green-500" title="ตรงกับที่บันทึกไว้">🔒</span>
+                    )}
+                  </label>
+                  <select value={mophCalcMode} onChange={(e) => setMophCalcMode(e.target.value)}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    {CALC_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+                  </select>
+                  {isFieldDirty && (
+                    <button onClick={saveMophFieldConfig}
+                      className="mt-1.5 w-full bg-orange-500 hover:bg-orange-400 text-white text-xs px-3 py-1.5 rounded-lg font-medium flex items-center justify-center gap-1.5">
+                      🔒 บันทึก Field Config สู่ KPI (Batch จะใช้ค่านี้)
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-3 mt-4">
+                <button onClick={mophPreviewFetch} disabled={mophLoading}
+                  className="bg-gray-700 hover:bg-gray-600 disabled:bg-gray-400 text-white text-sm px-4 py-2 rounded-lg">
+                  {mophLoading ? 'กำลังดึง...' : '🔍 Preview (ไม่บันทึก)'}
+                </button>
+                <button onClick={mophBatchFetch} disabled={batchLoading || mophLoading}
+                  className="bg-indigo-700 hover:bg-indigo-600 disabled:bg-indigo-400 text-white text-sm px-4 py-2 rounded-lg font-medium">
+                  {batchLoading ? '⏳ กำลังดึงทั้งหมด...' : '🚀 ดึงข้อมูลทั้งหมด (Batch Save)'}
+                </button>
+              </div>
+              <p className="text-xs text-gray-400 mt-2">Batch Save: ดึงและบันทึกให้ทุก KPI ที่ตั้งค่า MOPH Table ไว้ — ใช้ <strong className="text-gray-600">Value/Target Field ที่ล็อคไว้ของแต่ละ KPI</strong> + ปี/จังหวัด/อำเภอ/เดือนด้านบน (ถ้าแก้ field ค้างไว้ จะถูกล็อคให้อัตโนมัติก่อนดึง)</p>
+            </div>
+
+            {/* Preview Result */}
+            {mophPreview && (
+              <div className="bg-white rounded-xl shadow-sm border p-6">
+                <h3 className="font-semibold text-gray-800 mb-3">
+                  {mophPreview.ok ? '✅ ผลการดึงข้อมูล' : '❌ เกิดข้อผิดพลาด'}
+                </h3>
+
+                {!mophPreview.ok ? (
+                  <p className="text-red-600 text-sm">{mophPreview.message}</p>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                      <InfoBox label="จำนวน rows" value={String(mophPreview.rows)} />
+                      <InfoBox label="Sum ValueField" value={String(mophPreview.sumValue ?? '-')} />
+                      <InfoBox label="Sum TargetField" value={String(mophPreview.sumTarget ?? '-')} />
+                      <InfoBox label="ค่าที่คำนวณได้" value={`${mophPreview.calcValue ?? '-'}`} highlight />
+                    </div>
+
+                    <div className="mb-4">
+                      <p className="text-xs font-medium text-gray-600 mb-2">Fields ที่มีใน response:</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {mophPreview.fields?.map((f) => (
+                          <button key={f} onClick={() => setMophValueField(f)}
+                            className={`text-xs px-2 py-1 rounded font-mono border transition-colors ${mophValueField === f ? 'bg-blue-700 text-white border-blue-700' : 'bg-gray-50 text-gray-700 border-gray-200 hover:border-blue-400'}`}>
+                            {f}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-xs text-gray-400 mt-1">คลิก field เพื่อเลือกใช้เป็น Value Field</p>
+                    </div>
+
+                    {/* Sample data — ตารางทุก hcode ที่ผ่าน filter */}
+                    {mophPreview.sample && mophPreview.sample.length > 0 && (() => {
+                      const cols = Object.keys(mophPreview.sample[0])
+                      const numCols = cols.filter((c) =>
+                        mophPreview.sample.some((r) => typeof r[c] === 'number' && (r[c] as number) > 0)
+                      )
+                      // คำนวณ sum ของแต่ละ numeric column สำหรับ summary row
+                      const colSums: Record<string, number> = {}
+                      numCols.forEach((c) => {
+                        colSums[c] = mophPreview.sample.reduce((s, r) => s + (Number(r[c]) || 0), 0)
+                      })
+                      return (
+                        <div className="mb-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-xs font-medium text-gray-600">
+                              📋 ข้อมูลทุก hcode ในอำเภอ —
+                              <span className="ml-1 text-blue-700 font-bold">{mophPreview.sample.length} หน่วยบริการ</span>
+                              {mophPreview.rows > mophPreview.sample.length && (
+                                <span className="text-gray-400"> (แสดง {mophPreview.sample.length}/{mophPreview.rows})</span>
+                              )}
+                            </p>
+                            <p className="text-xs text-gray-400">คลิก header → เลือก Value Field</p>
+                          </div>
+                          <div className="overflow-x-auto rounded-lg border max-h-[420px] overflow-y-auto">
+                            <table className="w-max text-xs border-collapse">
+                              <thead className="sticky top-0 z-10">
+                                <tr>
+                                  <th className="px-2 py-2 border-b border-r bg-gray-200 text-gray-500 font-mono text-center">#</th>
+                                  {cols.map((col) => (
+                                    <th
+                                      key={col}
+                                      onClick={() => setMophValueField(col)}
+                                      title={`คลิกเลือก "${col}" เป็น Value Field`}
+                                      className={`px-3 py-2 border-b border-r text-left font-mono cursor-pointer select-none whitespace-nowrap transition-colors
+                                        ${mophValueField === col
+                                          ? 'bg-blue-700 text-white'
+                                          : mophTargetField === col
+                                          ? 'bg-green-600 text-white'
+                                          : 'bg-gray-100 text-gray-700 hover:bg-blue-100 hover:text-blue-800'}`}
+                                    >
+                                      {col}
+                                      {mophValueField === col && ' ▲'}
+                                      {mophTargetField === col && ' ●'}
+                                    </th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {mophPreview.sample.map((row, ri) => (
+                                  <tr key={ri} className={ri % 2 === 0 ? 'bg-white hover:bg-blue-50' : 'bg-gray-50 hover:bg-blue-50'}>
+                                    <td className="px-2 py-1.5 border-b border-r text-gray-400 text-center">{ri + 1}</td>
+                                    {cols.map((col) => {
+                                      const val = row[col]
+                                      const isVal    = col === mophValueField
+                                      const isTgt    = col === mophTargetField
+                                      return (
+                                        <td key={col}
+                                          className={`px-3 py-1.5 border-b border-r font-mono whitespace-nowrap
+                                            ${isVal ? 'bg-blue-50 text-blue-800 font-bold' : ''}
+                                            ${isTgt ? 'bg-green-50 text-green-800 font-semibold' : ''}
+                                            ${val === null || val === '' ? 'text-gray-300 italic' : ''}`}
+                                        >
+                                          {val === null ? 'null' : val === '' ? '—' : String(val)}
+                                        </td>
+                                      )
+                                    })}
+                                  </tr>
+                                ))}
+                              </tbody>
+                              {/* Summary row */}
+                              <tfoot className="sticky bottom-0">
+                                <tr className="bg-yellow-50 border-t-2 border-yellow-300">
+                                  <td className="px-2 py-2 border-r text-yellow-700 font-bold text-center text-xs">Σ</td>
+                                  {cols.map((col) => {
+                                    const isVal = col === mophValueField
+                                    const isTgt = col === mophTargetField
+                                    const s     = colSums[col]
+                                    return (
+                                      <td key={col}
+                                        className={`px-3 py-2 border-r font-mono font-bold text-xs whitespace-nowrap
+                                          ${isVal ? 'bg-blue-100 text-blue-900' : ''}
+                                          ${isTgt ? 'bg-green-100 text-green-900' : ''}
+                                          ${!isVal && !isTgt ? 'text-yellow-700' : ''}`}
+                                      >
+                                        {s !== undefined ? s.toLocaleString() : '—'}
+                                      </td>
+                                    )
+                                  })}
+                                </tr>
+                              </tfoot>
+                            </table>
+                          </div>
+                          <div className="flex gap-4 mt-1.5 text-xs text-gray-500">
+                            <span><span className="inline-block w-3 h-3 bg-blue-700 rounded mr-1 align-middle" />Value Field: <strong>{mophValueField}</strong> = {colSums[mophValueField]?.toLocaleString() ?? '–'}</span>
+                            <span><span className="inline-block w-3 h-3 bg-green-600 rounded mr-1 align-middle" />Target Field: <strong>{mophTargetField}</strong> = {colSums[mophTargetField]?.toLocaleString() ?? '–'}</span>
+                            {(colSums[mophTargetField] ?? 0) > 0 && (
+                              <span className="text-blue-700 font-semibold">
+                                → {((colSums[mophValueField] / colSums[mophTargetField]) * 100).toFixed(2)}%
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })()}
+
+                    {/* Save Section */}
+                    <div className="border-t pt-4">
+                      <h4 className="text-sm font-semibold text-gray-800 mb-3">💾 บันทึกลง monthly_data</h4>
+                      <div className="flex flex-wrap gap-3 items-end">
+                        <div>
+                          <label className="text-xs font-medium text-gray-600 mb-1 block">KPI ที่จะบันทึก</label>
+                          <select value={mophSaveKpiId || mophKpiId} onChange={(e) => setMophSaveKpiId(e.target.value)}
+                            className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="">-- เลือก KPI --</option>
+                            {kpis.map((k) => <option key={k.id} value={k.id}>{k.name.slice(0, 45)}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-gray-600 mb-1 block">เดือนที่บันทึก</label>
+                          <input type="month" value={mophMonth} onChange={(e) => setMophMonth(e.target.value)}
+                            className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        </div>
+                        <button onClick={mophSave} disabled={mophLoading}
+                          className="bg-green-700 hover:bg-green-600 disabled:bg-green-400 text-white text-sm px-5 py-2 rounded-lg font-medium">
+                          {mophLoading ? 'กำลังบันทึก...' : '💾 บันทึกลง DB'}
+                        </button>
+                      </div>
+                      {mophPreview.savedMonth && (
+                        <p className="text-green-600 text-sm mt-2">✅ บันทึกค่า <strong>{mophPreview.calcValue}</strong> สำหรับเดือน <strong>{mophPreview.savedMonth}</strong> เรียบร้อย</p>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Batch Result */}
+            {batchResult && (
+              <div className="bg-white rounded-xl shadow-sm border p-6">
+                <h3 className="font-semibold text-gray-800 mb-3">
+                  {batchResult.ok ? '✅ ผล Batch Save' : '❌ เกิดข้อผิดพลาด'}
+                </h3>
+                {!batchResult.ok ? (
+                  <p className="text-red-600 text-sm">{batchResult.message}</p>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-3 gap-3 mb-4">
+                      <InfoBox label="KPI ทั้งหมด" value={String(batchResult.total ?? 0)} />
+                      <InfoBox label="บันทึกสำเร็จ" value={String(batchResult.saved ?? 0)} highlight />
+                      <InfoBox label="ล้มเหลว" value={String(batchResult.failed ?? 0)} />
+                    </div>
+                    <p className="text-xs text-gray-500 mb-3">เดือนที่บันทึก: <strong>{batchResult.savedMonth}</strong></p>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="text-left px-3 py-2 font-medium text-gray-600">KPI</th>
+                            <th className="text-center px-3 py-2 font-medium text-gray-600">Rows</th>
+                            <th className="text-center px-3 py-2 font-medium text-gray-600">ค่าที่บันทึก</th>
+                            <th className="text-center px-3 py-2 font-medium text-gray-600">สถานะ</th>
+                            <th className="px-3 py-2"></th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {batchResult.results?.map((r) => (
+                            <tr key={r.kpiId} className={r.status === 'error' ? 'bg-red-50' : ''}>
+                              <td className="px-3 py-2 text-gray-700 max-w-xs truncate">{r.kpiName}</td>
+                              <td className="px-3 py-2 text-center text-gray-500">{r.rows ?? '-'}</td>
+                              <td className="px-3 py-2 text-center font-mono font-medium text-blue-700">{r.calcValue ?? '-'}</td>
+                              <td className="px-3 py-2 text-center">
+                                {r.status === 'ok'
+                                  ? <span className="text-green-600 font-medium">✅ OK</span>
+                                  : <span className="text-red-500" title={r.error}>❌ {r.error?.slice(0, 40)}</span>}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                {r.status === 'ok' && r.kpiId && (
+                                  <button
+                                    onClick={() => deleteMonthlyEntry(r.kpiId!, batchResult.savedMonth!, r.kpiName)}
+                                    className="text-red-400 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded text-xs"
+                                    title={`ลบข้อมูลเดือน ${batchResult.savedMonth}`}>
+                                    🗑️
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Quick reference */}
+            <div className="bg-blue-50 rounded-xl border border-blue-100 p-5">
+              <h3 className="font-semibold text-blue-800 mb-3 text-sm">📖 Table Names ที่รู้จัก</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-blue-700 font-mono">
+                {[
+                  ['s_dm_control', 'เบาหวาน - ควบคุมได้ (hba1c/result)'],
+                  ['s_ht_control', 'ความดัน - ควบคุมได้'],
+                  ['s_dm_ckd', 'เบาหวาน - ภาวะแทรกซ้อนไต'],
+                  ['s_dm_hba1c', 'เบาหวาน - HbA1c (ทดสอบ)'],
+                  ['s_anc', 'ฝากครรภ์ (ทดสอบก่อนใช้)'],
+                  ['s_child', 'เด็ก - ส่วนสูง/น้ำหนัก'],
+                  ['s_tb_success', 'วัณโรค (ทดสอบก่อนใช้)'],
+                  ['s_hiv_arv', 'HIV ARV (ทดสอบก่อนใช้)'],
+                ].map(([table, desc]) => (
+                  <button key={table} onClick={() => setMophTable(table)}
+                    className="text-left flex gap-2 p-2 rounded hover:bg-blue-100">
+                    <span className="text-blue-800 font-bold">{table}</span>
+                    <span className="text-blue-600">→ {desc}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ===== USERS TAB ===== */}
+        {tab === 'users' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="font-semibold text-gray-800">👥 จัดการผู้ใช้งาน</h2>
+                <p className="text-xs text-gray-400 mt-0.5">เพิ่ม ลบ และเปลี่ยนรหัสผ่านผู้ใช้ในระบบ</p>
+              </div>
+              <button onClick={openAddUser}
+                className="bg-blue-800 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg font-medium">
+                + เพิ่มผู้ใช้
+              </button>
+            </div>
+
+            <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b">
+                    <tr>
+                      <th className="text-left px-4 py-3 font-medium text-gray-600">ชื่อ</th>
+                      <th className="text-left px-4 py-3 font-medium text-gray-600">อีเมล</th>
+                      <th className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell">หน่วยงาน</th>
+                      <th className="text-center px-4 py-3 font-medium text-gray-600">สิทธิ์</th>
+                      <th className="px-4 py-3 text-right font-medium text-gray-600">การดำเนินการ</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {users.map((u) => (
+                      <tr key={u.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 font-medium text-gray-900">{u.name}</td>
+                        <td className="px-4 py-3 text-gray-600 text-xs">{u.email}</td>
+                        <td className="px-4 py-3 text-gray-600 text-xs hidden md:table-cell">{u.department}</td>
+                        <td className="px-4 py-3 text-center">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${u.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-700'}`}>
+                            {u.role === 'admin' ? '👑 Admin' : '👤 Staff'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right space-x-1">
+                          <button
+                            onClick={() => setChangePwModal({ user: u, newPw: '' })}
+                            className="text-blue-600 hover:text-blue-800 text-xs font-medium px-2 py-1 rounded hover:bg-blue-50">
+                            🔑 รหัสผ่าน
+                          </button>
+                          <button
+                            onClick={() => deleteUser(u.id, u.name)}
+                            className="text-red-500 hover:text-red-700 text-xs font-medium px-2 py-1 rounded hover:bg-red-50">
+                            ลบ
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ===== DB TAB ===== */}
+        {tab === 'db' && (
+          <div className="bg-white rounded-xl shadow-sm border p-6">
+            <h2 className="font-semibold text-gray-800 mb-4">🗄️ สถานะฐานข้อมูล MariaDB</h2>
+            <div className="grid grid-cols-2 gap-3 text-sm mb-4">
+              <div className="bg-gray-50 rounded-lg p-3"><span className="text-gray-500">Host</span><p className="font-mono font-medium mt-0.5">192.168.0.236:3306</p></div>
+              <div className="bg-gray-50 rounded-lg p-3"><span className="text-gray-500">Database</span><p className="font-mono font-medium mt-0.5">dhdc</p></div>
+            </div>
+            {dbStatus && (
+              <div className={`p-4 rounded-lg mb-4 text-sm ${dbStatus.ok ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
+                {dbStatus.ok ? (
+                  <div>✅ เชื่อมต่อสำเร็จ
+                    <div className="grid grid-cols-5 gap-2 mt-3">
+                      <div className="bg-white rounded p-2 text-center"><div className="text-xl font-bold">{dbStatus.counts?.users}</div><div className="text-xs text-gray-500">users</div></div>
+                      <div className="bg-white rounded p-2 text-center"><div className="text-xl font-bold">{dbStatus.counts?.kpis}</div><div className="text-xs text-gray-500">kpi_reports</div></div>
+                      <div className="bg-white rounded p-2 text-center"><div className="text-xl font-bold">{dbStatus.counts?.monthly}</div><div className="text-xs text-gray-500">monthly_data</div></div>
+                      <div className="bg-white rounded p-2 text-center"><div className="text-xl font-bold">{dbStatus.counts?.catalog ?? 0}</div><div className="text-xs text-gray-500">catalog</div></div>
+                      <div className="bg-white rounded p-2 text-center"><div className="text-xl font-bold">{dbStatus.counts?.snapshot ?? 0}</div><div className="text-xs text-gray-500">snapshot</div></div>
+                    </div>
+                  </div>
+                ) : <div>❌ {dbStatus.message}</div>}
+              </div>
+            )}
+            <div className="flex gap-3">
+              <button onClick={checkDb} className="border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm px-4 py-2 rounded-lg">ตรวจสอบการเชื่อมต่อ</button>
+              <button onClick={initDb} className="bg-blue-800 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg">🚀 Migrate & Seed</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Catalog Form Modal */}
+      {showCatForm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowCatForm(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="p-6 border-b flex items-center justify-between">
+              <h2 className="font-bold text-gray-900 text-lg">เพิ่มรายงาน MOPH</h2>
+              <button onClick={() => setShowCatForm(false)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+            </div>
+            <div className="p-6 space-y-4">
+              <Field label="รหัสรายงาน (ID) *">
+                <input value={catForm.id} onChange={(e) => setCatForm({ ...catForm, id: e.target.value })}
+                  placeholder="เช่น 137a726340e4dfde7bbbc5d8aeee3ac3"
+                  className="w-full border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <p className="text-xs text-gray-400 mt-1">รหัสจาก MOPH portal หรือตั้งเองก็ได้ ต้อง unique</p>
+              </Field>
+              <Field label="ชื่อรายงาน *">
+                <input value={catForm.name} onChange={(e) => setCatForm({ ...catForm, name: e.target.value })}
+                  placeholder="เช่น ผู้ป่วยเบาหวานที่ควบคุม HbA1c < 7%"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="MOPH Table Name *">
+                  <input value={catForm.mophTable} onChange={(e) => setCatForm({ ...catForm, mophTable: e.target.value })}
+                    placeholder="s_dm_control"
+                    className="w-full border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </Field>
+                <Field label="หมวดหมู่">
+                  <select value={catForm.category} onChange={(e) => setCatForm({ ...catForm, category: e.target.value })}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    {categories.map((c) => <option key={c}>{c}</option>)}
+                  </select>
+                </Field>
+                <Field label="Value Field">
+                  <input value={catForm.valueField} onChange={(e) => setCatForm({ ...catForm, valueField: e.target.value })}
+                    placeholder="result"
+                    className="w-full border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </Field>
+                <Field label="Target Field">
+                  <input value={catForm.targetField} onChange={(e) => setCatForm({ ...catForm, targetField: e.target.value })}
+                    placeholder="target"
+                    className="w-full border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </Field>
+                <Field label="วิธีคำนวณ">
+                  <select value={catForm.calcMode} onChange={(e) => setCatForm({ ...catForm, calcMode: e.target.value })}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    {CALC_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+                  </select>
+                </Field>
+                <Field label="Areacode prefix (จ.+อ. เช่น 6611)">
+                  <input value={(catForm as typeof catForm & { areacode?: string }).areacode ?? ''}
+                    onChange={(e) => setCatForm({ ...catForm, areacode: e.target.value } as typeof catForm)}
+                    placeholder="6611 = จ.66 อ.11"
+                    className="w-full border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  <p className="text-xs text-gray-400 mt-0.5">กรอง rows ที่ areacode ขึ้นต้นด้วย prefix นี้</p>
+                </Field>
+                <Field label="Hospcode (กรณีต้องการรพ.เดียว)">
+                  <input value={catForm.hospcode} onChange={(e) => setCatForm({ ...catForm, hospcode: e.target.value })}
+                    placeholder="27980 (ถ้าต้องการ)"
+                    className="w-full border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </Field>
+              </div>
+              <Field label="หมายเหตุ">
+                <input value={catForm.description} onChange={(e) => setCatForm({ ...catForm, description: e.target.value })}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </Field>
+              <div className="flex gap-3 pt-2">
+                <button onClick={saveCatalogEntry} className="flex-1 bg-blue-800 hover:bg-blue-700 text-white text-sm py-2.5 rounded-lg font-medium">บันทึก</button>
+                <button onClick={() => setShowCatForm(false)} className="flex-1 border border-gray-300 text-gray-600 hover:bg-gray-50 text-sm py-2.5 rounded-lg">ยกเลิก</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add User Modal */}
+      {showUserForm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowUserForm(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <div className="p-6 border-b flex items-center justify-between">
+              <h2 className="font-bold text-gray-900 text-lg">+ เพิ่มผู้ใช้ใหม่</h2>
+              <button onClick={() => setShowUserForm(false)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+            </div>
+            <div className="p-6 space-y-4">
+              <Field label="อีเมล *">
+                <input type="email" value={userForm.email} onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
+                  placeholder="user@hospital.go.th"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </Field>
+              <Field label="ชื่อ-สกุล *">
+                <input value={userForm.name} onChange={(e) => setUserForm({ ...userForm, name: e.target.value })}
+                  placeholder="ชื่อผู้ใช้งาน"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </Field>
+              <Field label="รหัสผ่าน *">
+                <input type="password" value={userForm.password} onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
+                  placeholder="รหัสผ่าน"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="สิทธิ์">
+                  <select value={userForm.role} onChange={(e) => setUserForm({ ...userForm, role: e.target.value as 'admin' | 'staff' })}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="staff">👤 Staff</option>
+                    <option value="admin">👑 Admin</option>
+                  </select>
+                </Field>
+                <Field label="หน่วยงาน">
+                  <input value={userForm.department} onChange={(e) => setUserForm({ ...userForm, department: e.target.value })}
+                    placeholder="ฝ่าย / งาน"
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </Field>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button onClick={saveUser} className="flex-1 bg-blue-800 hover:bg-blue-700 text-white text-sm py-2.5 rounded-lg font-medium">เพิ่มผู้ใช้</button>
+                <button onClick={() => setShowUserForm(false)} className="flex-1 border border-gray-300 text-gray-600 hover:bg-gray-50 text-sm py-2.5 rounded-lg">ยกเลิก</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Change Password Modal */}
+      {changePwModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setChangePwModal(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+            <div className="p-6 border-b flex items-center justify-between">
+              <h2 className="font-bold text-gray-900 text-lg">🔑 เปลี่ยนรหัสผ่าน</h2>
+              <button onClick={() => setChangePwModal(null)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-gray-600">ผู้ใช้: <span className="font-semibold text-gray-900">{changePwModal.user.name}</span></p>
+              <p className="text-xs text-gray-400">{changePwModal.user.email}</p>
+              <Field label="รหัสผ่านใหม่ *">
+                <input
+                  type="password"
+                  value={changePwModal.newPw}
+                  onChange={(e) => setChangePwModal({ ...changePwModal, newPw: e.target.value })}
+                  onKeyDown={(e) => e.key === 'Enter' && confirmChangePassword()}
+                  placeholder="กรอกรหัสผ่านใหม่"
+                  autoFocus
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </Field>
+              <div className="flex gap-3 pt-2">
+                <button onClick={confirmChangePassword} className="flex-1 bg-blue-800 hover:bg-blue-700 text-white text-sm py-2.5 rounded-lg font-medium">บันทึก</button>
+                <button onClick={() => setChangePwModal(null)} className="flex-1 border border-gray-300 text-gray-600 hover:bg-gray-50 text-sm py-2.5 rounded-lg">ยกเลิก</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* KPI Form Modal */}
+      {showForm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowForm(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="p-6 border-b flex items-center justify-between">
+              <h2 className="font-bold text-gray-900 text-lg">{editKPI ? 'แก้ไข KPI' : 'เพิ่ม KPI ใหม่'}</h2>
+              <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+            </div>
+            <div className="p-6 space-y-4">
+              <Field label="ชื่อ KPI *"><textarea value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} rows={2} className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="หมวดหมู่">
+                  <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value as KPICategory })} className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    {categories.map((c) => <option key={c}>{c}</option>)}
+                  </select>
+                </Field>
+                <Field label="สถานะ">
+                  <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as KPIStatus })} className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    {STATUSES.map((s) => <option key={s} value={s}>{STATUS_TH[s]}</option>)}
+                  </select>
+                </Field>
+              </div>
+              <Field label="ผู้รับผิดชอบ *"><input value={form.owner} onChange={(e) => setForm({ ...form, owner: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="เป้าหมาย"><input type="number" value={form.target} onChange={(e) => setForm({ ...form, target: +e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></Field>
+                <Field label="หน่วย"><input value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></Field>
+              </div>
+              <Field label="กำหนดเสร็จ *"><input type="date" value={form.deadline} onChange={(e) => setForm({ ...form, deadline: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></Field>
+
+              <div className="border-t pt-4">
+                <p className="text-xs font-semibold text-blue-700 mb-3">🌐 MOPH API Config</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Table Name"><input value={form.mophTable ?? ''} onChange={(e) => setForm({ ...form, mophTable: e.target.value })} placeholder="s_dm_hba1c" className="w-full border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" /></Field>
+                  <Field label="Value Field"><input value={form.mophValueField ?? ''} onChange={(e) => setForm({ ...form, mophValueField: e.target.value })} placeholder="hba1c" className="w-full border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" /></Field>
+                  <Field label="Target Field"><input value={form.mophTargetField ?? ''} onChange={(e) => setForm({ ...form, mophTargetField: e.target.value })} placeholder="target" className="w-full border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" /></Field>
+                  <Field label="วิธีคำนวณ">
+                    <select value={form.mophCalcMode ?? 'percent'} onChange={(e) => setForm({ ...form, mophCalcMode: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      {CALC_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+                    </select>
+                  </Field>
+                </div>
+              </div>
+
+              <Field label="รายละเอียด"><textarea value={form.description ?? ''} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={2} className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></Field>
+              <div className="flex gap-3 pt-2">
+                <button onClick={saveForm} className="flex-1 bg-blue-800 hover:bg-blue-700 text-white text-sm py-2.5 rounded-lg font-medium">{editKPI ? 'บันทึกการแก้ไข' : 'เพิ่ม KPI'}</button>
+                <button onClick={() => setShowForm(false)} className="flex-1 border border-gray-300 text-gray-600 hover:bg-gray-50 text-sm py-2.5 rounded-lg">ยกเลิก</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return <div><label className="block text-xs font-medium text-gray-700 mb-1">{label}</label>{children}</div>
+}
+
+function InfoBox({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+  return (
+    <div className={`rounded-lg p-3 text-center ${highlight ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50'}`}>
+      <div className={`text-xl font-bold ${highlight ? 'text-blue-700' : 'text-gray-800'}`}>{value}</div>
+      <div className="text-xs text-gray-500 mt-0.5">{label}</div>
+    </div>
+  )
+}
