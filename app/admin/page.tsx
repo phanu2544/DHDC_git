@@ -127,11 +127,13 @@ interface MophPreview {
 }
 
 interface BatchResult {
-  ok: boolean; savedMonth?: string; total?: number; saved?: number; failed?: number; message?: string
+  ok: boolean; savedMonth?: string; total?: number; saved?: number; skipped?: number; failed?: number; message?: string
   results?: {
     kpiId?: string; kpiName?: string
     reportId?: string; reportName?: string
-    status: 'ok' | 'error'; calcValue?: number; rows?: number; error?: string
+    status: 'ok' | 'error' | 'skipped'; calcValue?: number; rows?: number; error?: string
+    skipReason?: string
+    warnings?: string[]
   }[]
 }
 
@@ -1307,9 +1309,10 @@ export default function AdminPage() {
                   <p className="text-red-600 text-sm">{batchResult.message}</p>
                 ) : (
                   <>
-                    <div className="grid grid-cols-3 gap-3 mb-4">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
                       <InfoBox label="KPI ทั้งหมด" value={String(batchResult.total ?? 0)} />
                       <InfoBox label="บันทึกสำเร็จ" value={String(batchResult.saved ?? 0)} highlight />
+                      <InfoBox label="ข้าม (skipped)" value={String(batchResult.skipped ?? 0)} />
                       <InfoBox label="ล้มเหลว" value={String(batchResult.failed ?? 0)} />
                     </div>
                     <p className="text-xs text-gray-500 mb-3">เดือนที่บันทึก: <strong>{batchResult.savedMonth}</strong></p>
@@ -1326,14 +1329,29 @@ export default function AdminPage() {
                         </thead>
                         <tbody className="divide-y">
                           {batchResult.results?.map((r) => (
-                            <tr key={r.kpiId} className={r.status === 'error' ? 'bg-red-50' : ''}>
+                            <tr key={r.kpiId}
+                              className={
+                                r.status === 'error'   ? 'bg-red-50'
+                                : r.status === 'skipped' ? 'bg-gray-50'
+                                : ''
+                              }>
                               <td className="px-3 py-2 text-gray-700 max-w-xs truncate">{r.kpiName}</td>
                               <td className="px-3 py-2 text-center text-gray-500">{r.rows ?? '-'}</td>
                               <td className="px-3 py-2 text-center font-mono font-medium text-blue-700">{r.calcValue ?? '-'}</td>
                               <td className="px-3 py-2 text-center">
-                                {r.status === 'ok'
-                                  ? <span className="text-green-600 font-medium">✅ OK</span>
-                                  : <span className="text-red-500" title={r.error}>❌ {r.error?.slice(0, 40)}</span>}
+                                {r.status === 'ok' && (
+                                  <span className="text-green-600 font-medium">✅ OK</span>
+                                )}
+                                {r.status === 'skipped' && (
+                                  <span className="text-gray-500 font-medium" title={r.skipReason}>
+                                    ⏭️ ข้าม{r.skipReason ? ` — ${r.skipReason.slice(0, 50)}` : ''}
+                                  </span>
+                                )}
+                                {r.status === 'error' && (
+                                  <span className="text-red-500" title={r.error}>
+                                    ❌ {r.error?.slice(0, 40)}
+                                  </span>
+                                )}
                               </td>
                               <td className="px-3 py-2 text-right">
                                 {r.status === 'ok' && r.kpiId && (
