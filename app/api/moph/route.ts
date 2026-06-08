@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
+import { buildMappingFromLegacy, classifyFields, computeMoph } from '@/lib/mophEngine'
 
 const MOPH_API = 'https://opendata.moph.go.th/api/report_data'
 
@@ -50,34 +51,44 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: `ไม่พบข้อมูล${filterDesc ? ` (${filterDesc})` : ''}`, rows: 0 }, { status: 404 })
   }
 
-  const vField = valueField || 'result'
-  const tField = targetField || 'target'
-  const sumValue  = rows.reduce((s, r) => s + (Number(r[vField]) || 0), 0)
-  const sumTarget = rows.reduce((s, r) => s + (Number(r[tField]) || 0), 0)
+  // ── คำนวณผ่าน engine กลาง (Phase 1: single-field legacy path) ────────────────
+  const mapping = buildMappingFromLegacy(valueField || 'result', targetField, calcMode)
+  const engineResult = computeMoph(rows, mapping)
 
-  let calcValue: number
-  if (calcMode === 'sum') {
-    calcValue = +sumValue.toFixed(2)
-  } else {
-    calcValue = sumTarget > 0 ? +((sumValue / sumTarget) * 100).toFixed(2) : 0
+  // engine พบ error (dimension field / field ไม่มีจริง) → ไม่บันทึก ตอบ 400
+  if (engineResult.errors.length > 0) {
+    return NextResponse.json({
+      ok: false,
+      message:  engineResult.errors[0],
+      errors:   engineResult.errors,
+      warnings: engineResult.warnings,
+      rows: rows.length,
+      sampleFields: rows[0] ? Object.keys(rows[0]) : [],
+    }, { status: 400 })
   }
 
   const saveMonth = month || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
 
-  if (kpiId) {
+  // บันทึกเฉพาะเมื่อ: ระบุ kpiId และ calcValue คำนวณได้ (ไม่ใช่ null — noTarget/sumTarget=0)
+  let savedMonth: string | null = null
+  if (kpiId && engineResult.calcValue !== null) {
     const conn = await pool.getConnection()
     try {
+      // monthly_data.target ต้องมาจาก kpi_reports.target เท่านั้น — ห้ามใช้ denominator จาก MOPH
       const [kpiRows] = await conn.execute('SELECT target FROM kpi_reports WHERE id = ?', [kpiId])
-      const kpiTarget = (kpiRows as { target: number }[])[0]?.target ?? sumTarget
+      const kpiTarget = (kpiRows as { target: number }[])[0]?.target ?? 0
       await conn.execute(
         `INSERT INTO monthly_data (kpi_id, month, value, target)
          VALUES (?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE value = VALUES(value), target = VALUES(target)`,
-        [kpiId, saveMonth, calcValue, kpiTarget],
+        [kpiId, saveMonth, engineResult.calcValue, kpiTarget],
       )
+      savedMonth = saveMonth
     } finally {
       conn.release()
     }
+  } else if (kpiId && engineResult.calcValue === null) {
+    engineResult.warnings.push('ไม่บันทึกลง DB เนื่องจากคำนวณค่าไม่ได้ (noTarget หรือ target=0)')
   }
 
   return NextResponse.json({
@@ -85,11 +96,14 @@ export async function POST(req: NextRequest) {
     hospcode: hospcode || null,
     areacode: areacode || null,
     rows: rows.length,
-    sumValue: +sumValue.toFixed(2),
-    sumTarget: +sumTarget.toFixed(2),
-    calcValue,
-    calcMode: calcMode || 'percent',
-    savedMonth: kpiId ? saveMonth : null,
+    sumValue:  engineResult.sumValue,
+    sumTarget: engineResult.sumTarget,
+    calcValue: engineResult.calcValue,
+    calcMode:  calcMode || 'percent',
+    evaluated: engineResult.evaluated,
+    warnings:  engineResult.warnings,
+    errors:    engineResult.errors,
+    savedMonth,
     sampleFields: rows[0] ? Object.keys(rows[0]) : [],
     sample: rows.slice(0, 3),
   })
@@ -134,7 +148,8 @@ export async function GET(req: NextRequest) {
     hospcode: hospcode || null,
     areacode: areacode || null,
     rows: rows.length,
-    fields: rows[0] ? Object.keys(rows[0]) : [],
+    fields:     rows[0] ? Object.keys(rows[0]) : [],
+    fieldTypes: rows[0] ? classifyFields(rows[0]) : {},
     sample,
   })
 }

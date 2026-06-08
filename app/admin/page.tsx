@@ -17,7 +17,16 @@ const CALC_MODES = [
   { value: 'percent', label: 'ร้อยละ (valueField/targetField × 100)' },
   { value: 'sum', label: 'ผลรวม (sum valueField)' },
   { value: 'raw', label: 'ค่าดิบ (ค่าแรกที่พบ)' },
+  { value: 'noTarget', label: 'ติดตามเฉยๆ (ไม่ประเมินผ่าน/ไม่ผ่าน)' },
 ]
+
+// สีตามประเภท field สำหรับ chips ใน preview
+const FIELD_TYPE_COLOR: Record<string, string> = {
+  dimension: 'bg-red-50 text-red-700 border-red-300',
+  time:      'bg-amber-50 text-amber-700 border-amber-300',
+  target:    'bg-green-50 text-green-700 border-green-300',
+  measure:   'bg-gray-50 text-gray-700 border-gray-200 hover:border-blue-400',
+}
 
 // Buddhist year list (2567-2569)
 const BY_YEARS = ['2569', '2568', '2567', '2566', '2565']
@@ -109,7 +118,11 @@ function emptyForm(): Omit<KPIReport, 'id'> {
 
 interface MophPreview {
   ok: boolean; rows: number; fields: string[]; sample: Record<string, unknown>[]
-  sumValue?: number; sumTarget?: number; calcValue?: number; calcMode?: string; savedMonth?: string | null
+  sumValue?: number; sumTarget?: number | null; calcValue?: number | null; calcMode?: string; savedMonth?: string | null
+  fieldTypes?: Record<string, string>
+  evaluated?: boolean
+  warnings?: string[]
+  errors?: string[]
   message?: string
 }
 
@@ -459,9 +472,17 @@ export default function AdminPage() {
     const data: MophPreview = await res.json()
     setMophLoading(false)
     if (res.ok) {
-      setMophPreview(data)
-      showMsg(`บันทึกค่า ${data.calcValue} สำหรับเดือน ${data.savedMonth} สำเร็จ`)
+      // คงตาราง preview เดิม (fields/sample/fieldTypes จาก GET) แล้ว overlay ผลคำนวณ
+      setMophPreview((prev) => (prev ? { ...prev, ...data } : data))
+      if (data.savedMonth) {
+        showMsg(`บันทึกค่า ${data.calcValue} สำหรับเดือน ${data.savedMonth} สำเร็จ`)
+      } else {
+        showMsg('คำนวณเสร็จ แต่ไม่บันทึก (noTarget หรือ target=0)', 'error')
+      }
     } else {
+      // 400: คง preview เดิมไว้ แล้วแสดง errors/warnings เป็น banner
+      setMophPreview((prev) =>
+        prev ? { ...prev, warnings: data.warnings, errors: data.errors } : data)
       showMsg(data.message || 'เกิดข้อผิดพลาด', 'error')
     }
   }
@@ -922,17 +943,51 @@ export default function AdminPage() {
                       <InfoBox label="ค่าที่คำนวณได้" value={`${mophPreview.calcValue ?? '-'}`} highlight />
                     </div>
 
+                    {/* Error banner — block save */}
+                    {mophPreview.errors && mophPreview.errors.length > 0 && (
+                      <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3">
+                        <p className="text-xs font-semibold text-red-700 mb-1">❌ ข้อผิดพลาด (ไม่บันทึก):</p>
+                        <ul className="list-disc list-inside text-xs text-red-600 space-y-0.5">
+                          {mophPreview.errors.map((e, i) => <li key={i}>{e}</li>)}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Warning banner */}
+                    {mophPreview.warnings && mophPreview.warnings.length > 0 && (
+                      <div className="mb-4 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                        <p className="text-xs font-semibold text-amber-700 mb-1">⚠️ คำเตือน:</p>
+                        <ul className="list-disc list-inside text-xs text-amber-600 space-y-0.5">
+                          {mophPreview.warnings.map((w, i) => <li key={i}>{w}</li>)}
+                        </ul>
+                      </div>
+                    )}
+
                     <div className="mb-4">
                       <p className="text-xs font-medium text-gray-600 mb-2">Fields ที่มีใน response:</p>
                       <div className="flex flex-wrap gap-1.5">
-                        {mophPreview.fields?.map((f) => (
-                          <button key={f} onClick={() => setMophValueField(f)}
-                            className={`text-xs px-2 py-1 rounded font-mono border transition-colors ${mophValueField === f ? 'bg-blue-700 text-white border-blue-700' : 'bg-gray-50 text-gray-700 border-gray-200 hover:border-blue-400'}`}>
-                            {f}
-                          </button>
-                        ))}
+                        {mophPreview.fields?.map((f) => {
+                          const ftype = mophPreview.fieldTypes?.[f] ?? 'measure'
+                          const isDimension = ftype === 'dimension'
+                          const typeColor = FIELD_TYPE_COLOR[ftype] ?? FIELD_TYPE_COLOR.measure
+                          return (
+                            <button key={f}
+                              onClick={() => { if (!isDimension) setMophValueField(f) }}
+                              title={isDimension ? 'dimension field — ใช้เป็น value ไม่ได้' : ftype === 'time' ? 'time field — ระวังการเลือกเป็น value' : `เลือก "${f}" เป็น Value Field`}
+                              className={`text-xs px-2 py-1 rounded font-mono border transition-colors ${mophValueField === f ? 'bg-blue-700 text-white border-blue-700' : typeColor} ${isDimension ? 'cursor-not-allowed opacity-70' : ''}`}>
+                              {f}
+                            </button>
+                          )
+                        })}
                       </div>
-                      <p className="text-xs text-gray-400 mt-1">คลิก field เพื่อเลือกใช้เป็น Value Field</p>
+                      <div className="flex flex-wrap gap-3 mt-2 text-xs text-gray-400">
+                        <span>คลิก field เพื่อเลือกเป็น Value Field</span>
+                        <span className="text-gray-300">|</span>
+                        <span><span className="inline-block w-2 h-2 rounded-full bg-gray-400 mr-1"></span>measure</span>
+                        <span><span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1"></span>target</span>
+                        <span><span className="inline-block w-2 h-2 rounded-full bg-amber-500 mr-1"></span>time</span>
+                        <span><span className="inline-block w-2 h-2 rounded-full bg-red-500 mr-1"></span>dimension (ห้ามใช้)</span>
+                      </div>
                     </div>
 
                     {/* Sample data — ตารางทุก hcode ที่ผ่าน filter */}
