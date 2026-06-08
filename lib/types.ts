@@ -22,6 +22,7 @@ export interface KPIReport {
   mophCalcMode?: string    // percent | sum | raw
   mophReportId?: string    // FK → moph_report_catalog.id
   mophConfig?: MophMapping // Phase 2: JSON mapping เก็บใน moph_config column
+  direction?: EvalDirection // Phase 4: ทิศทางประเมิน (default 'gte') — column evaluation_direction
   owner: string
   deadline: string
   status: KPIStatus
@@ -96,4 +97,28 @@ export interface MophResult {
   evaluated: boolean                 // true = มีการประเมินผ่าน/ไม่ผ่านได้
   warnings: string[]
   errors: string[]
+}
+
+// ── Phase 4: Executive Scorecard evaluation ─────────────────────────────────
+// EvalDirection: ทิศทางการประเมิน KPI
+//   gte = ยิ่งมากยิ่งดี (value >= target ผ่าน)
+//   lte = ยิ่งน้อยยิ่งดี (value <= target ผ่าน — รองรับ target=0 เช่น เสียชีวิต 0)
+//   eq  = ต้องเท่ากับเป้า (|value - target| < tolerance)
+//   none = ไม่ประเมิน / ติดตามเฉยๆ (noTarget)
+export type EvalDirection = 'gte' | 'lte' | 'eq' | 'none'
+
+// KpiEvalStatus: สถานะประเมินรายเดือน (Phase 4)
+//   pass/watch/fail = ประเมินได้ (อยู่ในตัวหาร passRate)
+//   no_data      = value=null ไม่มีข้อมูลเดือนนั้น (แยกจาก fail)
+//   no_target    = direction='none' ติดตามเฉยๆ ไม่ประเมิน
+//   invalid      = target<0 หรือ value=NaN (ข้อมูลผิด)
+//   needs_review = target=0 + direction='gte' (เป้ากำกวม ผ่านเสมอ — ต้องตรวจสอบ)
+export type KpiEvalStatus =
+  | 'pass' | 'watch' | 'fail'
+  | 'no_data' | 'no_target' | 'invalid' | 'needs_review'
+
+/** ผลการประเมิน KPI หนึ่งตัวสำหรับเดือนหนึ่ง — pure ไม่มี side-effect */
+export interface KpiEvalResult {
+  status: KpiEvalStatus
+  message?: string                   // คำอธิบาย (เช่น "ตรวจสอบเป้าหมาย KPI")
 }

@@ -1,22 +1,42 @@
 import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
+import { isValidDirection, VALID_DIRECTIONS } from '@/lib/kpiStatus'
 
 export async function GET() {
   const conn = await pool.getConnection()
   try {
-    const [rows] = await conn.execute(
-      `SELECT id, name, category,
-              moph_url        as mophUrl,
-              moph_table      as mophTable,
-              moph_value_field as mophValueField,
-              moph_target_field as mophTargetField,
-              moph_calc_mode  as mophCalcMode,
-              owner,
-              DATE_FORMAT(deadline,'%Y-%m-%d') as deadline,
-              status, target, unit, description
-       FROM kpi_reports ORDER BY category, name`,
-    )
-    return NextResponse.json(rows)
+    // Phase 4: เพิ่ม evaluation_direction — defensive: ถ้า column ยังไม่ ALTER ให้ fallback
+    try {
+      const [rows] = await conn.execute(
+        `SELECT id, name, category,
+                moph_url        as mophUrl,
+                moph_table      as mophTable,
+                moph_value_field as mophValueField,
+                moph_target_field as mophTargetField,
+                moph_calc_mode  as mophCalcMode,
+                evaluation_direction as direction,
+                owner,
+                DATE_FORMAT(deadline,'%Y-%m-%d') as deadline,
+                status, target, unit, description
+         FROM kpi_reports ORDER BY category, name`,
+      )
+      return NextResponse.json(rows)
+    } catch {
+      // column ยังไม่มี → query เดิม (direction = undefined ฝั่ง client จะ default 'gte')
+      const [rows] = await conn.execute(
+        `SELECT id, name, category,
+                moph_url        as mophUrl,
+                moph_table      as mophTable,
+                moph_value_field as mophValueField,
+                moph_target_field as mophTargetField,
+                moph_calc_mode  as mophCalcMode,
+                owner,
+                DATE_FORMAT(deadline,'%Y-%m-%d') as deadline,
+                status, target, unit, description
+         FROM kpi_reports ORDER BY category, name`,
+      )
+      return NextResponse.json(rows)
+    }
   } catch (err) {
     return NextResponse.json({ message: String(err) }, { status: 500 })
   } finally {
@@ -27,11 +47,20 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const body = await req.json()
   const { name, category, mophUrl, mophTable, mophValueField, mophTargetField, mophCalcMode,
-          owner, deadline, status, target, unit, description } = body
+          direction, owner, deadline, status, target, unit, description } = body
 
   if (!name || !owner || !deadline) {
     return NextResponse.json({ message: 'กรุณากรอกข้อมูลที่จำเป็น' }, { status: 400 })
   }
+
+  // Phase 4: validate direction — ถ้าส่งมาต้องเป็น gte/lte/eq/none เท่านั้น (ห้าม default เงียบ)
+  if (direction !== undefined && !isValidDirection(direction)) {
+    return NextResponse.json(
+      { message: `direction ไม่ถูกต้อง: "${direction}" — รับเฉพาะ ${VALID_DIRECTIONS.join(' / ')}` },
+      { status: 400 },
+    )
+  }
+  const evalDirection = direction ?? 'gte'   // ไม่ส่งมา = ใช้ default; ส่งมาผิด = 400 ไปแล้ว
 
   const id = `kpi-${Date.now()}`
   const conn = await pool.getConnection()
@@ -39,11 +68,11 @@ export async function POST(req: NextRequest) {
     await conn.execute(
       `INSERT INTO kpi_reports
         (id, name, category, moph_url, moph_table, moph_value_field, moph_target_field, moph_calc_mode,
-         owner, deadline, status, target, unit, description)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         evaluation_direction, owner, deadline, status, target, unit, description)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [id, name, category,
        mophUrl ?? null, mophTable ?? null, mophValueField ?? null, mophTargetField ?? null, mophCalcMode ?? 'percent',
-       owner, deadline, status ?? 'in_progress', target ?? 0, unit ?? '%', description ?? null],
+       evalDirection, owner, deadline, status ?? 'in_progress', target ?? 0, unit ?? '%', description ?? null],
     )
     return NextResponse.json({ id, message: 'เพิ่ม KPI สำเร็จ' })
   } catch (err) {

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Navbar from '@/components/Navbar'
 import { getSession } from '@/lib/storage'
-import type { User, KPIReport, KPIStatus, KPICategory, MophCatalogEntry, MophMapping, CalcMode } from '@/lib/types'
+import type { User, KPIReport, KPIStatus, KPICategory, MophCatalogEntry, MophMapping, CalcMode, EvalDirection } from '@/lib/types'
 
 // หมวดหมู่จะถูกโหลดจาก DB ผ่าน /api/categories (ดูใน state)
 const STATUSES: KPIStatus[] = ['in_progress', 'completed', 'overdue']
@@ -18,6 +18,14 @@ const CALC_MODES = [
   { value: 'sum', label: 'ผลรวม (sum valueField)' },
   { value: 'raw', label: 'ค่าดิบ (ค่าแรกที่พบ)' },
   { value: 'noTarget', label: 'ติดตามเฉยๆ (ไม่ประเมินผ่าน/ไม่ผ่าน)' },
+]
+
+// Phase 4: ทิศทางการประเมิน KPI (evaluation_direction)
+const DIRECTIONS: { value: EvalDirection; label: string }[] = [
+  { value: 'gte',  label: '≥ ยิ่งมากยิ่งดี (ผ่านเมื่อ value ≥ เป้า)' },
+  { value: 'lte',  label: '≤ ยิ่งน้อยยิ่งดี (ผ่านเมื่อ value ≤ เป้า เช่น เสียชีวิต 0)' },
+  { value: 'eq',   label: '= ต้องเท่ากับเป้า' },
+  { value: 'none', label: '– ไม่ประเมิน / ติดตามเฉยๆ' },
 ]
 
 // สีตามประเภท field สำหรับ chips ใน preview
@@ -113,7 +121,7 @@ const PROVINCES = [
 ]
 
 function emptyForm(): Omit<KPIReport, 'id'> {
-  return { name: '', category: 'NCD', mophUrl: '', mophTable: '', mophValueField: '', mophTargetField: 'target', mophCalcMode: 'percent', owner: '', deadline: '', status: 'in_progress', target: 0, unit: '%', description: '' }
+  return { name: '', category: 'NCD', mophUrl: '', mophTable: '', mophValueField: '', mophTargetField: 'target', mophCalcMode: 'percent', direction: 'gte', owner: '', deadline: '', status: 'in_progress', target: 0, unit: '%', description: '' }
 }
 
 interface MophPreview {
@@ -290,6 +298,7 @@ export default function AdminPage() {
       mophUrl: kpi.mophUrl ?? '', mophTable: kpi.mophTable ?? '',
       mophValueField: kpi.mophValueField ?? '', mophTargetField: kpi.mophTargetField ?? 'target',
       mophCalcMode: kpi.mophCalcMode ?? 'percent',
+      direction: kpi.direction ?? 'gte',
       owner: kpi.owner, deadline: kpi.deadline, status: kpi.status,
       target: kpi.target, unit: kpi.unit, description: kpi.description ?? '',
     })
@@ -1665,6 +1674,20 @@ export default function AdminPage() {
                 <Field label="เป้าหมาย"><input type="number" value={form.target} onChange={(e) => setForm({ ...form, target: +e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></Field>
                 <Field label="หน่วย"><input value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></Field>
               </div>
+
+              {/* Phase 4: ทิศทางการประเมิน */}
+              <Field label="ทิศทางการประเมิน (ใช้ตัดสินผ่าน/ไม่ผ่านรายเดือน)">
+                <select value={form.direction ?? 'gte'} onChange={(e) => setForm({ ...form, direction: e.target.value as EvalDirection })}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  {DIRECTIONS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
+                </select>
+                {form.target === 0 && (form.direction ?? 'gte') === 'gte' && (
+                  <p className="mt-1.5 text-xs text-orange-600 bg-orange-50 border border-orange-200 rounded-lg px-2.5 py-1.5">
+                    ⚠️ เป้า=0 + ยิ่งมากยิ่งดี อาจตั้งค่าไม่ถูกต้อง ระบบจะจัดเป็น &quot;ต้องตรวจสอบ&quot;
+                  </p>
+                )}
+              </Field>
+
               <Field label="กำหนดเสร็จ *"><input type="date" value={form.deadline} onChange={(e) => setForm({ ...form, deadline: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></Field>
 
               <div className="border-t pt-4">

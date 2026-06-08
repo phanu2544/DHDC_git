@@ -45,6 +45,7 @@ export async function POST() {
         moph_target_field VARCHAR(100),
         moph_calc_mode VARCHAR(20) DEFAULT 'percent',
         moph_report_id VARCHAR(64),
+        evaluation_direction VARCHAR(10) DEFAULT 'gte',
         owner VARCHAR(255) NOT NULL,
         deadline DATE NOT NULL,
         status ENUM('completed','in_progress','overdue') DEFAULT 'in_progress',
@@ -63,6 +64,7 @@ export async function POST() {
       "ALTER TABLE kpi_reports ADD COLUMN IF NOT EXISTS moph_target_field VARCHAR(100)",
       "ALTER TABLE kpi_reports ADD COLUMN IF NOT EXISTS moph_calc_mode VARCHAR(20) DEFAULT 'percent'",
       "ALTER TABLE kpi_reports ADD COLUMN IF NOT EXISTS moph_report_id VARCHAR(64)",
+      "ALTER TABLE kpi_reports ADD COLUMN IF NOT EXISTS evaluation_direction VARCHAR(10) DEFAULT 'gte'",
     ]
     for (const sql of alterCols) {
       await conn.execute(sql).catch(() => {})

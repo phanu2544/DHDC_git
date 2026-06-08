@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { classifyField } from '@/lib/mophEngine'
+import { isValidDirection, VALID_DIRECTIONS } from '@/lib/kpiStatus'
 import type { MophMapping } from '@/lib/types'
 
 const VALID_CALC_MODES = new Set(['percent', 'sum', 'raw', 'noTarget'])
@@ -40,7 +41,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     const [rows] = await conn.execute(
       `SELECT id, name, category,
               moph_url, moph_table, moph_value_field, moph_target_field, moph_calc_mode,
-              moph_report_id, owner, deadline, status, target, unit, description,
+              moph_report_id, evaluation_direction, owner, deadline, status, target, unit, description,
               moph_config
        FROM kpi_reports WHERE id = ?`,
       [params.id],
@@ -62,6 +63,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       mophTargetField: row.moph_target_field,
       mophCalcMode:    row.moph_calc_mode,
       mophReportId:    row.moph_report_id,
+      direction:       row.evaluation_direction ?? 'gte',
       owner: row.owner, deadline: row.deadline, status: row.status,
       target: row.target, unit: row.unit, description: row.description,
       mophConfig,
@@ -77,18 +79,43 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   const body = await req.json()
   const { name, category, mophUrl, mophTable, mophValueField, mophTargetField, mophCalcMode,
-          owner, deadline, status, target, unit, description } = body
+          direction, owner, deadline, status, target, unit, description } = body
+
+  // Phase 4: validate direction เฉพาะกรณี "ส่งมา" — ถ้าไม่ส่งมาให้คงค่าเดิมใน DB
+  // (ห้าม default 'gte' เงียบๆ เพราะจะลบทับ direction ที่ admin เคยตั้งไว้)
+  const hasDirection = direction !== undefined
+  if (hasDirection && !isValidDirection(direction)) {
+    return NextResponse.json(
+      { message: `direction ไม่ถูกต้อง: "${direction}" — รับเฉพาะ ${VALID_DIRECTIONS.join(' / ')}` },
+      { status: 400 },
+    )
+  }
+
   const conn = await pool.getConnection()
   try {
-    await conn.execute(
-      `UPDATE kpi_reports SET
-        name=?, category=?, moph_url=?, moph_table=?, moph_value_field=?, moph_target_field=?, moph_calc_mode=?,
-        owner=?, deadline=?, status=?, target=?, unit=?, description=?
-       WHERE id=?`,
-      [name, category,
-       mophUrl ?? null, mophTable ?? null, mophValueField ?? null, mophTargetField ?? null, mophCalcMode ?? 'percent',
-       owner, deadline, status, target, unit, description ?? null, params.id],
-    )
+    if (hasDirection) {
+      // ส่ง direction มา → update รวมด้วย
+      await conn.execute(
+        `UPDATE kpi_reports SET
+          name=?, category=?, moph_url=?, moph_table=?, moph_value_field=?, moph_target_field=?, moph_calc_mode=?,
+          evaluation_direction=?, owner=?, deadline=?, status=?, target=?, unit=?, description=?
+         WHERE id=?`,
+        [name, category,
+         mophUrl ?? null, mophTable ?? null, mophValueField ?? null, mophTargetField ?? null, mophCalcMode ?? 'percent',
+         direction, owner, deadline, status, target, unit, description ?? null, params.id],
+      )
+    } else {
+      // ไม่ส่ง direction → คงค่า evaluation_direction เดิมใน DB
+      await conn.execute(
+        `UPDATE kpi_reports SET
+          name=?, category=?, moph_url=?, moph_table=?, moph_value_field=?, moph_target_field=?, moph_calc_mode=?,
+          owner=?, deadline=?, status=?, target=?, unit=?, description=?
+         WHERE id=?`,
+        [name, category,
+         mophUrl ?? null, mophTable ?? null, mophValueField ?? null, mophTargetField ?? null, mophCalcMode ?? 'percent',
+         owner, deadline, status, target, unit, description ?? null, params.id],
+      )
+    }
     return NextResponse.json({ message: 'แก้ไข KPI สำเร็จ' })
   } catch (err) {
     return NextResponse.json({ message: String(err) }, { status: 500 })
