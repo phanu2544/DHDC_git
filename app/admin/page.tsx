@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Navbar from '@/components/Navbar'
 import { getSession } from '@/lib/storage'
-import type { User, KPIReport, KPIStatus, KPICategory, MophCatalogEntry } from '@/lib/types'
+import type { User, KPIReport, KPIStatus, KPICategory, MophCatalogEntry, MophMapping, CalcMode } from '@/lib/types'
 
 // หมวดหมู่จะถูกโหลดจาก DB ผ่าน /api/categories (ดูใน state)
 const STATUSES: KPIStatus[] = ['in_progress', 'completed', 'overdue']
@@ -168,6 +168,13 @@ export default function AdminPage() {
   const [batchLoading, setBatchLoading] = useState(false)
   // ติดตาม field config ที่บันทึกใน DB ของ KPI ที่เลือก (สำหรับ dirty indicator)
   const [savedFieldConfig, setSavedFieldConfig] = useState<{ valueField: string; targetField: string; calcMode: string } | null>(null)
+
+  // Mapping Builder state (Phase 2)
+  const [mophFieldMode, setMophFieldMode] = useState<'singleField' | 'sumFields'>('singleField')
+  const [mophValueFields, setMophValueFields] = useState<string[]>(['result'])
+  const [mophDenomFields, setMophDenomFields] = useState<string[]>(['target'])
+  const [mappingSaved, setMappingSaved] = useState(false)
+  const [mappingDirty, setMappingDirty] = useState(false)
 
   // Categories state
   const [categories, setCategories] = useState<string[]>([])
@@ -393,9 +400,11 @@ export default function AdminPage() {
   }
 
   // MOPH functions
-  function onMophKpiChange(kpiId: string) {
+  async function onMophKpiChange(kpiId: string) {
     setMophKpiId(kpiId)
     setMophPreview(null)
+    setMappingSaved(false)
+    setMappingDirty(false)
     const kpi = kpis.find((k) => k.id === kpiId)
     if (kpi?.mophTable) {
       setMophTable(kpi.mophTable)
@@ -406,8 +415,40 @@ export default function AdminPage() {
       setMophTargetField(tf)
       setMophCalcMode(cm)
       setSavedFieldConfig({ valueField: vf, targetField: tf, calcMode: cm })
+      // Phase 2: โหลด mophConfig จาก DB (non-blocking — fallback legacy ถ้า error)
+      try {
+        const res = await fetch(`/api/kpis/${kpiId}`)
+        if (res.ok) {
+          const data = await res.json()
+          if (data.mophConfig) {
+            const cfg: MophMapping = data.mophConfig
+            setMophFieldMode(cfg.fieldMode === 'sumFields' ? 'sumFields' : 'singleField')
+            setMophValueFields(Array.isArray(cfg.valueFields) && cfg.valueFields.length > 0 ? cfg.valueFields : [vf])
+            setMophDenomFields(
+              cfg.targetMode === 'field' && Array.isArray(cfg.targetFields) && cfg.targetFields.length > 0
+                ? cfg.targetFields
+                : [tf],
+            )
+            setMophCalcMode(cfg.calcMode || cm)
+            setMappingSaved(true)
+          } else {
+            // ยังไม่มี moph_config → ใช้ legacy
+            setMophFieldMode('singleField')
+            setMophValueFields([vf])
+            setMophDenomFields([tf])
+          }
+        }
+      } catch {
+        // error → fallback legacy (non-critical, ไม่แจ้งผู้ใช้)
+        setMophFieldMode('singleField')
+        setMophValueFields([vf])
+        setMophDenomFields([tf])
+      }
     } else {
       setSavedFieldConfig(null)
+      setMophFieldMode('singleField')
+      setMophValueFields(['result'])
+      setMophDenomFields(['target'])
     }
   }
 
@@ -426,6 +467,38 @@ export default function AdminPage() {
       showMsg('🔒 บันทึก Field Config เรียบร้อย — Batch Save จะใช้ค่านี้')
     } else {
       showMsg('บันทึกไม่สำเร็จ', 'error')
+    }
+  }
+
+  async function saveMophMapping() {
+    if (!mophKpiId) { showMsg('กรุณาเลือก KPI ก่อน', 'error'); return }
+    const trimmedVF = mophValueFields.map((f) => f.trim()).filter(Boolean)
+    if (trimmedVF.length === 0) { showMsg('กรุณาระบุ Value Field อย่างน้อย 1 field', 'error'); return }
+    if (mophCalcMode === 'percent' && mophDenomFields.filter((f) => f.trim()).length === 0) {
+      showMsg('Calc Mode = percent ต้องระบุ Denominator Field อย่างน้อย 1 field', 'error'); return
+    }
+
+    const mapping: MophMapping = {
+      fieldMode:    mophFieldMode,
+      valueFields:  trimmedVF,
+      targetMode:   mophCalcMode === 'percent' ? 'field' : 'none',
+      targetFields: mophCalcMode === 'percent' ? mophDenomFields.map((f) => f.trim()).filter(Boolean) : undefined,
+      calcMode:     mophCalcMode as CalcMode,
+      aggregate:    'sum',
+    }
+
+    const res = await fetch(`/api/kpis/${mophKpiId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mophConfig: mapping }),
+    })
+    if (res.ok) {
+      setMappingSaved(true)
+      setMappingDirty(false)
+      showMsg('🔒 บันทึก Mapping สำเร็จ — Batch/บันทึกลง DB จะใช้ config นี้')
+    } else {
+      const data = await res.json()
+      showMsg(data.message || 'บันทึก Mapping ไม่สำเร็จ', 'error')
     }
   }
 
@@ -899,7 +972,8 @@ export default function AdminPage() {
                         : <span className="text-green-500" title="ตรงกับที่บันทึกไว้">🔒</span>
                     )}
                   </label>
-                  <select value={mophCalcMode} onChange={(e) => setMophCalcMode(e.target.value)}
+                  <select value={mophCalcMode}
+                    onChange={(e) => { setMophCalcMode(e.target.value); if (mophKpiId) setMappingDirty(true) }}
                     className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                     {CALC_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
                   </select>
@@ -910,6 +984,103 @@ export default function AdminPage() {
                     </button>
                   )}
                 </div>
+              </div>
+
+              {/* ─── Mapping Builder (Phase 2) ─────────────────────────────────── */}
+              <div className="mt-5 border-t pt-5">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                  <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                    🗺️ Mapping Builder
+                    {mappingSaved && !mappingDirty && (
+                      <span className="text-green-600 text-xs font-normal">🔒 Mapping บันทึกแล้ว</span>
+                    )}
+                    {mappingDirty && (
+                      <span className="text-orange-500 text-xs font-normal animate-pulse">● ยังไม่ได้บันทึก</span>
+                    )}
+                    {!mappingSaved && !mappingDirty && mophKpiId && (
+                      <span className="text-gray-400 text-xs font-normal">(ยังไม่มี Mapping — จะใช้ legacy field)</span>
+                    )}
+                  </h3>
+                  <p className="text-xs text-gray-400">กำหนด field → Save → Batch/บันทึกลง DB จะใช้ config นี้</p>
+                </div>
+
+                {/* Field Mode radio */}
+                <div className="flex gap-6 mb-4">
+                  {([
+                    { val: 'singleField' as const, label: 'Single Field', desc: 'field เดียว (ปกติ)' },
+                    { val: 'sumFields'   as const, label: 'Sum Fields',   desc: 'รวมหลาย field (DSPM ฯลฯ)' },
+                  ] as { val: 'singleField' | 'sumFields'; label: string; desc: string }[]).map(({ val, label, desc }) => (
+                    <label key={val} className="flex items-center gap-2 cursor-pointer">
+                      <input type="radio" name="mophFieldMode" value={val}
+                        checked={mophFieldMode === val}
+                        onChange={() => {
+                          setMophFieldMode(val)
+                          if (val === 'singleField') {
+                            setMophValueFields((prev) => prev.slice(0, 1))
+                            setMophDenomFields((prev) => prev.slice(0, 1))
+                          }
+                          if (mophKpiId) setMappingDirty(true)
+                        }}
+                        className="accent-blue-700" />
+                      <span className="text-sm text-gray-700">
+                        {label} <span className="text-xs text-gray-400">({desc})</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                  {/* Numerator */}
+                  <div>
+                    <label className="text-xs font-medium text-gray-600 mb-2 block">
+                      ตัวเศษ (Numerator){' '}
+                      {mophFieldMode === 'sumFields' && (
+                        <span className="text-blue-600 font-normal">— เลือกได้หลาย field</span>
+                      )}
+                    </label>
+                    <FieldChipBuilder
+                      fields={mophValueFields}
+                      onChange={(fs) => { setMophValueFields(fs); if (mophKpiId) setMappingDirty(true) }}
+                      availableFields={mophPreview?.fields ?? []}
+                      fieldTypes={mophPreview?.fieldTypes ?? {}}
+                      color="blue"
+                      placeholder="พิมพ์ชื่อ field แล้ว Enter..."
+                      multiSelect={mophFieldMode === 'sumFields'}
+                    />
+                  </div>
+
+                  {/* Denominator — only percent */}
+                  {mophCalcMode === 'percent' && (
+                    <div>
+                      <label className="text-xs font-medium text-gray-600 mb-2 block">
+                        ตัวส่วน (Denominator){' '}
+                        {mophFieldMode === 'sumFields' && (
+                          <span className="text-green-600 font-normal">— เลือกได้หลาย field</span>
+                        )}
+                      </label>
+                      <FieldChipBuilder
+                        fields={mophDenomFields}
+                        onChange={(fs) => { setMophDenomFields(fs); if (mophKpiId) setMappingDirty(true) }}
+                        availableFields={mophPreview?.fields ?? []}
+                        fieldTypes={mophPreview?.fieldTypes ?? {}}
+                        color="green"
+                        placeholder="พิมพ์ชื่อ field แล้ว Enter..."
+                        multiSelect={mophFieldMode === 'sumFields'}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={saveMophMapping}
+                  disabled={!mophKpiId || !mappingDirty}
+                  className={`px-5 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    !mophKpiId || !mappingDirty
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : 'bg-blue-700 hover:bg-blue-600 text-white'
+                  }`}>
+                  🔒 Save Mapping to KPI
+                </button>
               </div>
 
               <div className="flex flex-wrap gap-3 mt-4">
@@ -1514,6 +1685,107 @@ function InfoBox({ label, value, highlight }: { label: string; value: string; hi
     <div className={`rounded-lg p-3 text-center ${highlight ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50'}`}>
       <div className={`text-xl font-bold ${highlight ? 'text-blue-700' : 'text-gray-800'}`}>{value}</div>
       <div className="text-xs text-gray-500 mt-0.5">{label}</div>
+    </div>
+  )
+}
+
+/**
+ * Chip-based field selector สำหรับ Mapping Builder
+ * - แสดง chip ของ field ที่เลือกแล้ว (กด × เพื่อเอาออก)
+ * - พิมพ์ชื่อ field เพิ่มเองหรือคลิกจาก availableFields
+ * - multiSelect=false → เลือกได้ 1 field (แทนที่เดิม)
+ * - multiSelect=true  → เลือกได้หลาย field (เพิ่มเข้าไป)
+ */
+function FieldChipBuilder({
+  fields, onChange, availableFields, fieldTypes, color, placeholder, multiSelect,
+}: {
+  fields: string[]
+  onChange: (fields: string[]) => void
+  availableFields: string[]
+  fieldTypes: Record<string, string>
+  color: 'blue' | 'green'
+  placeholder: string
+  multiSelect: boolean
+}) {
+  const [input, setInput] = useState('')
+
+  function add(f: string) {
+    const trimmed = f.trim()
+    if (!trimmed) return
+    if (multiSelect) {
+      if (!fields.includes(trimmed)) onChange([...fields, trimmed])
+    } else {
+      onChange([trimmed])
+    }
+    setInput('')
+  }
+
+  function remove(f: string) {
+    onChange(fields.filter((x) => x !== f))
+  }
+
+  const chipClass     = color === 'blue' ? 'bg-blue-100 text-blue-800 border-blue-300'    : 'bg-green-100 text-green-800 border-green-300'
+  const selectedClass = color === 'blue' ? 'bg-blue-700 text-white border-blue-700'        : 'bg-green-700 text-white border-green-700'
+  const isBlocked     = (f: string) => ['dimension', 'time'].includes(fieldTypes[f] ?? '')
+
+  return (
+    <div className="space-y-2">
+      {/* Selected field chips */}
+      <div className="flex flex-wrap gap-1 min-h-[34px] p-1.5 border rounded-lg bg-gray-50">
+        {fields.length === 0
+          ? <span className="text-xs text-gray-400 italic px-1">ยังไม่ได้เลือก</span>
+          : fields.map((f) => (
+            <span key={f} className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded font-mono border ${chipClass}`}>
+              {f}
+              <button onClick={() => remove(f)} className="ml-0.5 hover:text-red-500 font-bold leading-none" title={`เอา ${f} ออก`}>×</button>
+            </span>
+          ))
+        }
+      </div>
+
+      {/* Text input */}
+      <div className="flex gap-1">
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { add(input); e.preventDefault() } }}
+          placeholder={placeholder}
+          className="flex-1 border rounded-lg px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
+        />
+        <button onClick={() => add(input)} disabled={!input.trim()}
+          className="bg-gray-200 hover:bg-gray-300 disabled:opacity-40 text-xs px-2.5 py-1.5 rounded-lg">+</button>
+      </div>
+
+      {/* Available fields from preview — click to add/toggle */}
+      {availableFields.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {availableFields.map((f) => {
+            const blocked  = isBlocked(f)
+            const selected = fields.includes(f)
+            const ftype    = fieldTypes[f] ?? 'measure'
+            const typeColor = FIELD_TYPE_COLOR[ftype] ?? FIELD_TYPE_COLOR.measure
+            return (
+              <button key={f}
+                onClick={() => {
+                  if (blocked) return
+                  if (multiSelect && selected) remove(f)
+                  else add(f)
+                }}
+                disabled={blocked}
+                title={
+                  blocked  ? `${ftype} field — ใช้เป็น value/target ไม่ได้` :
+                  selected ? `คลิกซ้ำเพื่อถอด "${f}"` :
+                  `เพิ่ม "${f}"`
+                }
+                className={`text-xs px-1.5 py-0.5 rounded font-mono border transition-colors
+                  ${selected ? selectedClass : typeColor}
+                  ${blocked ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}>
+                {f}{selected && ' ✓'}
+              </button>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

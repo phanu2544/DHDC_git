@@ -21,6 +21,7 @@ export interface KPIReport {
   mophTargetField?: string // field ที่ใช้เป็น target เช่น target
   mophCalcMode?: string    // percent | sum | raw
   mophReportId?: string    // FK → moph_report_catalog.id
+  mophConfig?: MophMapping // Phase 2: JSON mapping เก็บใน moph_config column
   owner: string
   deadline: string
   status: KPIStatus

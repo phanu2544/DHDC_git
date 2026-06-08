@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { buildMappingFromLegacy, classifyFields, computeMoph } from '@/lib/mophEngine'
+import type { MophMapping } from '@/lib/types'
 
 const MOPH_API = 'https://opendata.moph.go.th/api/report_data'
 
@@ -51,8 +52,39 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: `ไม่พบข้อมูล${filterDesc ? ` (${filterDesc})` : ''}`, rows: 0 }, { status: 404 })
   }
 
-  // ── คำนวณผ่าน engine กลาง (Phase 1: single-field legacy path) ────────────────
-  const mapping = buildMappingFromLegacy(valueField || 'result', targetField, calcMode)
+  // ── โหลด mapping: ถ้ามี kpiId → SELECT moph_config+target จาก DB (Phase 2) ──
+  // มี moph_config → ใช้เป็น mapping; ไม่มี → fallback buildMappingFromLegacy
+  let mapping: MophMapping
+  let kpiTarget = 0
+  if (kpiId) {
+    const conn = await pool.getConnection()
+    try {
+      const [kpiRows] = await conn.execute(
+        'SELECT target, moph_config FROM kpi_reports WHERE id = ?',
+        [kpiId],
+      )
+      const kpiRow = (kpiRows as { target: number; moph_config: string | null }[])[0]
+      kpiTarget = kpiRow?.target ?? 0
+      const storedConfig = kpiRow?.moph_config
+      if (storedConfig) {
+        try {
+          mapping = JSON.parse(storedConfig) as MophMapping
+        } catch {
+          // JSON parse ล้มเหลว → fallback legacy และแจ้ง warning
+          mapping = buildMappingFromLegacy(valueField || 'result', targetField, calcMode)
+        }
+      } else {
+        // ยังไม่มี moph_config → ใช้ legacy fields จาก request body
+        mapping = buildMappingFromLegacy(valueField || 'result', targetField, calcMode)
+      }
+    } finally {
+      conn.release()
+    }
+  } else {
+    // ไม่มี kpiId → ใช้ legacy (preview mode)
+    mapping = buildMappingFromLegacy(valueField || 'result', targetField, calcMode)
+  }
+
   const engineResult = computeMoph(rows, mapping)
 
   // engine พบ error (dimension field / field ไม่มีจริง) → ไม่บันทึก ตอบ 400
@@ -75,8 +107,6 @@ export async function POST(req: NextRequest) {
     const conn = await pool.getConnection()
     try {
       // monthly_data.target ต้องมาจาก kpi_reports.target เท่านั้น — ห้ามใช้ denominator จาก MOPH
-      const [kpiRows] = await conn.execute('SELECT target FROM kpi_reports WHERE id = ?', [kpiId])
-      const kpiTarget = (kpiRows as { target: number }[])[0]?.target ?? 0
       await conn.execute(
         `INSERT INTO monthly_data (kpi_id, month, value, target)
          VALUES (?, ?, ?, ?)
