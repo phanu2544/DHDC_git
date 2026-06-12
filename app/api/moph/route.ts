@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { buildMappingFromLegacy, classifyFields, computeMoph } from '@/lib/mophEngine'
+import { saveMonthlyDetail } from '@/lib/mophDetail'
 import type { MophMapping } from '@/lib/types'
 
 const MOPH_API = 'https://opendata.moph.go.th/api/report_data'
@@ -101,6 +102,14 @@ export async function POST(req: NextRequest) {
 
   const saveMonth = month || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
 
+  // ── Phase 4.8: เก็บ detail ราย hospcode (เฉพาะเมื่อระบุ kpiId) — additive ──
+  let detailSaved = 0
+  if (kpiId) {
+    const detail = await saveMonthlyDetail(kpiId, saveMonth, rows)
+    detailSaved = detail.saved
+    if (detail.error) engineResult.warnings.push(`เก็บ detail ไม่สำเร็จ: ${detail.error}`)
+  }
+
   // บันทึกเฉพาะเมื่อ: ระบุ kpiId และ calcValue คำนวณได้ (ไม่ใช่ null — noTarget/sumTarget=0)
   let savedMonth: string | null = null
   if (kpiId && engineResult.calcValue !== null) {
@@ -134,6 +143,7 @@ export async function POST(req: NextRequest) {
     warnings:  engineResult.warnings,
     errors:    engineResult.errors,
     savedMonth,
+    detailSaved,
     sampleFields: rows[0] ? Object.keys(rows[0]) : [],
     sample: rows.slice(0, 3),
   })

@@ -84,6 +84,21 @@ export async function POST() {
       ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
     `)
 
+    // ── moph_monthly_detail (Phase 4.8: detail snapshot ราย hospcode) ───────
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS moph_monthly_detail (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        kpi_id VARCHAR(50) NOT NULL,
+        month VARCHAR(7) NOT NULL,
+        hospcode VARCHAR(20) NOT NULL,
+        areacode VARCHAR(20) DEFAULT '',
+        data TEXT NOT NULL,
+        fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_detail (kpi_id, month, hospcode, areacode),
+        FOREIGN KEY (kpi_id) REFERENCES kpi_reports(id) ON DELETE CASCADE
+      ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+    `)
+
     // ── moph_report_catalog ─────────────────────────────────────────────────
     await conn.execute(`
       CREATE TABLE IF NOT EXISTS moph_report_catalog (

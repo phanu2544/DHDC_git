@@ -1,10 +1,11 @@
 /**
  * Next.js instrumentation hook
- * (MOPH auto-batch cron ถูกปิดไว้ — เปิดใช้โดยลบ comment ด้านล่าง)
+ * สตาร์ท MOPH auto-batch cron (snapshot รายวัน scope ดงเจริญ 6611)
+ * ปิดได้ด้วย env MOPH_CRON_DISABLED=1
  */
 export async function register() {
-  // if (process.env.NEXT_RUNTIME === 'nodejs') {
-  //   const { startScheduler } = await import('@/lib/scheduler')
-  //   startScheduler()
-  // }
+  if (process.env.NEXT_RUNTIME === 'nodejs') {
+    const { startScheduler } = await import('@/lib/scheduler')
+    startScheduler()
+  }
 }

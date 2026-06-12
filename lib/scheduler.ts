@@ -3,10 +3,13 @@ import { runBatchSave, currentMophFiscalYear } from '@/lib/mophBatch'
 
 /**
  * ตัวตั้งเวลา node-cron แบบ in-process (รันในโปรเซส Next.js เดียวกัน)
- * ทำงาน: ทุกวันจันทร์ 07:00 (Asia/Bangkok) → ดึง MOPH ทุก KPI → บันทึก monthly_data
+ * ทำงาน: ทุกวัน 07:00 (Asia/Bangkok) → ดึง MOPH ทุก KPI → บันทึก monthly_data + detail
+ *
+ * Phase 4.8 design: monthly_data = snapshot ค่าสะสมปีงบ ณ การเก็บล่าสุดของเดือน
+ * (รันทุกวันทับเดือนปัจจุบัน → ขึ้นเดือนใหม่ แถวเดือนเก่ากลายเป็นประวัติอัตโนมัติ)
  *
  * ปรับแต่งได้ผ่าน env:
- *   MOPH_CRON           ตาราง cron (default '0 7 * * 1' = จันทร์ 07:00)
+ *   MOPH_CRON           ตาราง cron (default '0 7 * * *' = ทุกวัน 07:00)
  *   MOPH_CRON_TZ        timezone   (default 'Asia/Bangkok')
  *   MOPH_FETCH_YEAR     ปีงบประมาณ พ.ศ. (default = คำนวณอัตโนมัติ)
  *   MOPH_FETCH_PROVINCE จังหวัด (default '66')
@@ -25,7 +28,7 @@ export function startScheduler() {
     return
   }
 
-  const expr = process.env.MOPH_CRON || '0 7 * * 1'
+  const expr = process.env.MOPH_CRON || '0 7 * * *'
   const timezone = process.env.MOPH_CRON_TZ || 'Asia/Bangkok'
 
   if (!cron.validate(expr)) {
