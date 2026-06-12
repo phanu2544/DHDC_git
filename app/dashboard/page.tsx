@@ -2,39 +2,21 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import Navbar from '@/components/Navbar'
 import StatusBadge from '@/components/StatusBadge'
 import { getSession } from '@/lib/storage'
-import { evaluateKpiStatus, summarizeStatuses, STATUS_META } from '@/lib/kpiStatus'
-import type { User, KPIReport, KpiEvalStatus, EvalDirection, MonthlyData } from '@/lib/types'
+import { STATUS_META } from '@/lib/kpiStatus'
+import { buildScorecard, EXECUTIVE_SEVERITY_ORDER, ATTENTION_STATUSES, DIRECTION_LABEL } from '@/lib/scorecard'
+import { exportScorecardXlsx } from '@/lib/exportScorecard'
+import type { User, KPIReport, KpiEvalStatus, MonthlyData } from '@/lib/types'
 
 const PIE_COLORS = ['#22c55e', '#3b82f6', '#ef4444']
 
-// ══════════════════════════════════════════════════════════════════════════
-// Executive Scorecard (Phase 4C) — presentation + evaluation glue
-// ใช้ evaluateKpiStatus / summarizeStatuses จาก lib/kpiStatus.ts (pure engine)
-// ══════════════════════════════════════════════════════════════════════════
-
-/**
- * ลำดับความสำคัญสำหรับ "Executive Dashboard เท่านั้น" — เรียงตามสิ่งที่ผู้บริหารควรสนใจก่อน
- * NOTE: ตั้งใจ "ไม่" ใช้ STATUS_META.severity เพราะลำดับนั้นไม่ตรง priority ของหน้านี้
- */
-const EXECUTIVE_SEVERITY_ORDER: KpiEvalStatus[] = [
-  'fail', 'needs_review', 'invalid', 'watch', 'no_data', 'pass', 'no_target',
-]
-
-/** สถานะที่ถือว่า "ต้องติดตาม" — ใช้กับ toggle เฉพาะที่ต้องติดตาม */
-const ATTENTION_STATUSES: KpiEvalStatus[] = ['fail', 'watch', 'no_data', 'needs_review', 'invalid']
-
-const DIRECTION_LABEL: Record<EvalDirection, string> = {
-  gte: 'ยิ่งมากยิ่งดี',
-  lte: 'ยิ่งน้อยยิ่งดี',
-  eq: 'เท่ากับเป้า',
-  none: 'ไม่ประเมิน',
-}
-
-/** สี presentation ของแต่ละสถานะ (kpiStatus.ts คง pure — สีอยู่ที่ UI) */
+// Executive Scorecard core (eval/order/labels) ย้ายไป lib/scorecard.ts เพื่อ reuse กับ Export
+// เหลือเฉพาะ STATUS_STYLE (สี) ที่เป็น presentation ของหน้านี้
+/** สี presentation ของแต่ละสถานะ (kpiStatus.ts/scorecard.ts คง pure — สีอยู่ที่ UI) */
 const STATUS_STYLE: Record<KpiEvalStatus, { card: string; badge: string }> = {
   fail:         { card: 'bg-red-600',    badge: 'bg-red-100 text-red-700' },
   needs_review: { card: 'bg-orange-500', badge: 'bg-orange-100 text-orange-700' },
@@ -43,44 +25,6 @@ const STATUS_STYLE: Record<KpiEvalStatus, { card: string; badge: string }> = {
   no_data:      { card: 'bg-gray-400',   badge: 'bg-gray-100 text-gray-600' },
   pass:         { card: 'bg-green-600',  badge: 'bg-green-100 text-green-700' },
   no_target:    { card: 'bg-slate-500',  badge: 'bg-slate-100 text-slate-700' },
-}
-
-interface ScorecardRow {
-  kpi: KPIReport
-  value: number | null
-  target: number
-  direction: EvalDirection
-  status: KpiEvalStatus
-  message?: string
-}
-
-/**
- * ประเมิน KPI หนึ่งตัวสำหรับเดือนที่เลือก
- * - ไม่มี row: ห้าม fallback kpi.target มาตัดสิน pass/watch/fail/needs_review
- *     target<0 → invalid · direction='none' → no_target · อื่นๆ → no_data
- * - มี row: monthly_data เป็น source หลักเสมอ (value/target ของเดือนนั้น)
- *     value=0 = ข้อมูลจริง (ไม่ใช่ no_data)
- */
-function evalScorecardRow(kpi: KPIReport, row: MonthlyData | undefined): ScorecardRow {
-  const direction: EvalDirection = kpi.direction ?? 'gte'
-
-  // ── ไม่มี monthly row เดือนนี้ — แยก logic ก่อนเรียก engine ──
-  if (!row) {
-    const configTarget = Number(kpi.target ?? 0)
-    if (configTarget < 0) {
-      return { kpi, value: null, target: configTarget, direction, status: 'invalid', message: 'เป้าหมายติดลบ' }
-    }
-    if (direction === 'none') {
-      return { kpi, value: null, target: configTarget, direction, status: 'no_target', message: 'ตัวชี้วัดติดตาม ไม่ประเมินผ่าน/ไม่ผ่าน' }
-    }
-    return { kpi, value: null, target: configTarget, direction, status: 'no_data', message: 'ยังไม่มีข้อมูลเดือนนี้' }
-  }
-
-  // ── มี row — monthly_data.target ของเดือนนั้นเท่านั้น (ห้ามใช้ kpi.target ปัจจุบัน) ──
-  const value = Number(row.value)    // value=0 = ข้อมูลจริง
-  const target = Number(row.target)
-  const result = evaluateKpiStatus(value, target, direction)
-  return { kpi, value, target, direction, status: result.status, message: result.message }
 }
 
 export default function DashboardPage() {
@@ -127,15 +71,10 @@ export default function DashboardPage() {
   }, [router])
 
   // ── Executive Scorecard: ประเมินทุก KPI สำหรับเดือนที่เลือก (client-side, pure) ──
-  const scorecard = useMemo(() => {
-    const byKpi = new Map<string, MonthlyData>()
-    for (const m of monthly) {
-      if (m.month === selectedMonth) byKpi.set(m.kpiId, m)
-    }
-    const rows = kpis.map((kpi) => evalScorecardRow(kpi, byKpi.get(kpi.id)))
-    const summary = summarizeStatuses(rows.map((r) => r.status))
-    return { rows, summary }
-  }, [kpis, monthly, selectedMonth])
+  const scorecard = useMemo(
+    () => buildScorecard(kpis, monthly, selectedMonth),
+    [kpis, monthly, selectedMonth],
+  )
 
   // กรอง (toggle) + เรียงตาม EXECUTIVE_SEVERITY_ORDER (priority เฉพาะหน้านี้)
   const visibleRows = useMemo(() => {
@@ -193,7 +132,9 @@ export default function DashboardPage() {
               <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                 <div>
                   <h2 className="text-xl font-bold text-gray-900">Executive Scorecard</h2>
-                  <p className="text-gray-500 text-xs mt-0.5">ประเมินผล KPI ตามทิศทางและเป้าหมายรายเดือน</p>
+                  <p className="text-gray-500 text-xs mt-0.5">
+                    ประเมินผล KPI ตามทิศทางและเป้าหมาย — ข้อมูลสะสมปีงบประมาณ ณ วันที่เก็บของแต่ละเดือน (เทียบรายเดือน = ความก้าวหน้าสะสม)
+                  </p>
                 </div>
                 <div className="flex items-center gap-3">
                   <select
@@ -217,6 +158,14 @@ export default function DashboardPage() {
                     />
                     เฉพาะที่ต้องติดตาม
                   </label>
+                  <button
+                    onClick={() => exportScorecardXlsx(scorecard.rows, scorecard.summary, selectedMonth)}
+                    disabled={!selectedMonth || scorecard.rows.length === 0}
+                    title="ดาวน์โหลด Scorecard ทั้งหมดเป็น Excel (.xlsx)"
+                    className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium px-3 py-2 rounded-lg"
+                  >
+                    📥 Export Excel
+                  </button>
                 </div>
               </div>
 
@@ -271,7 +220,9 @@ export default function DashboardPage() {
                         visibleRows.map((r) => (
                           <tr key={r.kpi.id} className="hover:bg-gray-50">
                             <td className="px-4 py-2.5">
-                              <div className="font-medium text-gray-900">{r.kpi.name}</div>
+                              <Link href={`/kpi/${r.kpi.id}`} className="font-medium text-gray-900 hover:text-blue-700 hover:underline" title="ดูรายละเอียดรายตำบล">
+                                {r.kpi.name}
+                              </Link>
                               <div className="text-xs text-gray-400">{r.kpi.category} • {r.kpi.owner}</div>
                             </td>
                             <td className="px-4 py-2.5 text-right tabular-nums">
