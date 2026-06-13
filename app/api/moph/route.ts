@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { buildMappingFromLegacy, classifyFields, computeMoph } from '@/lib/mophEngine'
 import { saveMonthlyDetail } from '@/lib/mophDetail'
+import { getTargetFor } from '@/lib/targets'
 import type { MophMapping } from '@/lib/types'
 
 const MOPH_API = 'https://opendata.moph.go.th/api/report_data'
@@ -65,7 +66,9 @@ export async function POST(req: NextRequest) {
         [kpiId],
       )
       const kpiRow = (kpiRows as { target: number; moph_config: string | null }[])[0]
-      kpiTarget = kpiRow?.target ?? 0
+      // Phase 7A: เป้ารายปีงบ (kpi_targets) ก่อน → fallback kpi_reports.target
+      const yearTarget = await getTargetFor(conn, kpiId, year)
+      kpiTarget = yearTarget ?? Number(kpiRow?.target ?? 0)
       const storedConfig = kpiRow?.moph_config
       if (storedConfig) {
         try {

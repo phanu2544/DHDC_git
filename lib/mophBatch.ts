@@ -1,6 +1,7 @@
 import pool from '@/lib/db'
 import { buildMappingFromLegacy, computeMoph } from './mophEngine'
 import { saveMonthlyDetail } from './mophDetail'
+import { getTargetsForYear } from './targets'
 import type { MophMapping } from './types'
 
 const MOPH_API = 'https://opendata.moph.go.th/api/report_data'
@@ -76,6 +77,8 @@ export async function runBatchSave(opts: BatchOptions = {}): Promise<BatchResult
     target: number | null
     moph_config: string | null
   }[] = []
+  // Phase 7A: เป้ารายปีงบ (kpi_targets) — fallback kpi_reports.target ถ้าไม่มี
+  let targetMap = new Map<string, number>()
   try {
     const [rows] = await conn.execute(
       `SELECT id, name, moph_table, moph_value_field, moph_target_field, moph_calc_mode,
@@ -85,6 +88,7 @@ export async function runBatchSave(opts: BatchOptions = {}): Promise<BatchResult
        ORDER BY id`,
     )
     kpis = rows as typeof kpis
+    targetMap = await getTargetsForYear(conn, year)
   } finally {
     conn.release()
   }
@@ -173,25 +177,27 @@ export async function runBatchSave(opts: BatchOptions = {}): Promise<BatchResult
         continue
       }
 
-      // ── ตรวจ kpi.target ก่อนบันทึก ──────────────────────────────────────
+      // ── ตรวจ target ก่อนบันทึก ─────────────────────────────────────────
+      // Phase 7A: เป้ารายปีงบ (kpi_targets) ก่อน → fallback kpi_reports.target
       // - null / undefined  → skipped (ยังไม่ได้ตั้ง target)
       // - 0                 → ok (เป็นเป้าหมายที่ถูกต้อง เช่น เสียชีวิต 0, ร้องเรียน 0, infection 0%)
       // - > 0               → ok (ปกติ)
       // - < 0               → error (ค่าติดลบ ไม่ใช่เป้าหมาย KPI ที่ถูกต้อง)
-      if (kpi.target === null || kpi.target === undefined) {
+      const effTarget = targetMap.get(kpi.id) ?? kpi.target
+      if (effTarget === null || effTarget === undefined) {
         results.push({
           kpiId: kpi.id, kpiName: kpi.name, status: 'skipped',
-          skipReason: 'KPI นี้ยังไม่ได้ตั้ง target — โปรดตั้ง kpi_reports.target ก่อนบันทึก',
+          skipReason: `KPI นี้ยังไม่ได้ตั้ง target ปีงบ ${year} — โปรดตั้งในหน้าจัดการเป้าหมาย`,
           calcValue: r.calcValue,
           rows: rows.length,
           warnings: r.warnings.length > 0 ? r.warnings : undefined,
         })
         continue
       }
-      if (kpi.target < 0) {
+      if (effTarget < 0) {
         results.push({
           kpiId: kpi.id, kpiName: kpi.name, status: 'error',
-          error: `ค่า target ติดลบ (${kpi.target}) ไม่ถูกต้อง — โปรดแก้ kpi_reports.target ก่อน`,
+          error: `ค่า target ติดลบ (${effTarget}) ไม่ถูกต้อง — โปรดแก้เป้าหมายก่อน`,
           calcValue: r.calcValue,
           rows: rows.length,
           warnings: r.warnings.length > 0 ? r.warnings : undefined,
@@ -199,14 +205,14 @@ export async function runBatchSave(opts: BatchOptions = {}): Promise<BatchResult
         continue
       }
 
-      // ── บันทึก: monthly_data.target = kpi.target เท่านั้น ────────────────
+      // ── บันทึก: monthly_data.target = effTarget (เป้ารายปีงบ หรือ fallback) ──
       const c2 = await pool.getConnection()
       try {
         await c2.execute(
           `INSERT INTO monthly_data (kpi_id, month, value, target)
            VALUES (?, ?, ?, ?)
            ON DUPLICATE KEY UPDATE value = VALUES(value), target = VALUES(target)`,
-          [kpi.id, saveMonth, r.calcValue, kpi.target],
+          [kpi.id, saveMonth, r.calcValue, effTarget],
         )
       } finally {
         c2.release()

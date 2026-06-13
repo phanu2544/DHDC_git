@@ -169,6 +169,14 @@ export default function DashboardPage() {
                 </div>
               </div>
 
+              {scorecard.summary.needs_review > 0 && (
+                <Link href="/admin/targets"
+                  className="flex items-center justify-between gap-3 mb-4 px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm hover:bg-amber-100 transition-colors">
+                  <span>⚠️ มี <b>{scorecard.summary.needs_review}</b> ตัวชี้วัดที่ยังไม่ได้ตั้งเป้าหมาย (แสดงเป็น "ต้องตรวจสอบ")</span>
+                  <span className="font-medium whitespace-nowrap">ไปตั้งเป้าหมาย →</span>
+                </Link>
+              )}
+
               {/* passRate = pass / (pass + watch + fail) */}
               <div className="bg-white rounded-xl shadow-sm border p-5 mb-4 flex flex-wrap items-center gap-6">
                 <div className="text-center">

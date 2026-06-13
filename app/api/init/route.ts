@@ -84,6 +84,23 @@ export async function POST() {
       ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
     `)
 
+    // ── kpi_targets (Phase 7A: เป้าหมายรายปีงบประมาณ + audit) ───────────────
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS kpi_targets (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        kpi_id VARCHAR(50) NOT NULL,
+        fiscal_year VARCHAR(10) NOT NULL,
+        target DECIMAL(10,2) NOT NULL,
+        source VARCHAR(255) DEFAULT NULL,
+        confirmed_by VARCHAR(255) DEFAULT NULL,
+        confirmed_at VARCHAR(20) DEFAULT NULL,
+        note TEXT DEFAULT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_kpi_year (kpi_id, fiscal_year),
+        FOREIGN KEY (kpi_id) REFERENCES kpi_reports(id) ON DELETE CASCADE
+      ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+    `)
+
     // ── moph_monthly_detail (Phase 4.8: detail snapshot ราย hospcode) ───────
     await conn.execute(`
       CREATE TABLE IF NOT EXISTS moph_monthly_detail (
