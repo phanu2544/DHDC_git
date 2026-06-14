@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { setSession } from '@/lib/storage'
 
@@ -10,6 +10,11 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [dbInfo, setDbInfo] = useState<{ host: string; port: number; database: string; label: string } | null>(null)
+
+  useEffect(() => {
+    fetch('/api/dbinfo').then((r) => r.json()).then(setDbInfo).catch(() => {})
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -91,7 +96,7 @@ export default function LoginPage() {
         </div>
 
         <p className="text-center text-xs text-gray-400 mt-4">
-          🗄️ MariaDB: 192.168.0.236 / dhdc
+          🗄️ MariaDB: {dbInfo ? `${dbInfo.host}:${dbInfo.port} / ${dbInfo.database} (${dbInfo.label})` : '...'}
         </p>
       </div>
     </div>

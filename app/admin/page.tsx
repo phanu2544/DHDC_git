@@ -157,6 +157,7 @@ export default function AdminPage() {
   const [msg, setMsg] = useState({ text: '', type: 'success' as 'success' | 'error' })
   const [loading, setLoading] = useState(true)
   const [dbStatus, setDbStatus] = useState<{ ok: boolean; counts?: { users: number; kpis: number; monthly: number; catalog: number; snapshot: number }; message?: string } | null>(null)
+  const [dbInfo, setDbInfo] = useState<{ host: string; port: number; database: string; label: string } | null>(null)
 
   // MOPH state
   const [mophKpiId, setMophKpiId] = useState('')
@@ -216,6 +217,7 @@ export default function AdminPage() {
     if (session.role !== 'admin') { router.push('/dashboard'); return }
     setUser(session)
     loadData()
+    fetch('/api/dbinfo').then((r) => r.json()).then(setDbInfo).catch(() => {})
   }, [router])
 
   async function loadData() {
@@ -621,7 +623,7 @@ export default function AdminPage() {
       <div className="max-w-7xl mx-auto px-4 py-8">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900">จัดการระบบ</h1>
-          <p className="text-gray-500 text-sm mt-1">🗄️ MariaDB: 192.168.0.236 / dhdc</p>
+          <p className="text-gray-500 text-sm mt-1">🗄️ MariaDB: {dbInfo ? `${dbInfo.host}:${dbInfo.port} / ${dbInfo.database} (${dbInfo.label})` : '...'}</p>
         </div>
 
         {msg.text && (
@@ -1470,8 +1472,8 @@ export default function AdminPage() {
           <div className="bg-white rounded-xl shadow-sm border p-6">
             <h2 className="font-semibold text-gray-800 mb-4">🗄️ สถานะฐานข้อมูล MariaDB</h2>
             <div className="grid grid-cols-2 gap-3 text-sm mb-4">
-              <div className="bg-gray-50 rounded-lg p-3"><span className="text-gray-500">Host</span><p className="font-mono font-medium mt-0.5">192.168.0.236:3306</p></div>
-              <div className="bg-gray-50 rounded-lg p-3"><span className="text-gray-500">Database</span><p className="font-mono font-medium mt-0.5">dhdc</p></div>
+              <div className="bg-gray-50 rounded-lg p-3"><span className="text-gray-500">Host</span><p className="font-mono font-medium mt-0.5">{dbInfo ? `${dbInfo.host}:${dbInfo.port}` : '...'}</p></div>
+              <div className="bg-gray-50 rounded-lg p-3"><span className="text-gray-500">Database</span><p className="font-mono font-medium mt-0.5">{dbInfo ? `${dbInfo.database} (${dbInfo.label})` : '...'}</p></div>
             </div>
             {dbStatus && (
               <div className={`p-4 rounded-lg mb-4 text-sm ${dbStatus.ok ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
