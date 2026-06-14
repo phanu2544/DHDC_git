@@ -228,7 +228,7 @@ export default function DashboardPage() {
                         visibleRows.map((r) => (
                           <tr key={r.kpi.id} className="hover:bg-gray-50">
                             <td className="px-4 py-2.5">
-                              <Link href={`/kpi/${r.kpi.id}`} className="font-medium text-gray-900 hover:text-blue-700 hover:underline" title="ดูรายละเอียดรายตำบล">
+                              <Link href={r.kpi.mophTable === 's_epi2' ? '/kpi/vaccines' : `/kpi/${r.kpi.id}`} className="font-medium text-gray-900 hover:text-blue-700 hover:underline" title="ดูรายละเอียดรายตำบล">
                                 {r.kpi.name}
                               </Link>
                               <div className="text-xs text-gray-400">{r.kpi.category} • {r.kpi.owner}</div>
