@@ -231,6 +231,8 @@ export default function DashboardPage() {
                               <Link href={
                                 r.kpi.mophTable === 's_epi2' ? '/kpi/vaccines'
                                 : (r.kpi.mophTable === 's_aged9' || r.kpi.mophTable === 's_aged9_app') ? `/kpi/aged9?table=${r.kpi.mophTable}`
+                                : r.kpi.mophTable === 's_dm_screen_risk' ? '/kpi/screen-risk?disease=dm'
+                                : r.kpi.mophTable === 's_ht_screen_risk' ? '/kpi/screen-risk?disease=ht'
                                 : `/kpi/${r.kpi.id}`
                               } className="font-medium text-gray-900 hover:text-blue-700 hover:underline" title="ดูรายละเอียด">
                                 {r.kpi.name}

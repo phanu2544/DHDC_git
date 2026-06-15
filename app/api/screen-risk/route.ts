@@ -1,0 +1,77 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { tambonCodeOf, tambonNameOf } from '@/lib/areaRef'
+
+/**
+ * GET /api/screen-risk?disease=dm|ht&year=2569&province=66&areacode=6611
+ * คัดกรองเบาหวาน/ความดัน ประชากร 35 ปีขึ้นไป — group รายตำบล (แบบ HDC)
+ * field (ชื่อ field ตรงตัวจาก MOPH s_dm_screen_risk / s_ht_screen_risk):
+ *   target=ประชากรเป้าหมาย · result=คัดกรองแล้ว
+ *   normal=ปกติ · risk=เสี่ยง · high_risk=เสี่ยงสูง · ill=สงสัยป่วย
+ */
+const MOPH_API = 'https://opendata.moph.go.th/api/report_data'
+const num = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0)
+
+const DISEASES: Record<string, { table: string; label: string }> = {
+  dm: { table: 's_dm_screen_risk', label: 'เบาหวาน' },
+  ht: { table: 's_ht_screen_risk', label: 'ความดันโลหิตสูง' },
+}
+const CATS = [
+  { key: 'normal', label: 'ปกติ' },
+  { key: 'risk', label: 'เสี่ยง' },
+  { key: 'high_risk', label: 'เสี่ยงสูง' },
+  { key: 'ill', label: 'สงสัยป่วย' },
+]
+
+function buildGroup(rows: Record<string, unknown>[], code: string, name: string) {
+  const S = (f: string) => rows.reduce((s, r) => s + num(r[f]), 0)
+  const target = S('target')
+  const result = S('result')
+  const cats: Record<string, { count: number; pct: number | null }> = {}
+  for (const c of CATS) {
+    const count = S(c.key)
+    cats[c.key] = { count, pct: result > 0 ? +((count / result) * 100).toFixed(2) : null }
+  }
+  return { code, name, target, result, coverPct: target > 0 ? +((result / target) * 100).toFixed(2) : null, cats }
+}
+
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url)
+  const disease = (searchParams.get('disease') || 'dm').toLowerCase()
+  const year = searchParams.get('year') || '2569'
+  const province = searchParams.get('province') || '66'
+  const areacode = searchParams.get('areacode') || '6611'
+  const def = DISEASES[disease]
+  if (!def) {
+    return NextResponse.json({ ok: false, message: 'disease ไม่รองรับ (dm|ht)' }, { status: 400 })
+  }
+
+  try {
+    const res = await fetch(MOPH_API, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tableName: def.table, year, province, type: 'json' }),
+      signal: AbortSignal.timeout(30000),
+    })
+    if (!res.ok) throw new Error(`MOPH ตอบ ${res.status}`)
+    const raw = await res.json()
+    const rows = (Array.isArray(raw) ? raw : Object.values(raw))
+      .filter((r: Record<string, unknown>) => String(r.areacode ?? '').startsWith(areacode)) as Record<string, unknown>[]
+
+    const groups = new Map<string, Record<string, unknown>[]>()
+    for (const r of rows) {
+      const t = tambonCodeOf(String(r.areacode))
+      if (!groups.has(t)) groups.set(t, [])
+      groups.get(t)!.push(r)
+    }
+    const tambons = [...groups.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([code, rs]) => buildGroup(rs, code, tambonNameOf(code)))
+    const total = buildGroup(rows, 'all', 'รวมอำเภอ')
+
+    return NextResponse.json({
+      ok: true, disease, table: def.table, diseaseLabel: def.label, year, province, areacode,
+      cats: CATS, tambons, total, rows: rows.length,
+    })
+  } catch (err) {
+    return NextResponse.json({ ok: false, message: String(err) }, { status: 500 })
+  }
+}
