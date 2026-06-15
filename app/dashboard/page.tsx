@@ -233,6 +233,7 @@ export default function DashboardPage() {
                                 : (r.kpi.mophTable === 's_aged9' || r.kpi.mophTable === 's_aged9_app') ? `/kpi/aged9?table=${r.kpi.mophTable}`
                                 : r.kpi.mophTable === 's_dm_screen_risk' ? '/kpi/screen-risk?disease=dm'
                                 : r.kpi.mophTable === 's_ht_screen_risk' ? '/kpi/screen-risk?disease=ht'
+                                : r.kpi.mophTable === 's_child_hct' ? '/kpi/anemia'
                                 : `/kpi/${r.kpi.id}`
                               } className="font-medium text-gray-900 hover:text-blue-700 hover:underline" title="ดูรายละเอียด">
                                 {r.kpi.name}
