@@ -152,7 +152,7 @@ export async function runBatchSave(opts: BatchOptions = {}): Promise<BatchResult
 
       // ── Phase 4.8: เก็บ detail ราย hospcode (เฉพาะ field ยอดรวม) ─────────
       // additive — ถ้าพลาดให้เป็นแค่ warning ไม่กระทบการบันทึก monthly_data
-      const detail = await saveMonthlyDetail(kpi.id, saveMonth, rows)
+      const detail = await saveMonthlyDetail(kpi.id, saveMonth, rows, kpi.moph_table)
       if (detail.error) r.warnings.push(`เก็บ detail ไม่สำเร็จ: ${detail.error}`)
 
       // noTarget → skipped (ไม่ใช่ error) — ตามดีไซน์

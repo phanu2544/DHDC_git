@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import Navbar from '@/components/Navbar'
+import MonthPicker from '@/components/MonthPicker'
 import { getSession } from '@/lib/storage'
 import { DISTRICT_NAME } from '@/lib/areaRef'
 import type { User } from '@/lib/types'
@@ -16,6 +17,7 @@ interface TambonRow {
 }
 interface Resp {
   ok: boolean; message?: string; table: string; year: string
+  source: 'snapshot' | 'live'; month: string | null; availableMonths: string[]
   tambons: TambonRow[]; total: TambonRow
 }
 
@@ -26,19 +28,28 @@ export default function AnemiaPage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
   const [data, setData] = useState<Resp | null>(null)
+  const [month, setMonth] = useState('') // '' = ล่าสุด, 'live' = สด, หรือ YYYY-MM
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+
+  const load = useCallback((m: string) => {
+    setLoading(true); setError('')
+    fetch(`/api/anemia${m ? `?month=${m}` : ''}`)
+      .then((r) => r.json())
+      .then((j: Resp) => {
+        if (!j.ok) throw new Error(j.message || 'โหลดไม่สำเร็จ')
+        setData(j); setMonth(j.source === 'live' ? 'live' : (j.month ?? ''))
+      })
+      .catch((e) => setError(String(e)))
+      .finally(() => setLoading(false))
+  }, [])
 
   useEffect(() => {
     const session = getSession()
     if (!session) { router.push('/login'); return }
     setUser(session)
-    fetch('/api/anemia')
-      .then((r) => r.json())
-      .then((j: Resp) => { if (!j.ok) throw new Error(j.message || 'โหลดไม่สำเร็จ'); setData(j) })
-      .catch((e) => setError(String(e)))
-      .finally(() => setLoading(false))
-  }, [router])
+    load('')
+  }, [router, load])
 
   if (!user) return null
 
@@ -56,10 +67,21 @@ export default function AnemiaPage() {
           <Link href="/dashboard" className="text-blue-600 hover:underline">← กลับ Scorecard</Link>
         </div>
         <div className="mb-4">
-          <h1 className="text-xl font-bold text-gray-900">เด็กอายุครบ 12 เดือนที่มีภาวะโลหิตจาง — รายตำบล</h1>
-          <p className="text-gray-500 text-sm mt-1">
-            {DISTRICT_NAME} • ตรวจภาวะโลหิตจางในช่วงอายุ 6-12 เดือน • ปีงบ {data?.year ?? ''}
-          </p>
+          <div className="flex items-start justify-between flex-wrap gap-3">
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">เด็กอายุครบ 12 เดือนที่มีภาวะโลหิตจาง — รายตำบล</h1>
+              <p className="text-gray-500 text-sm mt-1">
+                {DISTRICT_NAME} • ตรวจภาวะโลหิตจางในช่วงอายุ 6-12 เดือน • ปีงบ {data?.year ?? ''}
+              </p>
+            </div>
+            <MonthPicker
+              month={month}
+              source={data?.source}
+              availableMonths={data?.availableMonths ?? []}
+              onChange={load}
+              disabled={loading}
+            />
+          </div>
           <div className="text-xs text-gray-500 mt-2 leading-relaxed bg-white border rounded-lg px-3 py-2">
             <div><b>B</b> = จำนวนเด็กอายุครบ 12 เดือน ในเขตรับผิดชอบทั้งหมด ได้รับการตรวจภาวะโลหิตจางในช่วงอายุ 6-12 เดือน</div>
             <div><b>A</b> = จำนวนเด็กอายุครบ 12 เดือน ในเขตรับผิดชอบทั้งหมด ได้รับการตรวจภาวะโลหิตจางในช่วงอายุ 6-12 เดือน <b>พบภาวะโลหิตจาง</b></div>

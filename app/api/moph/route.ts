@@ -108,7 +108,7 @@ export async function POST(req: NextRequest) {
   // ── Phase 4.8: เก็บ detail ราย hospcode (เฉพาะเมื่อระบุ kpiId) — additive ──
   let detailSaved = 0
   if (kpiId) {
-    const detail = await saveMonthlyDetail(kpiId, saveMonth, rows)
+    const detail = await saveMonthlyDetail(kpiId, saveMonth, rows, tableName)
     detailSaved = detail.saved
     if (detail.error) engineResult.warnings.push(`เก็บ detail ไม่สำเร็จ: ${detail.error}`)
   }

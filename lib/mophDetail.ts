@@ -17,6 +17,12 @@ const QUARTER_RE = /q[1-4]/i
 // (เลขหลักเดียว/เลขช่วงอายุ เช่น result1, target_9, result_18, 1b262 ไม่โดนตัด)
 const MONTH_SUFFIX_RE = /(0[1-9]|1[0-2])$/
 
+/**
+ * ตารางที่ "ค่าจริง" อยู่ในคอลัมน์รายเดือน (เช่น s_epi2: dtp4_10, target09) — ห้ามตัด
+ * ตารางพวกนี้เก็บทุก field (ยกเว้น meta) เพื่อให้กราฟ detail ย้อนหลังได้
+ */
+const KEEP_MONTHLY_TABLES = new Set(['s_epi2'])
+
 export function isSummaryField(name: string): boolean {
   if (META_FIELDS.has(name.toLowerCase())) return false
   if (QUARTER_RE.test(name)) return false
@@ -24,11 +30,17 @@ export function isSummaryField(name: string): boolean {
   return true
 }
 
-/** กรองเหลือเฉพาะ field ยอดรวม — คืน {} ถ้าตารางนั้นมีแต่คอลัมน์ไตรมาส/รายเดือน (เช่น s_epi2) */
-export function filterSummaryFields(row: Record<string, unknown>): Record<string, unknown> {
+/**
+ * กรองเหลือเฉพาะ field ยอดรวม — คืน {} ถ้าตารางนั้นมีแต่คอลัมน์ไตรมาส/รายเดือน
+ * tableName ที่อยู่ใน KEEP_MONTHLY_TABLES → เก็บทุก field (ยกเว้น meta) เพราะค่าจริงอยู่รายเดือน
+ */
+export function filterSummaryFields(row: Record<string, unknown>, tableName = ''): Record<string, unknown> {
+  const keepMonthly = KEEP_MONTHLY_TABLES.has(tableName)
   const out: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(row)) {
-    if (isSummaryField(k)) out[k] = v
+    if (META_FIELDS.has(k.toLowerCase())) continue
+    if (!keepMonthly && (QUARTER_RE.test(k) || MONTH_SUFFIX_RE.test(k))) continue
+    out[k] = v
   }
   return out
 }
@@ -43,13 +55,14 @@ export async function saveMonthlyDetail(
   kpiId: string,
   month: string,
   rows: Record<string, unknown>[],
+  tableName = '',
 ): Promise<DetailSaveResult> {
   if (rows.length === 0) return { saved: 0 }
   const conn = await pool.getConnection()
   try {
     let saved = 0
     for (const r of rows) {
-      const data = filterSummaryFields(r)
+      const data = filterSummaryFields(r, tableName)
       if (Object.keys(data).length === 0) continue
       await conn.execute(
         `INSERT INTO moph_monthly_detail (kpi_id, month, hospcode, areacode, data)

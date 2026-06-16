@@ -22,3 +22,24 @@ export function tambonCodeOf(areacode: string): string {
 export function tambonNameOf(code: string): string {
   return TAMBON_NAMES[code] ?? `ตำบล ${code}`
 }
+
+/**
+ * จัดกลุ่มแถวดิบรายตำบล (เรียงตามรหัสตำบล) + คำนวณแถวรวมอำเภอ
+ * build(rows, code, name) คืน object ของตำบลนั้น (กราฟแต่ละหน้านิยามเอง)
+ */
+export function groupByTambon<T>(
+  rows: Record<string, unknown>[],
+  build: (rows: Record<string, unknown>[], code: string, name: string) => T,
+  totalName = 'รวมอำเภอ',
+): { tambons: T[]; total: T } {
+  const groups = new Map<string, Record<string, unknown>[]>()
+  for (const r of rows) {
+    const t = tambonCodeOf(String(r.areacode))
+    if (!groups.has(t)) groups.set(t, [])
+    groups.get(t)!.push(r)
+  }
+  const tambons = [...groups.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([code, rs]) => build(rs, code, tambonNameOf(code)))
+  return { tambons, total: build(rows, 'all', totalName) }
+}
