@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import Navbar from '@/components/Navbar'
+import MonthPicker from '@/components/MonthPicker'
 import { getSession } from '@/lib/storage'
 import { DISTRICT_NAME } from '@/lib/areaRef'
 import type { User } from '@/lib/types'
@@ -13,6 +14,7 @@ interface VacCell { A: number; pct: number | null }
 interface TambonRow { code: string; name: string; B: number; vaccines: Record<string, VacCell> }
 interface VacResp {
   ok: boolean; message?: string; year: string
+  source: 'snapshot' | 'live'; month: string | null; availableMonths: string[]
   vaccines: { key: string; label: string }[]
   tambons: TambonRow[]; total: TambonRow
 }
@@ -23,21 +25,30 @@ const COLORS: Record<string, string> = {
 
 export default function VaccinesPage() {
   const router = useRouter()
+  const [month, setMonth] = useState('')
   const [user, setUser] = useState<User | null>(null)
   const [data, setData] = useState<VacResp | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
+  const load = useCallback((m: string) => {
+    setLoading(true); setError('')
+    fetch(`/api/vaccines${m ? `?month=${m}` : ''}`)
+      .then((r) => r.json())
+      .then((j: VacResp) => {
+        if (!j.ok) throw new Error(j.message || 'โหลดไม่สำเร็จ')
+        setData(j); setMonth(j.source === 'live' ? 'live' : (j.month ?? ''))
+      })
+      .catch((e) => setError(String(e)))
+      .finally(() => setLoading(false))
+  }, [])
+
   useEffect(() => {
     const session = getSession()
     if (!session) { router.push('/login'); return }
     setUser(session)
-    fetch('/api/vaccines')
-      .then((r) => r.json())
-      .then((j: VacResp) => { if (!j.ok) throw new Error(j.message || 'โหลดไม่สำเร็จ'); setData(j) })
-      .catch((e) => setError(String(e)))
-      .finally(() => setLoading(false))
-  }, [router])
+    load('')
+  }, [router, load])
 
   if (!user) return null
 
@@ -54,11 +65,20 @@ export default function VaccinesPage() {
         <div className="mb-1 text-sm">
           <Link href="/dashboard" className="text-blue-600 hover:underline">← กลับ Scorecard</Link>
         </div>
-        <div className="mb-6">
-          <h1 className="text-xl font-bold text-gray-900">ความครอบคลุมวัคซีนเด็กอายุครบ 2 ปี (รายชนิด)</h1>
-          <p className="text-gray-500 text-sm mt-1">
-            {DISTRICT_NAME} • DTP4 / Polio4 / LAJE/JE / MMR1 เก็บตก / MMR2 • รายไตรมาส สะสมปีงบ {data?.year ?? ''} • ตัวติดตาม (ไม่ประเมินผ่าน/ไม่ผ่าน)
-          </p>
+        <div className="mb-6 flex items-start justify-between flex-wrap gap-3">
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">ความครอบคลุมวัคซีนเด็กอายุครบ 2 ปี (รายชนิด)</h1>
+            <p className="text-gray-500 text-sm mt-1">
+              {DISTRICT_NAME} • DTP4 / Polio4 / LAJE/JE / MMR1 เก็บตก / MMR2 • รายไตรมาส สะสมปีงบ {data?.year ?? ''} • ตัวติดตาม (ไม่ประเมินผ่าน/ไม่ผ่าน)
+            </p>
+          </div>
+          <MonthPicker
+            month={month}
+            source={data?.source}
+            availableMonths={data?.availableMonths ?? []}
+            onChange={load}
+            disabled={loading}
+          />
         </div>
 
         {loading ? (
@@ -133,7 +153,7 @@ export default function VaccinesPage() {
 
             <p className="text-xs text-gray-400 mt-3 leading-relaxed">
               B = จำนวนเด็กครบ 2 ปีในเขตรับผิดชอบ (เป้าหมาย) · A = ได้รับวัคซีนครบตามเกณฑ์ · % = A/B
-              · ข้อมูลสดจาก MOPH (s_epi2) ขอบเขต {DISTRICT_NAME}
+              · ข้อมูลจาก MOPH (s_epi2) ขอบเขต {DISTRICT_NAME} · แหล่ง/เดือนดูที่ป้ายมุมขวาบน
             </p>
           </>
         )}
