@@ -1,10 +1,11 @@
 'use client'
 
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import Navbar from '@/components/Navbar'
+import MonthPicker from '@/components/MonthPicker'
 import { getSession } from '@/lib/storage'
 import { DISTRICT_NAME } from '@/lib/areaRef'
 import type { User } from '@/lib/types'
@@ -13,6 +14,7 @@ interface DomainCell { n: number; name: string; screened: number; normal: number
 interface TambonRow { code: string; name: string; total: number; screened9: number; coverPct: number | null; domains: DomainCell[] }
 interface Aged9Resp {
   ok: boolean; message?: string; table: string; year: string
+  source: 'snapshot' | 'live'; month: string | null; availableMonths: string[]
   domainNames: { n: number; name: string }[]
   tambons: TambonRow[]; total: TambonRow
 }
@@ -28,10 +30,23 @@ function riskColor(pct: number | null): string {
 export default function Aged9Page() {
   const router = useRouter()
   const [table, setTable] = useState('s_aged9')
+  const [month, setMonth] = useState('')
   const [user, setUser] = useState<User | null>(null)
   const [data, setData] = useState<Aged9Resp | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+
+  const load = useCallback((t: string, m: string) => {
+    setLoading(true); setError('')
+    fetch(`/api/aged9?table=${t}${m ? `&month=${m}` : ''}`)
+      .then((r) => r.json())
+      .then((j: Aged9Resp) => {
+        if (!j.ok) throw new Error(j.message || 'โหลดไม่สำเร็จ')
+        setData(j); setMonth(j.source === 'live' ? 'live' : (j.month ?? ''))
+      })
+      .catch((e) => setError(String(e)))
+      .finally(() => setLoading(false))
+  }, [])
 
   useEffect(() => {
     const session = getSession()
@@ -39,12 +54,8 @@ export default function Aged9Page() {
     setUser(session)
     const t = new URLSearchParams(window.location.search).get('table') || 's_aged9'
     setTable(t)
-    fetch(`/api/aged9?table=${t}`)
-      .then((r) => r.json())
-      .then((j: Aged9Resp) => { if (!j.ok) throw new Error(j.message || 'โหลดไม่สำเร็จ'); setData(j) })
-      .catch((e) => setError(String(e)))
-      .finally(() => setLoading(false))
-  }, [router])
+    load(t, '')
+  }, [router, load])
 
   if (!user) return null
 
@@ -57,11 +68,20 @@ export default function Aged9Page() {
         <div className="mb-1 text-sm">
           <Link href="/dashboard" className="text-blue-600 hover:underline">← กลับ Scorecard</Link>
         </div>
-        <div className="mb-6">
-          <h1 className="text-xl font-bold text-gray-900">คัดกรองสุขภาพผู้สูงอายุ 9 ด้าน — รายตำบล</h1>
-          <p className="text-gray-500 text-sm mt-1">
-            {DISTRICT_NAME} • {table === 's_aged9_app' ? 'จาก API' : 'Basic/Community STEP1'} • ปีงบ {data?.year ?? ''}
-          </p>
+        <div className="mb-6 flex items-start justify-between flex-wrap gap-3">
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">คัดกรองสุขภาพผู้สูงอายุ 9 ด้าน — รายตำบล</h1>
+            <p className="text-gray-500 text-sm mt-1">
+              {DISTRICT_NAME} • {table === 's_aged9_app' ? 'จาก API' : 'Basic/Community STEP1'} • ปีงบ {data?.year ?? ''}
+            </p>
+          </div>
+          <MonthPicker
+            month={month}
+            source={data?.source}
+            availableMonths={data?.availableMonths ?? []}
+            onChange={(m) => load(table, m)}
+            disabled={loading}
+          />
         </div>
 
         {loading ? (
@@ -144,7 +164,7 @@ export default function Aged9Page() {
 
             <p className="text-xs text-gray-400 leading-relaxed">
               แต่ละด้านแสดง <b>คัดกรอง / เสี่ยง / %</b> · คอลัมน์ % = พบเสี่ยง (เสี่ยง÷คัดกรอง) สีแดง ≥15% · ส้ม 10–15% · เขียว &lt;10%
-              · ข้อมูลสดจาก MOPH ({table}) {DISTRICT_NAME} · field→ด้าน อ้างอิงลำดับ HDC (ขอเจ้าของ KPI ยืนยันชื่อด้านก่อนใช้ทางการ)
+              · ข้อมูลจาก MOPH ({table}) {DISTRICT_NAME} · แหล่ง/เดือนดูที่ป้ายมุมขวาบน · field→ด้าน อ้างอิงลำดับ HDC (ขอเจ้าของ KPI ยืนยันชื่อด้านก่อนใช้ทางการ)
             </p>
           </>
         )}

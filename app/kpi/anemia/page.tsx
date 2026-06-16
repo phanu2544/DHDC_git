@@ -171,7 +171,7 @@ export default function AnemiaPage() {
 
             <p className="text-xs text-gray-400 leading-relaxed">
               ร้อยละการตรวจ = ตรวจ÷เด็กทั้งหมด · ร้อยละโลหิตจาง = พบโลหิตจาง÷ตรวจ (ยิ่งต่ำยิ่งดี)
-              · ข้อมูลสดจาก MOPH ({data.table}) {DISTRICT_NAME} · ขอเจ้าของ KPI ยืนยันนิยาม field ก่อนใช้ทางการ
+              · ข้อมูลจาก MOPH ({data.table}) {DISTRICT_NAME} · แหล่ง/เดือนดูที่ป้ายมุมขวาบน · ขอเจ้าของ KPI ยืนยันนิยาม field ก่อนใช้ทางการ
             </p>
           </>
         )}

@@ -74,12 +74,15 @@ async function readSnapshot(kpiId: string, month: string, areacode: string): Pro
         'SELECT areacode, data FROM moph_monthly_detail WHERE kpi_id=? AND month=?', [kpiId, month])
       const list = rows as { areacode: string; data: unknown }[]
       if (list.length === 0) return null
-      return list
+      const out = list
         .map((r) => {
           const data = typeof r.data === 'string' ? JSON.parse(r.data) : (r.data as Record<string, unknown>)
           return { areacode: r.areacode, ...data }
         })
         .filter((r) => String(r.areacode ?? '').startsWith(areacode))
+      // hardening: ถ้าทุกแถวมีแต่ areacode (data ว่าง {} เช่นตารางที่ยังไม่อุด) → ถือว่าไม่มี snapshot
+      if (out.every((r) => Object.keys(r).length <= 1)) return null
+      return out
     } finally {
       conn.release()
     }

@@ -7,3 +7,6 @@ node_modules/
 tsconfig.tsbuildinfo
 
 .claude/
+
+# DB backup/restore dumps (re-sync safety net) — ห้ามเข้า git
+_resync_backup/
