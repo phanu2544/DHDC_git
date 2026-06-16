@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { tambonCodeOf, tambonNameOf } from '@/lib/areaRef'
+import { groupByTambon } from '@/lib/areaRef'
+import { getMonthlyRows } from '@/lib/monthlyView'
 
 /**
- * GET /api/screen-risk?disease=dm|ht&year=2569&province=66&areacode=6611
+ * GET /api/screen-risk?disease=dm|ht&month=2026-06&areacode=6611
  * คัดกรองเบาหวาน/ความดัน ประชากร 35 ปีขึ้นไป — group รายตำบล (แบบ HDC)
+ * แหล่งข้อมูลรายเดือน/สด จัดการโดย lib/monthlyView (snapshot → fallback live, DB ล่มไม่พัง)
  * field (ชื่อ field ตรงตัวจาก MOPH s_dm_screen_risk / s_ht_screen_risk):
  *   target=ประชากรเป้าหมาย · result=คัดกรองแล้ว
  *   normal=ปกติ · risk=เสี่ยง · high_risk=เสี่ยงสูง · ill=สงสัยป่วย
  */
-const MOPH_API = 'https://opendata.moph.go.th/api/report_data'
 const num = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0)
 
 const DISEASES: Record<string, { table: string; label: string }> = {
@@ -40,35 +41,18 @@ export async function GET(req: NextRequest) {
   const year = searchParams.get('year') || '2569'
   const province = searchParams.get('province') || '66'
   const areacode = searchParams.get('areacode') || '6611'
+  const reqMonth = searchParams.get('month') || ''
   const def = DISEASES[disease]
   if (!def) {
     return NextResponse.json({ ok: false, message: 'disease ไม่รองรับ (dm|ht)' }, { status: 400 })
   }
 
   try {
-    const res = await fetch(MOPH_API, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tableName: def.table, year, province, type: 'json' }),
-      signal: AbortSignal.timeout(30000),
-    })
-    if (!res.ok) throw new Error(`MOPH ตอบ ${res.status}`)
-    const raw = await res.json()
-    const rows = (Array.isArray(raw) ? raw : Object.values(raw))
-      .filter((r: Record<string, unknown>) => String(r.areacode ?? '').startsWith(areacode)) as Record<string, unknown>[]
-
-    const groups = new Map<string, Record<string, unknown>[]>()
-    for (const r of rows) {
-      const t = tambonCodeOf(String(r.areacode))
-      if (!groups.has(t)) groups.set(t, [])
-      groups.get(t)!.push(r)
-    }
-    const tambons = [...groups.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([code, rs]) => buildGroup(rs, code, tambonNameOf(code)))
-    const total = buildGroup(rows, 'all', 'รวมอำเภอ')
-
+    const { rows, source, month, availableMonths } = await getMonthlyRows({ table: def.table, month: reqMonth, year, province, areacode })
+    const { tambons, total } = groupByTambon(rows, buildGroup)
     return NextResponse.json({
       ok: true, disease, table: def.table, diseaseLabel: def.label, year, province, areacode,
+      source, month, availableMonths,
       cats: CATS, tambons, total, rows: rows.length,
     })
   } catch (err) {

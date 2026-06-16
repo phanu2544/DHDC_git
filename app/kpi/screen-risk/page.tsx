@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import Navbar from '@/components/Navbar'
+import MonthPicker from '@/components/MonthPicker'
 import { getSession } from '@/lib/storage'
 import { DISTRICT_NAME } from '@/lib/areaRef'
 import type { User } from '@/lib/types'
@@ -16,6 +17,7 @@ interface TambonRow {
 }
 interface Resp {
   ok: boolean; message?: string; disease: string; table: string; diseaseLabel: string; year: string
+  source: 'snapshot' | 'live'; month: string | null; availableMonths: string[]
   cats: Cat[]; tambons: TambonRow[]; total: TambonRow
 }
 
@@ -27,18 +29,22 @@ const CAT_COLOR: Record<string, string> = {
 export default function ScreenRiskPage() {
   const router = useRouter()
   const [disease, setDisease] = useState('dm')
+  const [month, setMonth] = useState('')
   const [user, setUser] = useState<User | null>(null)
   const [data, setData] = useState<Resp | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
-  const load = useCallback((d: string) => {
+  const load = useCallback((d: string, m: string) => {
     setDisease(d)
-    setLoading(true); setError(''); setData(null)
+    setLoading(true); setError('')
     window.history.replaceState(null, '', `/kpi/screen-risk?disease=${d}`)
-    fetch(`/api/screen-risk?disease=${d}`)
+    fetch(`/api/screen-risk?disease=${d}${m ? `&month=${m}` : ''}`)
       .then((r) => r.json())
-      .then((j: Resp) => { if (!j.ok) throw new Error(j.message || 'โหลดไม่สำเร็จ'); setData(j) })
+      .then((j: Resp) => {
+        if (!j.ok) throw new Error(j.message || 'โหลดไม่สำเร็จ')
+        setData(j); setMonth(j.source === 'live' ? 'live' : (j.month ?? ''))
+      })
       .catch((e) => setError(String(e)))
       .finally(() => setLoading(false))
   }, [])
@@ -48,7 +54,7 @@ export default function ScreenRiskPage() {
     if (!session) { router.push('/login'); return }
     setUser(session)
     const d = (new URLSearchParams(window.location.search).get('disease') || 'dm').toLowerCase()
-    load(d)
+    load(d, '')
   }, [router, load])
 
   if (!user) return null
@@ -74,11 +80,20 @@ export default function ScreenRiskPage() {
               {DISTRICT_NAME} • ปกติ / เสี่ยง / เสี่ยงสูง / สงสัยป่วย • ปีงบ {data?.year ?? ''}
             </p>
           </div>
-          <div className="flex gap-1 bg-white border rounded-lg p-1 text-sm">
-            <button type="button" onClick={() => load('dm')}
-              className={`px-3 py-1.5 rounded-md ${disease === 'dm' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>เบาหวาน</button>
-            <button type="button" onClick={() => load('ht')}
-              className={`px-3 py-1.5 rounded-md ${disease === 'ht' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>ความดัน</button>
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex gap-1 bg-white border rounded-lg p-1 text-sm">
+              <button type="button" onClick={() => load('dm', '')}
+                className={`px-3 py-1.5 rounded-md ${disease === 'dm' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>เบาหวาน</button>
+              <button type="button" onClick={() => load('ht', '')}
+                className={`px-3 py-1.5 rounded-md ${disease === 'ht' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>ความดัน</button>
+            </div>
+            <MonthPicker
+              month={month}
+              source={data?.source}
+              availableMonths={data?.availableMonths ?? []}
+              onChange={(m) => load(disease, m)}
+              disabled={loading}
+            />
           </div>
         </div>
 
@@ -166,7 +181,7 @@ export default function ScreenRiskPage() {
 
             <p className="text-xs text-gray-400 leading-relaxed">
               เป้าหมาย = ประชากร 35 ปีขึ้นไป · คัดกรอง % = คัดกรอง÷เป้าหมาย · กลุ่ม ปกติ/เสี่ยง/เสี่ยงสูง/สงสัยป่วย = % ของผู้คัดกรอง
-              · ข้อมูลสดจาก MOPH ({data.table}) {DISTRICT_NAME} · ผลรวมกลุ่มอาจไม่เท่าจำนวนคัดกรองพอดี (ตามการบันทึก HDC) · ขอเจ้าของ KPI ยืนยันนิยามกลุ่มก่อนใช้ทางการ
+              · ข้อมูลจาก MOPH ({data.table}) {DISTRICT_NAME} · แหล่ง/เดือนดูที่ป้ายมุมขวาบน · ผลรวมกลุ่มอาจไม่เท่าจำนวนคัดกรองพอดี (ตามการบันทึก HDC) · ขอเจ้าของ KPI ยืนยันนิยามกลุ่มก่อนใช้ทางการ
             </p>
           </>
         )}
