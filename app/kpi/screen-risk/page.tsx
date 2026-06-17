@@ -1,14 +1,12 @@
 'use client'
 
 import { Fragment, useCallback, useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import Navbar from '@/components/Navbar'
 import MonthPicker from '@/components/MonthPicker'
-import { getSession } from '@/lib/storage'
 import { DISTRICT_NAME } from '@/lib/areaRef'
-import type { User } from '@/lib/types'
+import { useMonthlyData } from '@/lib/useMonthlyData'
 
 interface Cat { key: string; label: string }
 interface TambonRow {
@@ -27,35 +25,19 @@ const CAT_COLOR: Record<string, string> = {
 }
 
 export default function ScreenRiskPage() {
-  const router = useRouter()
   const [disease, setDisease] = useState('dm')
-  const [month, setMonth] = useState('')
-  const [user, setUser] = useState<User | null>(null)
-  const [data, setData] = useState<Resp | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-
+  const { user, data, month, loading, error, requireSession, loadUrl } = useMonthlyData<Resp>()
   const load = useCallback((d: string, m: string) => {
     setDisease(d)
-    setLoading(true); setError('')
     window.history.replaceState(null, '', `/kpi/screen-risk?disease=${d}`)
-    fetch(`/api/screen-risk?disease=${d}${m ? `&month=${m}` : ''}`)
-      .then((r) => r.json())
-      .then((j: Resp) => {
-        if (!j.ok) throw new Error(j.message || 'โหลดไม่สำเร็จ')
-        setData(j); setMonth(j.source === 'live' ? 'live' : (j.month ?? ''))
-      })
-      .catch((e) => setError(String(e)))
-      .finally(() => setLoading(false))
-  }, [])
+    loadUrl(`/api/screen-risk?disease=${d}${m ? `&month=${m}` : ''}`)
+  }, [loadUrl])
 
   useEffect(() => {
-    const session = getSession()
-    if (!session) { router.push('/login'); return }
-    setUser(session)
+    if (!requireSession()) return
     const d = (new URLSearchParams(window.location.search).get('disease') || 'dm').toLowerCase()
     load(d, '')
-  }, [router, load])
+  }, [requireSession, load])
 
   if (!user) return null
 

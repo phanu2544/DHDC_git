@@ -1,14 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useCallback, useEffect } from 'react'
 import Link from 'next/link'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import Navbar from '@/components/Navbar'
 import MonthPicker from '@/components/MonthPicker'
-import { getSession } from '@/lib/storage'
 import { DISTRICT_NAME } from '@/lib/areaRef'
-import type { User } from '@/lib/types'
+import { useMonthlyData } from '@/lib/useMonthlyData'
 
 interface TambonRow {
   code: string; name: string; total: number; screened: number; found: number
@@ -25,31 +23,9 @@ const C_COVER = '#3b82f6' // ร้อยละการตรวจ (coverage)
 const C_PREV = '#dc2626'  // ร้อยละโลหิตจาง (prevalence)
 
 export default function AnemiaPage() {
-  const router = useRouter()
-  const [user, setUser] = useState<User | null>(null)
-  const [data, setData] = useState<Resp | null>(null)
-  const [month, setMonth] = useState('') // '' = ล่าสุด, 'live' = สด, หรือ YYYY-MM
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-
-  const load = useCallback((m: string) => {
-    setLoading(true); setError('')
-    fetch(`/api/anemia${m ? `?month=${m}` : ''}`)
-      .then((r) => r.json())
-      .then((j: Resp) => {
-        if (!j.ok) throw new Error(j.message || 'โหลดไม่สำเร็จ')
-        setData(j); setMonth(j.source === 'live' ? 'live' : (j.month ?? ''))
-      })
-      .catch((e) => setError(String(e)))
-      .finally(() => setLoading(false))
-  }, [])
-
-  useEffect(() => {
-    const session = getSession()
-    if (!session) { router.push('/login'); return }
-    setUser(session)
-    load('')
-  }, [router, load])
+  const { user, data, month, loading, error, requireSession, loadUrl } = useMonthlyData<Resp>()
+  const load = useCallback((m: string) => loadUrl(`/api/anemia${m ? `?month=${m}` : ''}`), [loadUrl])
+  useEffect(() => { if (requireSession()) load('') }, [requireSession, load])
 
   if (!user) return null
 

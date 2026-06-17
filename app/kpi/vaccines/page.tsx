@@ -1,14 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useCallback, useEffect } from 'react'
 import Link from 'next/link'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import Navbar from '@/components/Navbar'
 import MonthPicker from '@/components/MonthPicker'
-import { getSession } from '@/lib/storage'
 import { DISTRICT_NAME } from '@/lib/areaRef'
-import type { User } from '@/lib/types'
+import { useMonthlyData } from '@/lib/useMonthlyData'
 
 interface VacCell { A: number; pct: number | null }
 interface TambonRow { code: string; name: string; B: number; vaccines: Record<string, VacCell> }
@@ -24,31 +22,13 @@ const COLORS: Record<string, string> = {
 }
 
 export default function VaccinesPage() {
-  const router = useRouter()
-  const [month, setMonth] = useState('')
-  const [user, setUser] = useState<User | null>(null)
-  const [data, setData] = useState<VacResp | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-
-  const load = useCallback((m: string) => {
-    setLoading(true); setError('')
-    fetch(`/api/vaccines${m ? `?month=${m}` : ''}`)
-      .then((r) => r.json())
-      .then((j: VacResp) => {
-        if (!j.ok) throw new Error(j.message || 'โหลดไม่สำเร็จ')
-        setData(j); setMonth(j.source === 'live' ? 'live' : (j.month ?? ''))
-      })
-      .catch((e) => setError(String(e)))
-      .finally(() => setLoading(false))
-  }, [])
+  const { user, data, month, loading, error, requireSession, loadUrl } = useMonthlyData<VacResp>()
+  const load = useCallback((m: string) => loadUrl(`/api/vaccines${m ? `?month=${m}` : ''}`), [loadUrl])
 
   useEffect(() => {
-    const session = getSession()
-    if (!session) { router.push('/login'); return }
-    setUser(session)
+    if (!requireSession()) return
     load('')
-  }, [router, load])
+  }, [requireSession, load])
 
   if (!user) return null
 

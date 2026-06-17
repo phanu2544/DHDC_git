@@ -1,14 +1,12 @@
 'use client'
 
 import { Fragment, useCallback, useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import Navbar from '@/components/Navbar'
 import MonthPicker from '@/components/MonthPicker'
-import { getSession } from '@/lib/storage'
 import { DISTRICT_NAME } from '@/lib/areaRef'
-import type { User } from '@/lib/types'
+import { useMonthlyData } from '@/lib/useMonthlyData'
 
 interface DomainCell { n: number; name: string; screened: number; normal: number; risk: number; riskPct: number | null }
 interface TambonRow { code: string; name: string; total: number; screened9: number; coverPct: number | null; domains: DomainCell[] }
@@ -28,34 +26,16 @@ function riskColor(pct: number | null): string {
 }
 
 export default function Aged9Page() {
-  const router = useRouter()
   const [table, setTable] = useState('s_aged9')
-  const [month, setMonth] = useState('')
-  const [user, setUser] = useState<User | null>(null)
-  const [data, setData] = useState<Aged9Resp | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-
-  const load = useCallback((t: string, m: string) => {
-    setLoading(true); setError('')
-    fetch(`/api/aged9?table=${t}${m ? `&month=${m}` : ''}`)
-      .then((r) => r.json())
-      .then((j: Aged9Resp) => {
-        if (!j.ok) throw new Error(j.message || 'โหลดไม่สำเร็จ')
-        setData(j); setMonth(j.source === 'live' ? 'live' : (j.month ?? ''))
-      })
-      .catch((e) => setError(String(e)))
-      .finally(() => setLoading(false))
-  }, [])
+  const { user, data, month, loading, error, requireSession, loadUrl } = useMonthlyData<Aged9Resp>()
+  const load = useCallback((t: string, m: string) => loadUrl(`/api/aged9?table=${t}${m ? `&month=${m}` : ''}`), [loadUrl])
 
   useEffect(() => {
-    const session = getSession()
-    if (!session) { router.push('/login'); return }
-    setUser(session)
+    if (!requireSession()) return
     const t = new URLSearchParams(window.location.search).get('table') || 's_aged9'
     setTable(t)
     load(t, '')
-  }, [router, load])
+  }, [requireSession, load])
 
   if (!user) return null
 
