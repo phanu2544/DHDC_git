@@ -80,6 +80,16 @@ npm run build && npm start      # next start -p 3002
 
 ---
 
+## Phase 8 — snapshot รายเดือน (drilldown)
+
+หน้า drilldown (`/kpi/anemia`, `/kpi/aged9`, `/kpi/screen-risk`, `/kpi/vaccines`) อ่านจาก **`moph_monthly_detail`** (snapshot) เป็นหลัก แล้วมี fallback เป็น live ผ่าน `lib/monthlyView.getMonthlyRows` (DB ล่ม/ไม่มี snapshot → live เสมอ)
+
+ผลต่อ production:
+- **`moph_monthly_detail` กลายเป็น UI-critical** (ไม่ใช่แค่ analytics) → cron/batch ต้องเก็บ detail ต่อเนื่อง ไม่งั้น drilldown จะ fallback เป็น live ตลอด (ใช้ได้ แต่ไม่มีประวัติ/เดือนให้เลือก)
+- **วัคซีน `s_epi2`**: field เป็นรายเดือน (`dtp4_10`…`target09`) — `lib/mophDetail.ts` มี `KEEP_MONTHLY_TABLES={s_epi2}` เก็บ field พวกนี้ไว้ (ตารางอื่นยังตัด field ลงท้าย 01-12 ตามเดิม) ถ้าเพิ่มกราฟใหม่ที่ใช้ field รายเดือน ต้องเพิ่มชื่อตารางใน set นี้
+- **Re-sync** (เมื่อค่า Scorecard/snapshot ค้าง stale): รัน batch (หัวข้อ 5) ซ้ำ scope 6611 → เขียนทับ `monthly_data` + `moph_monthly_detail` เดือนปัจจุบันด้วยค่าสด · backup 2 ตารางก่อนเสมอ (`mysqldump dhdc_dev monthly_data moph_monthly_detail`)
+
 ## Rollback
 - config: PATCH moph_config=null + restore unit/dir/table จาก snapshot (ดู Apply Log)
+- data (re-sync/batch): restore จาก `mysqldump` backup ของ `monthly_data` + `moph_monthly_detail`
 - ทุกขั้น snapshot ก่อนเสมอ · ห้าม SQL update monthly_data.value ตรง
