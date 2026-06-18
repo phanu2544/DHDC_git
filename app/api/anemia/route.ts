@@ -12,7 +12,8 @@ import { getMonthlyRows } from '@/lib/monthlyView'
  *   target1=ตรวจ (ไม่พบ ICD10 TP) [B] · result1=พบ (TP) [A]
  */
 const num = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0)
-const pct = (a: number, b: number) => (b > 0 ? +((a / b) * 100).toFixed(2) : null)
+// ตัวหาร <= 0 → 0 (ตรง HDC: ตำบลที่ยังไม่ตรวจ เช่น ห้วยร่วม แสดง 0.00 ไม่เว้นว่าง)
+const pct = (a: number, b: number) => (b > 0 ? +((a / b) * 100).toFixed(2) : 0)
 
 function buildGroup(rows: Record<string, unknown>[], code: string, name: string) {
   const S = (f: string) => rows.reduce((s, r) => s + num(r[f]), 0)

@@ -10,3 +10,7 @@ tsconfig.tsbuildinfo
 
 # DB backup/restore dumps (re-sync safety net) — ห้ามเข้า git
 _resync_backup/
+
+# ข้อมูลอ้างอิงภายใน — ไม่เข้า git (HDC screenshot ดงเจริญ + owner + CSV จังหวัด 11 schema-only)
+data/
+docs/data_owner/

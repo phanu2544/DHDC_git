@@ -20,9 +20,9 @@
 - [ ] ตรวจ **2 KPI ไม่มีข้อมูล 6611** (`s_tida4i`, `s_childdev_specialpp48`) — ตารางถูกไหม/ดงเจริญไม่มีจริง
 
 ## B. Cleanup เล็ก (เราทำได้เลย — ได้ของเร็ว)  ⬅️ เริ่มที่นี่
-- [ ] ลบ **kpi-01** (KPI ทดสอบค้าง ซ้ำ s_dm_control) — *DB op: backup→verify*
-- [ ] โลหิตจาง: แก้ label owner-packet (result/result_ill สลับ) + เปลี่ยนชื่อ KPI ตัด **"(Coverage)"** → "อัตราโลหิตจาง" + ตัดสิน `—` vs `0.00` (ห้วยร่วม)
-- [ ] คู่มือไทย: แก้ inline port `3000`→`3002` + db.ts hardcode ใน body (ตอนนี้แก้แค่ banner)
+- [x] ลบ **kpi-01** (KPI ทดสอบค้าง ซ้ำ s_dm_control) — *DB op เสร็จ 2026-06-18: backup `_resync_backup/kpi-01-delete-2026-06-18/` → preview(ROLLBACK) → COMMIT (monthly_data 2 + moph_monthly_detail 56 + kpi_reports 1, kpi_targets 0) → verify หาย/ตัวจริง kpi-1780634936954 ครบ · รวม KPI 40→39*
+- [~] โลหิตจาง: **(2026-06-18)** ✅ แก้ label owner-packet (result=A1 numerator, result_ill=ไม่ใช้ + ลบ path หลง) · ✅ ชื่อ KPI: user เลือก**คงเดิม** (ไม่ตัด "(Coverage)", ไม่แตะ DB) · **รอ user:** `—` vs `0.00` (ห้วยร่วม, หน้า anemia)
+- [x] คู่มือไทย **(เสร็จ 2026-06-18)**: port `3000`→`3002` ทุกจุดใน `คำสั่งที่ใช้บ่อย.md` (15 จุด) + db.ts/dev DB ใน body ตรง CLAUDE.md (env, `dhdc_dev` root/123456, mysql.exe path) · production host เหลือ 1 จุดมี caveat
 - [ ] ตัดสิน `docs/data_owner/` + `data/` → commit หรือ gitignore
 
 ## C. Feature ต่อยอด (เลือกทำ / รอเงื่อนไข)

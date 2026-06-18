@@ -11,7 +11,7 @@ import { useMonthlyData } from '@/lib/useMonthlyData'
 interface TambonRow {
   code: string; name: string; total: number; screened: number; found: number
   screenedTp: number; foundTp: number
-  coveragePct: number | null; prevalencePct: number | null; prevalenceTpPct: number | null
+  coveragePct: number; prevalencePct: number; prevalenceTpPct: number
 }
 interface Resp {
   ok: boolean; message?: string; table: string; year: string
@@ -21,6 +21,7 @@ interface Resp {
 
 const C_COVER = '#3b82f6' // ร้อยละการตรวจ (coverage)
 const C_PREV = '#dc2626'  // ร้อยละโลหิตจาง (prevalence)
+const fmtPct = (v: number) => v.toFixed(2) // แสดง 2 ตำแหน่งตรง HDC (0.00, 50.00)
 
 export default function AnemiaPage() {
   const { user, data, month, loading, error, requireSession, loadUrl } = useMonthlyData<Resp>()
@@ -31,8 +32,8 @@ export default function AnemiaPage() {
 
   const chartData = (data?.tambons ?? []).map((t) => ({
     name: t.name,
-    'ร้อยละการตรวจ': t.coveragePct ?? 0,
-    'ร้อยละโลหิตจาง': t.prevalencePct ?? 0,
+    'ร้อยละการตรวจ': t.coveragePct,
+    'ร้อยละโลหิตจาง': t.prevalencePct,
   }))
 
   return (
@@ -121,24 +122,24 @@ export default function AnemiaPage() {
                         <td className="px-4 py-2.5 font-medium text-gray-900">{t.name}</td>
                         <td className="px-3 py-2.5 text-right tabular-nums text-gray-600 border-l">{t.total.toLocaleString()}</td>
                         <td className="px-2 py-2.5 text-right tabular-nums border-l">{t.screened.toLocaleString()}</td>
-                        <td className="px-2 py-2.5 text-right tabular-nums font-semibold" style={{ color: C_COVER }}>{t.coveragePct ?? '—'}</td>
+                        <td className="px-2 py-2.5 text-right tabular-nums font-semibold" style={{ color: C_COVER }}>{fmtPct(t.coveragePct)}</td>
                         <td className="px-2 py-2.5 text-right tabular-nums">{t.found.toLocaleString()}</td>
-                        <td className="px-2 py-2.5 text-right tabular-nums font-semibold" style={{ color: C_PREV }}>{t.prevalencePct ?? '—'}</td>
+                        <td className="px-2 py-2.5 text-right tabular-nums font-semibold" style={{ color: C_PREV }}>{fmtPct(t.prevalencePct)}</td>
                         <td className="px-2 py-2.5 text-right tabular-nums border-l">{t.screenedTp.toLocaleString()}</td>
                         <td className="px-2 py-2.5 text-right tabular-nums">{t.foundTp.toLocaleString()}</td>
-                        <td className="px-2 py-2.5 text-right tabular-nums font-semibold" style={{ color: C_PREV }}>{t.prevalenceTpPct ?? '—'}</td>
+                        <td className="px-2 py-2.5 text-right tabular-nums font-semibold" style={{ color: C_PREV }}>{fmtPct(t.prevalenceTpPct)}</td>
                       </tr>
                     ))}
                     <tr className="bg-gray-100 font-semibold">
                       <td className="px-4 py-2.5">{data.total.name}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums border-l">{data.total.total.toLocaleString()}</td>
                       <td className="px-2 py-2.5 text-right tabular-nums border-l">{data.total.screened.toLocaleString()}</td>
-                      <td className="px-2 py-2.5 text-right tabular-nums" style={{ color: C_COVER }}>{data.total.coveragePct ?? '—'}</td>
+                      <td className="px-2 py-2.5 text-right tabular-nums" style={{ color: C_COVER }}>{fmtPct(data.total.coveragePct)}</td>
                       <td className="px-2 py-2.5 text-right tabular-nums">{data.total.found.toLocaleString()}</td>
-                      <td className="px-2 py-2.5 text-right tabular-nums" style={{ color: C_PREV }}>{data.total.prevalencePct ?? '—'}</td>
+                      <td className="px-2 py-2.5 text-right tabular-nums" style={{ color: C_PREV }}>{fmtPct(data.total.prevalencePct)}</td>
                       <td className="px-2 py-2.5 text-right tabular-nums border-l">{data.total.screenedTp.toLocaleString()}</td>
                       <td className="px-2 py-2.5 text-right tabular-nums">{data.total.foundTp.toLocaleString()}</td>
-                      <td className="px-2 py-2.5 text-right tabular-nums" style={{ color: C_PREV }}>{data.total.prevalenceTpPct ?? '—'}</td>
+                      <td className="px-2 py-2.5 text-right tabular-nums" style={{ color: C_PREV }}>{fmtPct(data.total.prevalenceTpPct)}</td>
                     </tr>
                   </tbody>
                 </table>
