@@ -26,8 +26,8 @@
 - [ ] ตัดสิน `docs/data_owner/` + `data/` → commit หรือ gitignore
 
 ## C. Feature ต่อยอด (เลือกทำ / รอเงื่อนไข)
-- [ ] **registry `detail_view`** แทน hardcode routing ใน `dashboard` (KPI ↔ drilldown แบบไหน) — ลดงานเพิ่ม KPI ใหม่
-- [ ] **formatter เดือน พ.ศ./เดือนไทย** (จุดเดียวใน `MonthPicker`)
+- [x] **registry `detail_view`** **(เสร็จ 2026-06-18)** — `lib/detailView.ts` (map mophTable→href + fallback `/kpi/[id]`), dashboard เรียก `detailViewHref(r.kpi)` แทน ternary chain · verify URL เดิมเป๊ะ
+- [x] **formatter เดือน พ.ศ./เดือนไทย** **(เสร็จ 2026-06-18)** — `lib/formatMonth.ts` `formatThaiMonth("2026-06")→"มิถุนายน 2569"` ใช้ใน MonthPicker + dashboard + `kpi/[id]` (ยุบ inline/ซ้ำ 4 จุด) · `compare` คง `month:'short'` ตั้งใจ (ไม่ยุบ)
 - [ ] **กราฟเส้น trend รายเดือน** — ⏳ รอ cron เก็บ **≥2 เดือน** ก่อน (โครงพร้อม)
 - [ ] ตาราง `kpi_monthly_measure` — เฉพาะถ้าทำ exec trend หนักๆ (ตอนนี้ field ดิบพอ)
 

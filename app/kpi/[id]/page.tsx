@@ -9,6 +9,7 @@ import { getSession } from '@/lib/storage'
 import { STATUS_META } from '@/lib/kpiStatus'
 import { DIRECTION_LABEL } from '@/lib/scorecard'
 import { DISTRICT_NAME } from '@/lib/areaRef'
+import { formatThaiMonth } from '@/lib/formatMonth'
 import type { User, KpiEvalStatus, EvalDirection } from '@/lib/types'
 
 // สี badge สถานะ (presentation เฉพาะหน้านี้ — ชุดเดียวกับ Dashboard)
@@ -50,9 +51,6 @@ interface DetailResp {
   groups?: GroupRow[]
   total?: GroupRow
 }
-
-const fmtMonth = (m: string) =>
-  new Date(m + '-01').toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })
 
 export default function KpiDetailPage({ params }: { params: { id: string } }) {
   const router = useRouter()
@@ -123,7 +121,7 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                   onChange={(e) => load(e.target.value)}
                   className="border rounded-lg px-3 py-2 text-sm bg-white"
                 >
-                  {data.months.map((m) => <option key={m} value={m}>{fmtMonth(m)}</option>)}
+                  {data.months.map((m) => <option key={m} value={m}>{formatThaiMonth(m)}</option>)}
                 </select>
               )}
             </div>
@@ -167,7 +165,7 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                 {/* กราฟแท่งรายตำบล + เส้นเป้าหมาย (แบบ HDC) */}
                 {showPct && (
                   <div className="bg-white rounded-xl shadow-sm border p-5 mb-6">
-                    <h2 className="font-semibold text-gray-800 mb-3 text-sm">แผนภูมิรายตำบล — เดือน{fmtMonth(data.month!)}</h2>
+                    <h2 className="font-semibold text-gray-800 mb-3 text-sm">แผนภูมิรายตำบล — เดือน{formatThaiMonth(data.month!)}</h2>
                     <ResponsiveContainer width="100%" height={260}>
                       <BarChart data={chartData} margin={{ top: 16, right: 16, bottom: 4, left: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -189,7 +187,7 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                 {/* ตารางรายตำบล (HDC-style) */}
                 <div className="bg-white rounded-xl shadow-sm border overflow-hidden mb-6">
                   <div className="px-5 py-3 border-b">
-                    <h2 className="font-semibold text-gray-800 text-sm">ตารางรายตำบล — เดือน{fmtMonth(data.month!)}</h2>
+                    <h2 className="font-semibold text-gray-800 text-sm">ตารางรายตำบล — เดือน{formatThaiMonth(data.month!)}</h2>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">

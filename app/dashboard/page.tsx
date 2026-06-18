@@ -10,6 +10,8 @@ import { getSession } from '@/lib/storage'
 import { STATUS_META } from '@/lib/kpiStatus'
 import { buildScorecard, EXECUTIVE_SEVERITY_ORDER, ATTENTION_STATUSES, DIRECTION_LABEL } from '@/lib/scorecard'
 import { exportScorecardXlsx } from '@/lib/exportScorecard'
+import { detailViewHref } from '@/lib/detailView'
+import { formatThaiMonth } from '@/lib/formatMonth'
 import type { User, KPIReport, KpiEvalStatus, MonthlyData } from '@/lib/types'
 
 const PIE_COLORS = ['#22c55e', '#3b82f6', '#ef4444']
@@ -111,9 +113,7 @@ export default function DashboardPage() {
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900">ภาพรวม KPI</h1>
           <p className="text-gray-500 text-sm mt-1">
-            {latestMonth
-              ? `ข้อมูล ณ เดือน ${new Date(latestMonth + '-01').toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })}`
-              : 'กำลังโหลด...'}
+            {latestMonth ? `ข้อมูล ณ เดือน ${formatThaiMonth(latestMonth)}` : 'กำลังโหลด...'}
           </p>
         </div>
 
@@ -144,9 +144,7 @@ export default function DashboardPage() {
                   >
                     {months.length === 0 && <option value="">— ไม่มีข้อมูล —</option>}
                     {months.map((m) => (
-                      <option key={m} value={m}>
-                        {new Date(m + '-01').toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })}
-                      </option>
+                      <option key={m} value={m}>{formatThaiMonth(m)}</option>
                     ))}
                   </select>
                   <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
@@ -228,14 +226,7 @@ export default function DashboardPage() {
                         visibleRows.map((r) => (
                           <tr key={r.kpi.id} className="hover:bg-gray-50">
                             <td className="px-4 py-2.5">
-                              <Link href={
-                                r.kpi.mophTable === 's_epi2' ? '/kpi/vaccines'
-                                : (r.kpi.mophTable === 's_aged9' || r.kpi.mophTable === 's_aged9_app') ? `/kpi/aged9?table=${r.kpi.mophTable}`
-                                : r.kpi.mophTable === 's_dm_screen_risk' ? '/kpi/screen-risk?disease=dm'
-                                : r.kpi.mophTable === 's_ht_screen_risk' ? '/kpi/screen-risk?disease=ht'
-                                : r.kpi.mophTable === 's_child_hct' ? '/kpi/anemia'
-                                : `/kpi/${r.kpi.id}`
-                              } className="font-medium text-gray-900 hover:text-blue-700 hover:underline" title="ดูรายละเอียด">
+                              <Link href={detailViewHref(r.kpi)} className="font-medium text-gray-900 hover:text-blue-700 hover:underline" title="ดูรายละเอียด">
                                 {r.kpi.name}
                               </Link>
                               <div className="text-xs text-gray-400">{r.kpi.category} • {r.kpi.owner}</div>

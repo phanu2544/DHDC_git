@@ -1,5 +1,7 @@
 'use client'
 
+import { formatThaiMonth } from '@/lib/formatMonth'
+
 /**
  * เลือกเดือนของกราฟ detail + แสดงแหล่งข้อมูล (snapshot/live)
  * ใช้ร่วมกันทุกหน้า drilldown ที่อ่านผ่าน lib/monthlyView
@@ -24,7 +26,7 @@ export default function MonthPicker({
         onChange={(e) => onChange(e.target.value)}
         className="border rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50">
         {availableMonths.map((m) => (
-          <option key={m} value={m}>เดือน {m}</option>
+          <option key={m} value={m}>{formatThaiMonth(m)}</option>
         ))}
         <option value="live">ล่าสุด (สดจาก MOPH)</option>
       </select>
