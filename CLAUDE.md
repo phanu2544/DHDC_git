@@ -37,6 +37,7 @@ MOPH Open Data ─POST report_data─▶ computeMoph(engine) ─▶ monthly_data
 - **dashboard ลิงก์ drilldown** ตาม `mophTable` (ดู `app/dashboard/page.tsx`)
 
 ## เอกสารอื่น
+- [`docs/PLAN.md`](docs/PLAN.md) — **checklist งานที่ค้าง + ลำดับที่จะทำต่อ** (เริ่มงานใหม่ดูที่นี่)
 - [`README.md`](README.md) — ภาพรวม + setup + รายการหน้า
 - [`docs/production-runbook.md`](docs/production-runbook.md) — go-live (env, /api/init, replay config, batch, cron)
 - [`docs/owner-packet-kpi-2569.md`](docs/owner-packet-kpi-2569.md) — นิยาม KPI ที่ owner รับรอง (⚠️ บางป้าย field สลับ เช่น โลหิตจาง result/result_ill — ยึดค่าที่ตรง HDC)
