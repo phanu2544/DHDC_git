@@ -63,20 +63,34 @@ verify distribution บน /dashboard ให้ตรงกับ dev
 
 ---
 
-## Cron (แนวทาง A — in-process)
+## Process manager — ให้ cron/snapshot รันถาวร (แนวทาง A — in-process)
 
-ระบบมี node-cron ในตัว (lib/scheduler.ts) รันทุกวัน 07:00 scope 6611 — **ทำงานเฉพาะตอน Next.js server เปิดอยู่**
+ระบบมี node-cron ในตัว (lib/scheduler.ts) รันทุกวัน 07:00 scope 6611 — **ทำงานเฉพาะตอน Next.js server (next start) เปิดอยู่** · **ปมจริง:** dev/app + MariaDB หยุดเอง → ไม่มีประวัติรายเดือนสะสม (กราฟ trend ใช้ไม่ได้) → ต้องมี process manager ดูแล **2 ตัว: app + MariaDB**
 
-production ต้องรัน server แบบถาวร:
+### A1. App ผ่าน PM2 (มี `ecosystem.config.js` ให้แล้วใน repo)
 ```
-npm run build && npm start      # next start -p 3002
+npm install -g pm2                 # ครั้งแรก
+npm run build                      # PM2 รัน next start = production build เท่านั้น (dev ไม่นับ)
+pm2 start ecosystem.config.js      # ชื่อ process = dhdc-kpi (port 3002)
+pm2 save                           # บันทึก process list
+pm2 startup                        # ตั้งให้ PM2 ฟื้นเองตอน boot (ทำตามคำสั่งที่ขึ้นมา)
 ```
-ใช้ process manager ให้ restart อัตโนมัติ + รันตอน boot:
-- Windows: pm2 (`pm2 start npm --name dhdc -- start`) + `pm2 startup` หรือ NSSM (ติดตั้งเป็น Windows Service)
+ดู log / สถานะ: `pm2 logs dhdc-kpi` · `pm2 status` · restart: `pm2 restart dhdc-kpi`
 
-ตรวจว่า cron ลงทะเบียน: ดู log `[cron] ตั้งเวลา MOPH auto-batch แล้ว: "0 7 * * *"`
+### A2. MariaDB service auto-start (ต้องสิทธิ์ admin/UAC — **user ทำเอง**)
+service ชื่อ **`MariaDB`** (ห้ามแตะ service `MySQL` ของ BMS) — ตั้ง Automatic + auto-restart เมื่อ crash:
+```
+sc.exe config MariaDB start= auto                       # เริ่มอัตโนมัติตอน boot
+sc.exe failure MariaDB reset= 86400 actions= restart/5000/restart/5000/restart/5000
+```
+(หรือ services.msc → MariaDB → Startup type = Automatic, แท็บ Recovery = Restart the Service)
 
-> ถ้าเครื่องไม่ได้เปิดตลอด/restart บ่อย → พิจารณาแนวทาง B (Windows Task Scheduler ยิง /api/moph/batch) ภายหลัง โดยตั้ง `MOPH_CRON_DISABLED=1` กันซ้ำ
+### A3. ตรวจว่าทำงาน
+- cron ลงทะเบียน: `pm2 logs dhdc-kpi` เห็น `[cron] ตั้งเวลา MOPH auto-batch แล้ว: "0 7 * * *"`
+- หลังขึ้นเดือนใหม่ (เช่น 1 ก.ค.) cron รอบ 07:00 จะเพิ่มแถวเดือนใหม่ใน `monthly_data` → กราฟ trend มี ≥2 จุด
+- ตรวจเร็ว: `SELECT month, COUNT(*) FROM monthly_data GROUP BY month;` ควรเห็นหลายเดือน
+
+> **แนวทาง B (สำรอง):** ถ้าไม่อยากรัน server ถาวร → Windows Task Scheduler ยิง `POST /api/moph/batch` รายวันแทน + ตั้ง `MOPH_CRON_DISABLED=1` ใน `.env.local` กัน cron ซ้ำ
 
 ---
 

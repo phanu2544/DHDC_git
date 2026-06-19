@@ -36,7 +36,7 @@
 - [ ] `POST /api/init` บน production (สร้าง schema)
 - [ ] Replay config ตาม `production-runbook.md` (snapshot→gate→verify) — ⚠️ owner sign-off โลหิตจาง/NCD BP
 - [ ] ตั้ง target ปีงบ + batch scope 6611 + verify ตรง dev
-- [ ] **Process manager (PM2/NSSM) ดูแล app + MariaDB รันถาวร** — ไม่งั้น cron/snapshot ไม่ทำงาน (ปมที่เจอจริง: dev หยุดเอง)
+- [~] **Process manager (PM2/NSSM)** **(เตรียม 2026-06-18)** — ✅ `ecosystem.config.js` (รัน next start port 3002, autorestart) + runbook turnkey (A1 PM2 app / A2 MariaDB service auto-start / A3 verify) · build verify ผ่าน · **เหลือ user รันเอง:** `pm2 start ecosystem.config.js` + `sc.exe config MariaDB` (ต้อง UAC) → ปลดล็อก cron สะสมเดือน → trend ใช้ได้
 
 ## E. 💡 เพิ่ม KPI จาก MOPH ผ่านเว็บ (ทำเมื่อ owner เริ่มอยากเพิ่มเอง)
 > มีแล้ว: `/admin` tab MOPH+catalog → ใส่ table → Preview field → map (single/sumFields) → Save → ขึ้น Scorecard + generic drilldown `/kpi/[id]` + snapshot อัตโนมัติ
