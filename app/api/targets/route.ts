@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { currentFiscalYear } from '@/lib/targets'
+import { isValidDirection } from '@/lib/kpiStatus'
 
 /** ช่วงเดือนปฏิทิน (YYYY-MM) ของปีงบ พ.ศ. — เริ่ม 1 ต.ค. เช่น 2569 → 2025-10 ถึง 2026-09 */
 function fiscalYearMonthRange(fy: string): { start: string; end: string } {
@@ -42,21 +43,44 @@ export async function GET(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   const body = await req.json()
-  const { kpiId, fiscalYear, target, source, confirmedBy, confirmedAt, note } = body
+  const { kpiId, fiscalYear, mode, direction, target, source, confirmedBy, confirmedAt, note } = body
 
   if (!kpiId || !fiscalYear) {
     return NextResponse.json({ ok: false, message: 'ต้องระบุ kpiId และ fiscalYear' }, { status: 400 })
   }
-  const t = Number(target)
-  if (!Number.isFinite(t)) {
-    return NextResponse.json({ ok: false, message: 'target ต้องเป็นตัวเลข' }, { status: 400 })
-  }
-  if (t < 0) {
-    return NextResponse.json({ ok: false, message: 'target ติดลบไม่ได้' }, { status: 400 })
-  }
 
   const conn = await pool.getConnection()
   try {
+    // ── โหมด "ติดตามเฉยๆ": ตั้ง direction=none (เครื่องไม่ประเมิน) เก็บค่าเป้าเดิมไว้ (สลับกลับมาประเมินได้) ──
+    if (mode === 'track') {
+      await conn.execute('UPDATE kpi_reports SET evaluation_direction = ? WHERE id = ?', ['none', kpiId])
+      await conn.execute(
+        `INSERT INTO kpi_targets (kpi_id, fiscal_year, target, source, confirmed_by, confirmed_at, note)
+         VALUES (?,?,0,?,?,?,?)
+         ON DUPLICATE KEY UPDATE
+           source = VALUES(source), confirmed_by = VALUES(confirmed_by),
+           confirmed_at = VALUES(confirmed_at), note = VALUES(note)`,
+        [kpiId, String(fiscalYear), source ?? null, confirmedBy ?? null, confirmedAt ?? null, note ?? null],
+      )
+      return NextResponse.json({ ok: true, message: 'เปลี่ยนเป็นติดตามเฉยๆ (ไม่ประเมิน) แล้ว', mode: 'track' })
+    }
+
+    // ── โหมด "ประเมิน" (default): ตั้งทิศทาง (ถ้าส่งมา) + เป้าหมาย ──
+    const t = Number(target)
+    if (!Number.isFinite(t)) {
+      return NextResponse.json({ ok: false, message: 'target ต้องเป็นตัวเลข' }, { status: 400 })
+    }
+    if (t < 0) {
+      return NextResponse.json({ ok: false, message: 'target ติดลบไม่ได้' }, { status: 400 })
+    }
+    // ทิศทางต้องไม่ใช่ none (โหมดประเมินต้องมีทิศทาง) — ส่งมาเมื่อสลับจากติดตามกลับมาประเมิน
+    if (direction !== undefined) {
+      if (!isValidDirection(direction) || direction === 'none') {
+        return NextResponse.json({ ok: false, message: 'ทิศทางไม่ถูกต้อง (ต้องเป็น gte/lte/eq)' }, { status: 400 })
+      }
+      await conn.execute('UPDATE kpi_reports SET evaluation_direction = ? WHERE id = ?', [direction, kpiId])
+    }
+
     await conn.execute(
       `INSERT INTO kpi_targets (kpi_id, fiscal_year, target, source, confirmed_by, confirmed_at, note)
        VALUES (?,?,?,?,?,?,?)

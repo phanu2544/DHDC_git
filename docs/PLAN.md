@@ -15,9 +15,12 @@
 ---
 
 ## A. รอ owner (เราเตรียมให้แล้ว — owner ลงมือ)
-- [ ] ตั้ง **target ที่ยังเป็น 0** (~6 ตัว needs_review) ผ่าน `/admin/targets`
-- [ ] รับรองนิยาม **โลหิตจาง (result/target)** + **NCD BP (a1/b1)** — owner-packet หมวด 3
-- [ ] ตรวจ **2 KPI ไม่มีข้อมูล 6611** (`s_tida4i`, `s_childdev_specialpp48`) — ตารางถูกไหม/ดงเจริญไม่มีจริง
+> ตรวจ DB 2026-06-18: `target=0` มี **12 ตัว** = 🟢5 ตั้งใจ `none` (tracking ไม่ใช่งานค้าง: มะเร็งปากมดลูก, เบาหวานรายใหม่, มะเร็งลำไส้, วัคซีน, telemed) + 🔴7 `gte` ค้าง (ใน 7 มี 2 ติด no-data) · kpi_targets 2569 ใช้จริงแค่ 1 (มะเร็งเต้านม=85)
+- [ ] ตั้ง **target 5 ตัว** (มีข้อมูลจริง) ผ่าน `/admin/targets`: สูงอายุ9ด้าน×2 (`s_aged9`/`_app`), คัดกรอง DM 35+ (`s_dm_screen_risk`), Healthy Ageing (`s_kpi_ageing`), HT รายใหม่ (`s_ht_diag_follow`)
+- [ ] **ยืนยันค่า 85%** มะเร็งเต้านม (`kpi-1780629640168`) — DB ตั้งแล้ว 13 มิ.ย. แต่ packet ข้อ 4 ยังเขียน "ยังไม่กำหนด"
+- [ ] รับรองนิยาม **โลหิตจาง** + **NCD BP** — owner-packet ข้อ 9,10 (ยังไม่เซ็น · owner ตอบข้อ 1-8,11-12 แล้ว)
+- [ ] ตัดสิน **2 KPI ไม่มีข้อมูล 6611** (`s_tida4i` kpi-...272 target=75, `s_childdev_specialpp48` kpi-...336) — ตารางผิด/ดงเจริญไม่มีจริง
+- [ ] *(ปลดล็อก)* เลือก numerator **HT รายใหม่** (ข้อ 6) + mapping **TEDA4I** 2.3/2.4 (ข้อ 11 บรรทัดสรุปยังว่าง)
 
 ## B. Cleanup เล็ก (เราทำได้เลย — ได้ของเร็ว)  ⬅️ เริ่มที่นี่
 - [x] ลบ **kpi-01** (KPI ทดสอบค้าง ซ้ำ s_dm_control) — *DB op เสร็จ 2026-06-18: backup `_resync_backup/kpi-01-delete-2026-06-18/` → preview(ROLLBACK) → COMMIT (monthly_data 2 + moph_monthly_detail 56 + kpi_reports 1, kpi_targets 0) → verify หาย/ตัวจริง kpi-1780634936954 ครบ · รวม KPI 40→39*
@@ -28,6 +31,7 @@
 ## C. Feature ต่อยอด (เลือกทำ / รอเงื่อนไข)
 - [x] **registry `detail_view`** **(เสร็จ 2026-06-18)** — `lib/detailView.ts` (map mophTable→href + fallback `/kpi/[id]`), dashboard เรียก `detailViewHref(r.kpi)` แทน ternary chain · verify URL เดิมเป๊ะ
 - [x] **formatter เดือน พ.ศ./เดือนไทย** **(เสร็จ 2026-06-18)** — `lib/formatMonth.ts` `formatThaiMonth("2026-06")→"มิถุนายน 2569"` ใช้ใน MonthPicker + dashboard + `kpi/[id]` (ยุบ inline/ซ้ำ 4 จุด) · `compare` คง `month:'short'` ตั้งใจ (ไม่ยุบ)
+- [x] **target mode toggle + self-service** **(เสร็จ 2026-06-18)** — `/admin/targets` สลับ "ประเมิน ↔ ติดตามเฉยๆ" (track→`evaluation_direction=none` เก็บเป้าเดิม สลับกลับได้) + เลือกทิศทาง gte/lte + เปิดให้ **staff (ผู้รับผิดชอบ)** เข้ากรอกเอง (audit เก็บชื่อ) · API `PUT /api/targets` รับ `mode`/`direction` (backward-compat) · verify browser ครบ capture→test→restore · ⏳ ค้าง: ผูก owner↔user (D2-B), per-year mode (D3), auth ที่ API
 - [ ] **กราฟเส้น trend รายเดือน** — ⏳ รอ cron เก็บ **≥2 เดือน** ก่อน (โครงพร้อม)
 - [ ] ตาราง `kpi_monthly_measure` — เฉพาะถ้าทำ exec trend หนักๆ (ตอนนี้ field ดิบพอ)
 

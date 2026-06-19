@@ -33,7 +33,7 @@ export default function TargetsPage() {
   const [rows, setRows] = useState<TargetRow[]>([])
   const [loading, setLoading] = useState(true)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [form, setForm] = useState({ target: '', source: '', confirmedBy: '', confirmedAt: '', note: '' })
+  const [form, setForm] = useState({ mode: 'evaluate', direction: 'gte', target: '', source: '', confirmedBy: '', confirmedAt: '', note: '' })
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
 
@@ -51,7 +51,7 @@ export default function TargetsPage() {
   useEffect(() => {
     const session = getSession()
     if (!session) { router.push('/login'); return }
-    if (session.role !== 'admin') { router.push('/dashboard'); return }
+    // D2: เปิดให้ผู้รับผิดชอบ (staff) เข้ามากรอก/แก้เป้าได้ ไม่ใช่แค่ admin (audit เก็บชื่อผู้กรอก)
     setUser(session)
     load(year)
   }, [router, load, year])
@@ -74,6 +74,8 @@ export default function TargetsPage() {
     setEditingId(r.id)
     setMsg('')
     setForm({
+      mode: r.direction === 'none' ? 'track' : 'evaluate',
+      direction: r.direction && r.direction !== 'none' ? r.direction : 'gte',
       target: effectiveTarget(r)?.toString() ?? '',
       source: r.source ?? '',
       confirmedBy: r.confirmed_by ?? user?.name ?? '',
@@ -83,25 +85,28 @@ export default function TargetsPage() {
   }
 
   async function save(kpiId: string) {
-    if (form.target === '' || isNaN(Number(form.target)) || Number(form.target) < 0) {
+    const isTrack = form.mode === 'track'
+    if (!isTrack && (form.target === '' || isNaN(Number(form.target)) || Number(form.target) < 0)) {
       setMsg('⚠️ กรุณากรอกเป้าหมายเป็นตัวเลข ≥ 0'); return
     }
     setSaving(true); setMsg('')
     try {
+      const body = isTrack
+        ? { kpiId, fiscalYear: year, mode: 'track',
+            source: form.source || null, confirmedBy: form.confirmedBy || null,
+            confirmedAt: form.confirmedAt || null, note: form.note || null }
+        : { kpiId, fiscalYear: year, mode: 'evaluate', direction: form.direction, target: Number(form.target),
+            source: form.source || null, confirmedBy: form.confirmedBy || null,
+            confirmedAt: form.confirmedAt || null, note: form.note || null }
       const res = await fetch('/api/targets', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          kpiId, fiscalYear: year, target: Number(form.target),
-          source: form.source || null, confirmedBy: form.confirmedBy || null,
-          confirmedAt: form.confirmedAt || null, note: form.note || null,
-        }),
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
       })
       const j = await res.json()
       if (!res.ok || !j.ok) throw new Error(j.message || 'บันทึกไม่สำเร็จ')
       setEditingId(null)
       await load(year)
-      setMsg('✅ บันทึกเป้าหมายสำเร็จ — รอบ batch ถัดไปจะ stamp ลง monthly_data')
+      setMsg(isTrack ? '✅ เปลี่ยนเป็นติดตามเฉยๆ แล้ว' : '✅ บันทึกเป้าหมายสำเร็จ — รอบ batch ถัดไปจะ stamp ลง monthly_data')
     } catch (e) {
       setMsg('❌ ' + String(e))
     } finally {
@@ -222,51 +227,93 @@ export default function TargetsPage() {
                             </span>
                           </td>
                           <td className="px-3 py-2.5 text-right">
-                            {r.direction !== 'none' && (
-                              <button onClick={() => isEditing ? setEditingId(null) : startEdit(r)}
-                                className="text-blue-600 hover:underline text-xs">
-                                {isEditing ? 'ปิด' : (st === 'set' ? 'แก้ไข' : 'ตั้งเป้า')}
-                              </button>
-                            )}
+                            <button onClick={() => isEditing ? setEditingId(null) : startEdit(r)}
+                              className="text-blue-600 hover:underline text-xs">
+                              {isEditing ? 'ปิด' : (st === 'unset' ? 'ตั้งเป้า' : 'แก้ไข')}
+                            </button>
                           </td>
                         </tr>
                         {isEditing && (
                           <tr className="bg-gray-50">
                             <td colSpan={6} className="px-4 py-4">
-                              <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-                                <div>
-                                  <label className="text-xs text-gray-500">เป้าหมาย ({r.unit || '%'})</label>
-                                  <input value={form.target} onChange={(e) => setForm({ ...form, target: e.target.value })}
-                                    placeholder="เช่น 80" className="w-full border rounded-lg px-2 py-1.5 text-sm" />
-                                </div>
-                                <div>
-                                  <label className="text-xs text-gray-500">แหล่งอ้างอิง</label>
-                                  <input value={form.source} onChange={(e) => setForm({ ...form, source: e.target.value })}
-                                    placeholder="เกณฑ์กระทรวง/จังหวัด" className="w-full border rounded-lg px-2 py-1.5 text-sm" list="src-list" />
-                                  <datalist id="src-list">
-                                    <option value="เกณฑ์กระทรวง" /><option value="เกณฑ์จังหวัด" /><option value="มติ คปสอ." />
-                                  </datalist>
-                                </div>
-                                <div>
-                                  <label className="text-xs text-gray-500">ผู้ยืนยัน</label>
-                                  <input value={form.confirmedBy} onChange={(e) => setForm({ ...form, confirmedBy: e.target.value })}
-                                    className="w-full border rounded-lg px-2 py-1.5 text-sm" />
-                                </div>
-                                <div>
-                                  <label className="text-xs text-gray-500">วันที่ยืนยัน</label>
-                                  <input value={form.confirmedAt} onChange={(e) => setForm({ ...form, confirmedAt: e.target.value })}
-                                    placeholder="YYYY-MM-DD" className="w-full border rounded-lg px-2 py-1.5 text-sm" />
-                                </div>
-                                <div>
-                                  <label className="text-xs text-gray-500">หมายเหตุ</label>
-                                  <input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })}
-                                    className="w-full border rounded-lg px-2 py-1.5 text-sm" />
-                                </div>
+                              {/* สลับโหมด: ประเมิน (ตั้งเป้า) / ติดตามเฉยๆ */}
+                              <div className="inline-flex rounded-lg border border-gray-300 overflow-hidden mb-3 text-sm">
+                                <button onClick={() => setForm({ ...form, mode: 'evaluate' })}
+                                  className={`px-4 py-1.5 ${form.mode === 'evaluate' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'}`}>
+                                  ประเมิน (ตั้งเป้า)
+                                </button>
+                                <button onClick={() => setForm({ ...form, mode: 'track' })}
+                                  className={`px-4 py-1.5 border-l border-gray-300 ${form.mode === 'track' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'}`}>
+                                  ติดตามเฉยๆ
+                                </button>
                               </div>
+
+                              {form.mode === 'evaluate' ? (
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                  <div>
+                                    <label className="text-xs text-gray-500">เป้าหมาย ({r.unit || '%'})</label>
+                                    <input value={form.target} onChange={(e) => setForm({ ...form, target: e.target.value })}
+                                      placeholder="เช่น 80" className="w-full border rounded-lg px-2 py-1.5 text-sm" />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-gray-500">ทิศทาง</label>
+                                    <select value={form.direction} onChange={(e) => setForm({ ...form, direction: e.target.value })}
+                                      className="w-full border rounded-lg px-2 py-1.5 text-sm bg-white">
+                                      <option value="gte">ยิ่งมากยิ่งดี</option>
+                                      <option value="lte">ยิ่งน้อยยิ่งดี</option>
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-gray-500">แหล่งอ้างอิง</label>
+                                    <input value={form.source} onChange={(e) => setForm({ ...form, source: e.target.value })}
+                                      placeholder="เกณฑ์กระทรวง/จังหวัด" className="w-full border rounded-lg px-2 py-1.5 text-sm" list="src-list" />
+                                    <datalist id="src-list">
+                                      <option value="เกณฑ์กระทรวง" /><option value="เกณฑ์จังหวัด" /><option value="มติ คปสอ." />
+                                    </datalist>
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-gray-500">ผู้ยืนยัน</label>
+                                    <input value={form.confirmedBy} onChange={(e) => setForm({ ...form, confirmedBy: e.target.value })}
+                                      className="w-full border rounded-lg px-2 py-1.5 text-sm" />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-gray-500">วันที่ยืนยัน</label>
+                                    <input value={form.confirmedAt} onChange={(e) => setForm({ ...form, confirmedAt: e.target.value })}
+                                      placeholder="YYYY-MM-DD" className="w-full border rounded-lg px-2 py-1.5 text-sm" />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-gray-500">หมายเหตุ</label>
+                                    <input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })}
+                                      className="w-full border rounded-lg px-2 py-1.5 text-sm" />
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                  <div className="md:col-span-3 text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                                    ℹ️ โหมดติดตาม = ไม่ต้องตั้งเป้า เครื่องจะไม่ตัดสินผ่าน/ไม่ผ่าน · บันทึกเหตุผล + ผู้ตัดสินไว้เป็นหลักฐาน (สลับกลับมาประเมินได้)
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-gray-500">ผู้ตัดสิน</label>
+                                    <input value={form.confirmedBy} onChange={(e) => setForm({ ...form, confirmedBy: e.target.value })}
+                                      className="w-full border rounded-lg px-2 py-1.5 text-sm" />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-gray-500">วันที่</label>
+                                    <input value={form.confirmedAt} onChange={(e) => setForm({ ...form, confirmedAt: e.target.value })}
+                                      placeholder="YYYY-MM-DD" className="w-full border rounded-lg px-2 py-1.5 text-sm" />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-gray-500">เหตุผลที่ไม่ประเมิน</label>
+                                    <input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })}
+                                      placeholder="เช่น เป็นค่าติดตาม ไม่มีเกณฑ์" className="w-full border rounded-lg px-2 py-1.5 text-sm" />
+                                  </div>
+                                </div>
+                              )}
+
                               <div className="flex gap-2 mt-3">
                                 <button onClick={() => save(r.id)} disabled={saving}
                                   className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm px-4 py-1.5 rounded-lg">
-                                  {saving ? 'กำลังบันทึก...' : 'บันทึกเป้าหมาย'}
+                                  {saving ? 'กำลังบันทึก...' : (form.mode === 'track' ? 'บันทึก (ติดตามเฉยๆ)' : 'บันทึกเป้าหมาย')}
                                 </button>
                                 <button onClick={() => setEditingId(null)}
                                   className="border border-gray-300 text-sm px-4 py-1.5 rounded-lg hover:bg-gray-100">ยกเลิก</button>
