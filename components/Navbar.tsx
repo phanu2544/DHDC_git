@@ -19,7 +19,8 @@ export default function Navbar({ user }: NavbarProps) {
   const pathname = usePathname()
   const router = useRouter()
 
-  function handleLogout() {
+  async function handleLogout() {
+    try { await fetch('/api/auth/logout', { method: 'POST' }) } catch { /* เคลียร์ฝั่ง client ต่อแม้ API ล่ม */ }
     setSession(null)
     router.push('/login')
   }

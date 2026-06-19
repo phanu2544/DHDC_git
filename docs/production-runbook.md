@@ -16,7 +16,10 @@ DB_USER=<prod user>
 DB_PASSWORD=<prod password>
 DB_NAME=dhdc
 NEXT_PUBLIC_DB_LABEL=production
+AUTH_SECRET=<ค่าสุ่มยาว — openssl rand -base64 32>
 ```
+
+> ⚠️ **AUTH_SECRET จำเป็นบน production** (Auth-1) — กุญแจเซ็น session cookie · ถ้าไม่ตั้ง ระบบใช้ fallback ที่ไม่ปลอดภัย (dev เท่านั้น) → ใครก็ปลอม session ได้
 
 > ถ้าไม่ตั้ง env ระบบ default = local dev (dhdc_dev) อัตโนมัติ — เครื่อง dev จึงไม่ต้องทำอะไร
 > `lib/db.ts` อ่านจาก env เท่านั้น ไม่มีค่า production hardcode
