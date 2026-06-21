@@ -8,6 +8,6 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ ok: false }, { status: 401 })
   return NextResponse.json({
     ok: true,
-    user: { id: session.sub, email: session.email, name: session.name, role: session.role },
+    user: { id: session.sub, email: session.email, name: session.name, role: session.role, department: session.department },
   })
 }

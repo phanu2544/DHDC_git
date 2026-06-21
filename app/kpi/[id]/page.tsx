@@ -1,16 +1,15 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, Cell } from 'recharts'
 import Navbar from '@/components/Navbar'
-import { getSession } from '@/lib/storage'
+import { useAuth } from '@/lib/useAuth'
 import { STATUS_META } from '@/lib/kpiStatus'
 import { DIRECTION_LABEL } from '@/lib/scorecard'
 import { DISTRICT_NAME } from '@/lib/areaRef'
 import { formatThaiMonth } from '@/lib/formatMonth'
-import type { User, KpiEvalStatus, EvalDirection } from '@/lib/types'
+import type { KpiEvalStatus, EvalDirection } from '@/lib/types'
 
 // สี badge สถานะ (presentation เฉพาะหน้านี้ — ชุดเดียวกับ Dashboard)
 const BADGE: Record<KpiEvalStatus, string> = {
@@ -53,8 +52,7 @@ interface DetailResp {
 }
 
 export default function KpiDetailPage({ params }: { params: { id: string } }) {
-  const router = useRouter()
-  const [user, setUser] = useState<User | null>(null)
+  const { user } = useAuth()
   const [data, setData] = useState<DetailResp | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -75,11 +73,9 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
   }, [params.id])
 
   useEffect(() => {
-    const session = getSession()
-    if (!session) { router.push('/login'); return }
-    setUser(session)
+    if (!user) return
     load()
-  }, [router, load])
+  }, [user, load])
 
   if (!user) return null
 

@@ -1,18 +1,17 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useAuth } from '@/lib/useAuth'
 import Link from 'next/link'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import Navbar from '@/components/Navbar'
 import StatusBadge from '@/components/StatusBadge'
-import { getSession } from '@/lib/storage'
 import { STATUS_META } from '@/lib/kpiStatus'
 import { buildScorecard, EXECUTIVE_SEVERITY_ORDER, ATTENTION_STATUSES, DIRECTION_LABEL } from '@/lib/scorecard'
 import { exportScorecardXlsx } from '@/lib/exportScorecard'
 import { detailViewHref } from '@/lib/detailView'
 import { formatThaiMonth } from '@/lib/formatMonth'
-import type { User, KPIReport, KpiEvalStatus, MonthlyData } from '@/lib/types'
+import type { KPIReport, KpiEvalStatus, MonthlyData } from '@/lib/types'
 
 const PIE_COLORS = ['#22c55e', '#3b82f6', '#ef4444']
 
@@ -30,8 +29,7 @@ const STATUS_STYLE: Record<KpiEvalStatus, { card: string; badge: string }> = {
 }
 
 export default function DashboardPage() {
-  const router = useRouter()
-  const [user, setUser] = useState<User | null>(null)
+  const { user } = useAuth()
   const [kpis, setKpis] = useState<KPIReport[]>([])
   const [monthly, setMonthly] = useState<MonthlyData[]>([])
   const [months, setMonths] = useState<string[]>([])
@@ -42,10 +40,7 @@ export default function DashboardPage() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    const session = getSession()
-    if (!session) { router.push('/login'); return }
-    setUser(session)
-
+    if (!user) return
     async function load() {
       try {
         const [kRes, mRes] = await Promise.all([
@@ -70,7 +65,7 @@ export default function DashboardPage() {
       }
     }
     load()
-  }, [router])
+  }, [user])
 
   // ── Executive Scorecard: ประเมินทุก KPI สำหรับเดือนที่เลือก (client-side, pure) ──
   const scorecard = useMemo(

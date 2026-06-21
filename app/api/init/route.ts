@@ -1,9 +1,38 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { INITIAL_USERS, INITIAL_KPIS, INITIAL_MONTHLY_DATA, INITIAL_CATALOG } from '@/lib/initialData'
 import { hashPassword } from '@/lib/password'
+import { COOKIE_NAME, verifySession } from '@/lib/auth'
 
-export async function POST() {
+/** มี user ในระบบแล้วหรือยัง — ถ้ายัง = ยัง bootstrap ไม่เสร็จ (เปิดให้รัน init ได้) */
+async function hasExistingUsers(): Promise<boolean> {
+  try {
+    const conn = await pool.getConnection()
+    try {
+      const [rows] = await conn.execute('SELECT COUNT(*) AS c FROM users')
+      return (rows as { c: number }[])[0].c > 0
+    } finally {
+      conn.release()
+    }
+  } catch {
+    return false // ตาราง users ยังไม่มี → ถือว่ายังไม่ bootstrap
+  }
+}
+
+export async function POST(req: NextRequest) {
+  // /api/init เป็น public (bootstrap DB ใหม่ที่ยังไม่มี user ให้ login)
+  // แต่ถ้า bootstrap เสร็จแล้ว (มี user) → ต้องเป็น admin เท่านั้นจึงจะ re-run ได้ (กันคนนอกยิงซ้ำ)
+  if (await hasExistingUsers()) {
+    const token = req.cookies.get(COOKIE_NAME)?.value
+    const session = token ? await verifySession(token) : null
+    if (!session || session.role !== 'admin') {
+      return NextResponse.json(
+        { ok: false, message: 'ระบบถูกตั้งค่าแล้ว — ต้องเป็นผู้ดูแลระบบ (admin) จึงจะรัน init ซ้ำได้' },
+        { status: 403 },
+      )
+    }
+  }
+
   const conn = await pool.getConnection()
   try {
     // ── categories ─────────────────────────────────────────────────────────

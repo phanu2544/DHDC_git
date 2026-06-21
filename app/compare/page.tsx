@@ -1,16 +1,14 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useAuth } from '@/lib/useAuth'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import Navbar from '@/components/Navbar'
 import StatusBadge from '@/components/StatusBadge'
-import { getSession } from '@/lib/storage'
-import type { User, KPIReport, MonthlyData } from '@/lib/types'
+import type { KPIReport, MonthlyData } from '@/lib/types'
 
 export default function ComparePage() {
-  const router = useRouter()
-  const [user, setUser] = useState<User | null>(null)
+  const { user } = useAuth()
   const [kpis, setKpis] = useState<KPIReport[]>([])
   const [monthly, setMonthly] = useState<MonthlyData[]>([])
   const [months, setMonths] = useState<string[]>([])
@@ -18,10 +16,7 @@ export default function ComparePage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const session = getSession()
-    if (!session) { router.push('/login'); return }
-    setUser(session)
-
+    if (!user) return
     async function load() {
       try {
         const [kRes, mRes] = await Promise.all([fetch('/api/kpis'), fetch('/api/monthly')])
@@ -37,7 +32,7 @@ export default function ComparePage() {
       }
     }
     load()
-  }, [router])
+  }, [user])
 
   if (!user) return null
 

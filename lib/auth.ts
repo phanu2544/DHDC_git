@@ -19,11 +19,12 @@ export interface SessionPayload {
   email: string
   name: string
   role: string
+  department: string
 }
 
 /** เซ็น JWT จากข้อมูล user → string เก็บใน cookie */
 export async function signSession(p: SessionPayload): Promise<string> {
-  return new SignJWT({ email: p.email, name: p.name, role: p.role })
+  return new SignJWT({ email: p.email, name: p.name, role: p.role, department: p.department })
     .setProtectedHeader({ alg: 'HS256' })
     .setSubject(p.sub)
     .setIssuedAt()
@@ -40,6 +41,7 @@ export async function verifySession(token: string): Promise<SessionPayload | nul
       email: String(payload.email ?? ''),
       name: String(payload.name ?? ''),
       role: String(payload.role ?? ''),
+      department: String(payload.department ?? ''),
     }
   } catch {
     return null

@@ -1,11 +1,10 @@
 'use client'
 
 import { Fragment, useCallback, useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Navbar from '@/components/Navbar'
-import { getSession } from '@/lib/storage'
+import { useAuth } from '@/lib/useAuth'
 import { DIRECTION_LABEL } from '@/lib/scorecard'
-import type { User, EvalDirection } from '@/lib/types'
+import type { EvalDirection } from '@/lib/types'
 
 interface TargetRow {
   id: string
@@ -27,8 +26,7 @@ const YEARS = ['2569', '2570']
 const num = (v: unknown): number | null => (v === null || v === '' ? null : Number(v))
 
 export default function TargetsPage() {
-  const router = useRouter()
-  const [user, setUser] = useState<User | null>(null)
+  const { user } = useAuth()
   const [year, setYear] = useState('2569')
   const [rows, setRows] = useState<TargetRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -48,13 +46,11 @@ export default function TargetsPage() {
     }
   }, [])
 
+  // D2: เปิดให้ผู้รับผิดชอบ (staff) เข้ามากรอก/แก้เป้าได้ ไม่ใช่แค่ admin (audit เก็บชื่อผู้กรอก)
   useEffect(() => {
-    const session = getSession()
-    if (!session) { router.push('/login'); return }
-    // D2: เปิดให้ผู้รับผิดชอบ (staff) เข้ามากรอก/แก้เป้าได้ ไม่ใช่แค่ admin (audit เก็บชื่อผู้กรอก)
-    setUser(session)
+    if (!user) return
     load(year)
-  }, [router, load, year])
+  }, [user, load, year])
 
   function effectiveTarget(r: TargetRow): number | null {
     const yt = num(r.year_target)

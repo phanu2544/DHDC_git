@@ -1,9 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Navbar from '@/components/Navbar'
-import { getSession } from '@/lib/storage'
+import { useAuth } from '@/lib/useAuth'
 import type { User, KPIReport, KPIStatus, KPICategory, MophCatalogEntry, MophMapping, CalcMode, EvalDirection } from '@/lib/types'
 
 // หมวดหมู่จะถูกโหลดจาก DB ผ่าน /api/categories (ดูใน state)
@@ -146,8 +145,7 @@ interface BatchResult {
 }
 
 export default function AdminPage() {
-  const router = useRouter()
-  const [user, setUser] = useState<User | null>(null)
+  const { user } = useAuth({ requireAdmin: true })
   const [kpis, setKpis] = useState<KPIReport[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [tab, setTab] = useState<'kpi' | 'users' | 'moph' | 'catalog' | 'db'>('kpi')
@@ -212,13 +210,11 @@ export default function AdminPage() {
   })
 
   useEffect(() => {
-    const session = getSession()
-    if (!session) { router.push('/login'); return }
-    if (session.role !== 'admin') { router.push('/dashboard'); return }
-    setUser(session)
+    if (!user) return
     loadData()
     fetch('/api/dbinfo').then((r) => r.json()).then(setDbInfo).catch(() => {})
-  }, [router])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user])
 
   async function loadData() {
     setLoading(true)

@@ -1,12 +1,11 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useAuth } from '@/lib/useAuth'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer } from 'recharts'
 import Navbar from '@/components/Navbar'
 import StatusBadge from '@/components/StatusBadge'
-import { getSession } from '@/lib/storage'
-import type { User, KPIReport, KPIStatus, KPICategory } from '@/lib/types'
+import type { KPIReport, KPIStatus, KPICategory } from '@/lib/types'
 
 const STATUSES = [
   { value: '', label: 'ทุกสถานะ' },
@@ -16,8 +15,7 @@ const STATUSES = [
 ]
 
 export default function KPIListPage() {
-  const router = useRouter()
-  const [user, setUser] = useState<User | null>(null)
+  const { user } = useAuth()
   const [kpis, setKpis] = useState<KPIReport[]>([])
   const [categories, setCategories] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
@@ -29,16 +27,14 @@ export default function KPIListPage() {
   const [chartLoading, setChartLoading] = useState(false)
 
   useEffect(() => {
-    const session = getSession()
-    if (!session) { router.push('/login'); return }
-    setUser(session)
+    if (!user) return
     Promise.all([fetch('/api/kpis'), fetch('/api/categories')])
       .then(async ([kRes, cRes]) => {
         setKpis(await kRes.json())
         if (cRes.ok) setCategories(await cRes.json())
       })
       .finally(() => setLoading(false))
-  }, [router])
+  }, [user])
 
   async function openDetail(kpi: KPIReport) {
     setSelected(kpi)
