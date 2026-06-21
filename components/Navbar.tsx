@@ -47,29 +47,28 @@ export default function Navbar({ user }: NavbarProps) {
                   {label}
                 </Link>
               ))}
+              {/* ตั้งเป้าหมาย: staff (ผู้รับผิดชอบ) เข้าได้ด้วยตาม D2-C */}
+              <Link
+                href="/admin/targets"
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  pathname === '/admin/targets'
+                    ? 'bg-blue-700 text-white'
+                    : 'text-blue-200 hover:bg-blue-800 hover:text-white'
+                }`}
+              >
+                ตั้งเป้าหมาย
+              </Link>
               {user.role === 'admin' && (
-                <>
-                  <Link
-                    href="/admin/targets"
-                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                      pathname === '/admin/targets'
-                        ? 'bg-blue-700 text-white'
-                        : 'text-blue-200 hover:bg-blue-800 hover:text-white'
-                    }`}
-                  >
-                    ตั้งเป้าหมาย
-                  </Link>
-                  <Link
-                    href="/admin"
-                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                      pathname === '/admin'
-                        ? 'bg-blue-700 text-white'
-                        : 'text-blue-200 hover:bg-blue-800 hover:text-white'
-                    }`}
-                  >
-                    จัดการระบบ
-                  </Link>
-                </>
+                <Link
+                  href="/admin"
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                    pathname === '/admin'
+                      ? 'bg-blue-700 text-white'
+                      : 'text-blue-200 hover:bg-blue-800 hover:text-white'
+                  }`}
+                >
+                  จัดการระบบ
+                </Link>
               )}
             </div>
           </div>
