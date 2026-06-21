@@ -25,6 +25,8 @@ export interface BatchOptions {
   areacode?: string
   /** เดือนที่บันทึก (YYYY-MM) ค่าว่าง = เดือนปัจจุบัน */
   month?: string
+  /** จำกัดเฉพาะ KPI เดียว (re-snapshot ตัวเดียวหลังแก้ config โดยไม่กระทบตัวอื่น) — ว่าง = ทุกตัว */
+  kpiId?: string
 }
 
 export interface BatchItemResult {
@@ -64,7 +66,7 @@ export interface BatchResult {
  *   - ok      → INSERT monthly_data (target = kpi.target เท่านั้น)
  */
 export async function runBatchSave(opts: BatchOptions = {}): Promise<BatchResult> {
-  const { year = '2569', province = '66', hospcode = '', areacode = '', month } = opts
+  const { year = '2569', province = '66', hospcode = '', areacode = '', month, kpiId = '' } = opts
 
   const saveMonth =
     month || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
@@ -85,7 +87,9 @@ export async function runBatchSave(opts: BatchOptions = {}): Promise<BatchResult
               target, moph_config
        FROM kpi_reports
        WHERE moph_table IS NOT NULL AND moph_table <> ''
+         ${kpiId ? 'AND id = ?' : ''}
        ORDER BY id`,
+      kpiId ? [kpiId] : [],
     )
     kpis = rows as typeof kpis
     targetMap = await getTargetsForYear(conn, year)

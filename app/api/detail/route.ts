@@ -3,6 +3,7 @@ import pool from '@/lib/db'
 import { buildMappingFromLegacy, computeMoph } from '@/lib/mophEngine'
 import { evaluateKpiStatus } from '@/lib/kpiStatus'
 import { tambonCodeOf, tambonNameOf } from '@/lib/areaRef'
+import { fieldLabelsFor } from '@/lib/detailLabels'
 import type { MophMapping, EvalDirection, KpiEvalStatus } from '@/lib/types'
 
 /**
@@ -35,7 +36,7 @@ export async function GET(req: NextRequest) {
   try {
     // ── KPI meta + mapping (ชุดเดียวกับ batch/scorecard) ──────────────────
     const [kpiRows] = await conn.execute(
-      `SELECT id, name, category, owner, unit, target, description,
+      `SELECT id, name, category, owner, unit, target, description, moph_table,
               COALESCE(evaluation_direction,'gte') AS direction,
               moph_value_field, moph_target_field, moph_calc_mode, moph_config
        FROM kpi_reports WHERE id = ?`, [kpiId])
@@ -122,7 +123,17 @@ export async function GET(req: NextRequest) {
     // ลำดับคอลัมน์: target/value fields ของ mapping ก่อน แล้วที่เหลือเรียงชื่อ
     const mappingFields = [...(mapping.targetFields ?? []), ...mapping.valueFields]
     const rest = Object.keys(total.fields).filter((f) => !mappingFields.includes(f)).sort()
-    const fieldList = [...mappingFields.filter((f) => f in total.fields), ...rest]
+    let fieldList = [...mappingFields.filter((f) => f in total.fields), ...rest]
+
+    // ป้ายไทย + จัดลำดับคอลัมน์ตาม label map (ถ้ามี) — ให้หน้า generic อ่านง่ายแบบ HDC
+    // ไม่มี map → ใช้ชื่อ field ดิบ + ลำดับเดิม (KPI อื่นไม่กระทบ)
+    const labelMap = fieldLabelsFor(kpi.moph_table as string)
+    if (labelMap) {
+      const ordered = Object.keys(labelMap).filter((f) => f in total.fields)
+      fieldList = [...ordered, ...fieldList.filter((f) => !(f in labelMap))]
+    }
+    const fieldLabels: Record<string, string> = {}
+    for (const f of fieldList) fieldLabels[f] = labelMap?.[f] ?? f
 
     // mapping ใช้ได้จริงไหม (KPI ที่ BLOCK จะ error → UI งดแสดง %)
     const engineCheck = computeMoph(allRows, mapping)
@@ -137,7 +148,7 @@ export async function GET(req: NextRequest) {
       savedMonthly: md ? { value: Number(md.value), target: Number(md.target) } : null,
       mappingOk: engineCheck.errors.length === 0,
       mappingErrors: engineCheck.errors,
-      fieldList, groups, total,
+      fieldList, fieldLabels, groups, total,
     })
   } catch (err) {
     return NextResponse.json({ ok: false, message: String(err) }, { status: 500 })

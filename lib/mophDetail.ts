@@ -18,10 +18,12 @@ const QUARTER_RE = /q[1-4]/i
 const MONTH_SUFFIX_RE = /(0[1-9]|1[0-2])$/
 
 /**
- * ตารางที่ "ค่าจริง" อยู่ในคอลัมน์รายเดือน (เช่น s_epi2: dtp4_10, target09) — ห้ามตัด
- * ตารางพวกนี้เก็บทุก field (ยกเว้น meta) เพื่อให้กราฟ detail ย้อนหลังได้
+ * ตารางที่ "ค่าจริง" อยู่ในคอลัมน์รายเดือน/ไตรมาส — ห้ามตัด เก็บทุก field (ยกเว้น meta)
+ *  - s_epi2       : ค่าจริงอยู่รายเดือน (dtp4_10, target09)
+ *  - s_kpi_ageing : ค่าจริงอยู่รายไตรมาส (targetq1, result1q1 = คัดกรอง/ติดสังคม รอบ1-2)
+ *                   ถ้าตัด q1-q4 จะเหลือแค่ target (จำนวนผู้สูงอายุ) คิด % ไม่ได้
  */
-const KEEP_MONTHLY_TABLES = new Set(['s_epi2'])
+const KEEP_MONTHLY_TABLES = new Set(['s_epi2', 's_kpi_ageing'])
 
 export function isSummaryField(name: string): boolean {
   if (META_FIELDS.has(name.toLowerCase())) return false

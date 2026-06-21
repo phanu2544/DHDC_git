@@ -47,6 +47,7 @@ interface DetailResp {
   mappingOk?: boolean
   mappingErrors?: string[]
   fieldList?: string[]
+  fieldLabels?: Record<string, string>
   groups?: GroupRow[]
   total?: GroupRow
 }
@@ -82,6 +83,7 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
   const groups = data?.groups ?? []
   const total = data?.total
   const fieldList = data?.fieldList ?? []
+  const fieldLabels = data?.fieldLabels ?? {}
   const showPct = data?.mappingOk && groups.some((g) => g.calcValue !== null)
   const target = data?.kpi?.target ?? 0
   const direction = data?.kpi?.direction
@@ -191,7 +193,7 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                         <tr>
                           <th className="text-left px-4 py-2 font-medium">ตำบล</th>
                           {fieldList.map((f) => (
-                            <th key={f} className="text-right px-3 py-2 font-mono font-medium">{f}</th>
+                            <th key={f} className="text-right px-3 py-2 font-medium whitespace-nowrap">{fieldLabels[f] ?? f}</th>
                           ))}
                           {showPct && <th className="text-right px-4 py-2 font-medium">ผลงาน ({data.kpi.unit})</th>}
                           {showPct && <th className="text-center px-4 py-2 font-medium">สถานะ</th>}
