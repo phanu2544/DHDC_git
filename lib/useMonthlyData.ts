@@ -1,14 +1,15 @@
 'use client'
 
 import { useCallback, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { getSession } from '@/lib/storage'
+import { useAuth } from '@/lib/useAuth'
 import type { User } from '@/lib/types'
 
 /**
  * Phase 8 — state กลางของหน้า drilldown ที่อ่านผ่าน lib/monthlyView
  * รวม boilerplate ที่ซ้ำกันทุกหน้า: user/session, data, month, loading, error, fetch
  * หน้าที่ใช้ยังสร้าง URL เอง (param ต่างกัน เช่น table/disease) ผ่าน loadUrl()
+ *
+ * Auth-3: identity มาจาก /api/auth/me (signed cookie) ผ่าน useAuth — ไม่เชื่อ localStorage
  */
 export interface MonthlyBase {
   ok: boolean
@@ -19,20 +20,17 @@ export interface MonthlyBase {
 }
 
 export function useMonthlyData<T extends MonthlyBase>() {
-  const router = useRouter()
-  const [user, setUser] = useState<User | null>(null)
+  const { user } = useAuth() // ตรวจ /me + เด้ง /login เองถ้าไม่ได้ login
   const [data, setData] = useState<T | null>(null)
   const [month, setMonth] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
-  /** ตรวจ session — คืน user หรือ null (ถ้าไม่มี → redirect ไป /login) */
-  const requireSession = useCallback((): User | null => {
-    const s = getSession()
-    if (!s) { router.push('/login'); return null }
-    setUser(s)
-    return s
-  }, [router])
+  /**
+   * คืน user ที่ server รับรอง (null ระหว่างรอ /me)
+   * identity เปลี่ยนเมื่อ user มา → effect ของหน้า (deps [requireSession,...]) re-run เอง แล้วโหลดข้อมูล
+   */
+  const requireSession = useCallback((): User | null => user, [user])
 
   /** ยิง fetch URL (หน้าสร้างเอง) → set data + month + loading/error */
   const loadUrl = useCallback((url: string) => {

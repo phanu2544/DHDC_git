@@ -14,6 +14,7 @@ const DETAIL_VIEW: Record<string, (kpi: KPIReport) => string> = {
   s_dm_screen_risk: () => '/kpi/screen-risk?disease=dm',
   s_ht_screen_risk: () => '/kpi/screen-risk?disease=ht',
   s_child_hct: () => '/kpi/anemia',
+  s_kpi_ageing: () => '/kpi/ageing',
 }
 
 /** href ของหน้า drilldown สำหรับ KPI หนึ่งตัว (registry → fallback generic /kpi/[id]) */
