@@ -20,24 +20,11 @@ export const INITIAL_USERS: User[] = [
   { id: 'u3', email: 'staff2@hospital.go.th', password: 'staff123', name: 'สมหญิง รักดี', role: 'staff', department: 'งานอนามัยแม่และเด็ก' },
 ]
 
-export const INITIAL_KPIS: KPIReport[] = [
-  {
-    id: 'kpi-01', name: 'ผู้ป่วยเบาหวานที่ควบคุมระดับน้ำตาลได้ดี (HbA1c < 7%)', category: 'NCD',
-    mophTable: 's_dm_control', mophValueField: 'hba1c', mophTargetField: 'target', mophCalcMode: 'percent',
-    owner: 'สมชาย ใจดี', deadline: '2025-09-30', status: 'in_progress', target: 40, unit: '%',
-    description: 'ร้อยละของผู้ป่วยเบาหวานที่มีค่า HbA1c น้อยกว่า 7%',
-  },
-]
+// KPI จริงทั้งหมดอยู่ใน DB (เพิ่มผ่านหน้า /admin) — seed ไม่ต้องมี KPI ตัวอย่าง
+// (เดิมมี kpi-01 = KPI ทดสอบซ้ำ s_dm_control · ลบ 18 มิ.ย. แต่ init ปลุกกลับ → ลบจาก seed 21 มิ.ย.)
+export const INITIAL_KPIS: KPIReport[] = []
 
-export const INITIAL_MONTHLY_DATA: MonthlyData[] = [
-  // KPI-01 HbA1c target 40%
-  { kpiId: 'kpi-01', month: '2025-01', value: 32.1, target: 40 },
-  { kpiId: 'kpi-01', month: '2025-02', value: 33.5, target: 40 },
-  { kpiId: 'kpi-01', month: '2025-03', value: 34.2, target: 40 },
-  { kpiId: 'kpi-01', month: '2025-04', value: 35.8, target: 40 },
-  { kpiId: 'kpi-01', month: '2025-05', value: 36.4, target: 40 },
-  { kpiId: 'kpi-01', month: '2025-06', value: 37.1, target: 40 },
-]
+export const INITIAL_MONTHLY_DATA: MonthlyData[] = []
 
 // ─── Catalog เริ่มต้น (รายงาน MOPH จังหวัด 66 อำเภอ 11) ─────────────────────
 // areacode prefix '6611' = จังหวัดพิจิตร(66) + อำเภอ(11)
