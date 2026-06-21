@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { signSession, COOKIE_NAME, cookieOptions } from '@/lib/auth'
+import { verifyPassword } from '@/lib/password'
 
 export async function POST(req: NextRequest) {
   const { email, password } = await req.json()
@@ -12,14 +13,15 @@ export async function POST(req: NextRequest) {
   const conn = await pool.getConnection()
   try {
     const [rows] = await conn.execute(
-      'SELECT id, email, name, role, department FROM users WHERE email = ? AND password = ?',
-      [email, password],
+      'SELECT id, email, name, role, department, password FROM users WHERE email = ?',
+      [email],
     )
-    const users = rows as { id: string; email: string; name: string; role: string; department: string }[]
-    if (users.length === 0) {
+    const found = (rows as { id: string; email: string; name: string; role: string; department: string; password: string }[])[0]
+    if (!found || !(await verifyPassword(password, found.password))) {
       return NextResponse.json({ message: 'อีเมลหรือรหัสผ่านไม่ถูกต้อง' }, { status: 401 })
     }
-    const user = users[0]
+    // ไม่ส่ง password กลับ client
+    const user = { id: found.id, email: found.email, name: found.name, role: found.role, department: found.department }
     // Auth-1: ออก signed JWT → เซ็ตเป็น HttpOnly cookie (client ยังได้ user object ไว้แสดง UI เหมือนเดิม)
     const token = await signSession({ sub: user.id, email: user.email, name: user.name, role: user.role })
     const res = NextResponse.json({ user })

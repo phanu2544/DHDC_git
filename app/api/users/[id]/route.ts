@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
+import { hashPassword } from '@/lib/password'
 
 // DELETE /api/users/[id]
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
@@ -23,7 +24,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   try {
     if ('password' in body) {
       if (!body.password) return NextResponse.json({ message: 'รหัสผ่านห้ามว่าง' }, { status: 400 })
-      await conn.execute('UPDATE users SET password=? WHERE id=?', [body.password, params.id])
+      await conn.execute('UPDATE users SET password=? WHERE id=?', [await hashPassword(body.password), params.id])
       return NextResponse.json({ ok: true, message: 'เปลี่ยนรหัสผ่านสำเร็จ' })
     }
     // General update (name / department / role)

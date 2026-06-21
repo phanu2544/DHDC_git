@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { INITIAL_USERS, INITIAL_KPIS, INITIAL_MONTHLY_DATA, INITIAL_CATALOG } from '@/lib/initialData'
+import { hashPassword } from '@/lib/password'
 
 export async function POST() {
   const conn = await pool.getConnection()
@@ -157,11 +158,11 @@ export async function POST() {
       ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
     `)
 
-    // ── Seed users ──────────────────────────────────────────────────────────
+    // ── Seed users (hash รหัสผ่านก่อนเก็บ — INSERT IGNORE จึงไม่ทับ/ไม่ re-hash ของเดิม) ──
     for (const u of INITIAL_USERS) {
       await conn.execute(
         `INSERT IGNORE INTO users (id, email, password, name, role, department) VALUES (?,?,?,?,?,?)`,
-        [u.id, u.email, u.password, u.name, u.role, u.department],
+        [u.id, u.email, await hashPassword(u.password), u.name, u.role, u.department],
       )
     }
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
+import { hashPassword } from '@/lib/password'
 
 export async function GET() {
   const conn = await pool.getConnection()
@@ -27,7 +28,7 @@ export async function POST(req: NextRequest) {
   try {
     await conn.execute(
       'INSERT INTO users (id, email, password, name, role, department) VALUES (?,?,?,?,?,?)',
-      [id, email, password, name, role ?? 'staff', department ?? ''],
+      [id, email, await hashPassword(password), name, role ?? 'staff', department ?? ''],
     )
     return NextResponse.json({ ok: true, id, message: 'เพิ่มผู้ใช้สำเร็จ' })
   } catch (err: unknown) {
