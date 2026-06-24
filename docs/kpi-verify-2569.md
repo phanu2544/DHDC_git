@@ -37,20 +37,24 @@
 - เลขจริงมีแต่ใน `api-hdc.moph.go.th` (HDC portal) ที่ต้อง **login token ส่วนตัว อายุ 2 ชม.** → ดึง auto ไม่ยั่งยืน
 - Public Open Data ที่ MOPH ให้นักพัฒนา = `report_data/s_epi_complete` = raw เท่านั้น (ยืนยันจากลิงก์ "Open Data API" ของเขา)
 
-**วิธีแก้ (manual entry — flag ใน DB, self-service, กรอกรายตำบล):**
+**วิธีแก้ (manual entry — flag ใน DB, self-service, กรอกรายหน่วยบริการ):**
 - flag `kpi_reports.manual_entry=1` (ติ๊ก "📝 กรอกค่าเอง" ในฟอร์มแก้ KPI หน้า `/admin` ได้เอง ไม่ต้องแก้โค้ด) · helper `isManualEntry` ([lib/manualKpi.ts](../lib/manualKpi.ts))
 - `runBatchSave`/cron อ่าน flag → **ข้าม** KPI ที่ manual (ไม่ดึง/ทับค่า)
-- หน้า `/kpi/[id]` โหมด manual: **ตารางกรอกรายตำบล** (admin) — กรอก ฐาน B / ผลงาน A ต่อตำบล → ระบบคำนวณ % = A/B สด + กราฟแท่ง + รวมอำเภอ ΣA/ΣB · non-admin อ่านอย่างเดียว
-- เก็บรายตำบลใน `moph_monthly_detail` (`POST /api/monthly/detail` — ลบเดือนนั้นแล้วเขียนใหม่) + อัปเดต `monthly_data` รวมอำเภอ · mapping ใช้ `result/target` (ล้าง moph_config เดิม `result10/target10` ที่ผิด)
+- หน้า `/kpi/[id]` โหมด manual: **ตารางกรอกรายหน่วยบริการ** (admin, 7 หน่วย `HOSPCODE_NAMES`) — กรอก ฐาน B / ผลงาน A ต่อหน่วย → ระบบคำนวณ % = A/B สด + กราฟแท่ง + รวมอำเภอ ΣA/ΣB · non-admin อ่านอย่างเดียว
+- เก็บรายหน่วยใน `moph_monthly_detail` (hospcode จริง, `POST /api/monthly/detail` — ลบเดือนนั้นแล้วเขียนใหม่) + อัปเดต `monthly_data` รวมอำเภอ · mapping ใช้ `result/target` · detail บังคับ `view=unit` เมื่อ manual
 - **audit:** `source='manual'`, `entered_by` (จาก session), `entered_at` → หน้าโชว์ "อัปเดตล่าสุดโดย … · เวลา"
 - **เตือน stale:** ยังไม่กรอกเดือนปัจจุบัน → กล่องเหลือง
-- กรอกค่าจริงรายตำบลแล้ว (วังงิ้วใต้10/10, วังงิ้ว15/8, ห้วยร่วม6/6, ห้วยพุก7/7, สำนักขุนเณร23/22 → รวม 53/61 = 86.89% ตรง HDC ทุกตำบล) · คง gte เป้า 90
-- backup: `_resync_backup/epi-complete-manual-2026-06-22/`, `manual-flag-migrate-2026-06-22/`, `epi-manual-pertambon-2026-06-23/`
+- backup: `_resync_backup/epi-complete-manual-2026-06-22/`, `manual-flag-migrate-2026-06-22/`, `epi-manual-pertambon-2026-06-23/`, `backups/manual_detail_tambon_snapshot_*` (รายตำบลเดิมก่อน migrate)
+
+**🔄 เปลี่ยน รายตำบล → รายหน่วยบริการ (24 มิ.ย. 2569):**
+- **เหตุผล:** owner ขอ toggle รายตำบล↔รายหน่วยบริการ แต่ตรวจข้อมูลจริง (`moph_monthly_detail` ของ KPI auto) พบ **hospcode→tambon ไม่ใช่ 1:1** — 07705 คุม ต.01+02, รพ.ดงเจริญ 27980 คุม ต.01+05 → เลขรวมต่อ hospcode **แตกกลับเป็นตำบลไม่ได้** (ห้ามเดา) → ฟิกเป็นกรอกราย hospcode (ตรง HDC "รายหน่วยบริการ" ก๊อปมาวางได้เลย)
+- **migrate:** ลบ detail รายตำบลเดิม 5 แถว (hospcode='manual') ของ 2026-06 [snapshot→gate(ROW_COUNT=5)→COMMIT] · คง `monthly_data` 86.89% ไว้ (total grouping-independent → ยังตรง HDC) · drilldown โชว์ฟอร์ม 7 หน่วยว่าง + เตือน stale → **owner re-enter รายหน่วยบริการจาก HDC** (เลขเดิมรายตำบล convert เป็น hospcode ไม่ได้)
+- **verify (preview):** save 7 หน่วย → 86.89% (Σ53/61) · GET detail view=unit → 7 group ชื่อ รพ.สต. ถูก, %/สถานะรายหน่วยถูก · validation: hospcode ไม่รู้จัก→400, A>B→400 · live-recompute ตอนพิมพ์ทำงาน · ลำดับแถวเรียงตามรหัส (รพ.สต.ก่อน รพ.ดงเจริญท้าย) · ลบ test rows คืนสถานะว่างแล้ว
 
 **ความทนทานสำหรับ manual KPI ตัวใหม่ (hardening):**
 - detail route **บังคับ mapping `result/target`** เมื่อ manual (ไม่สน moph_config/field config เดิม) → toggle KPI auto→manual ได้เลย ไม่ต้องล้าง config (ทดสอบ: KPI ที่ value field ผิดยังคำนวณถูก)
 - `/api/monthly/detail` รับเฉพาะ KPI ที่ flag manual (ไม่ใช่ → 400) กันเขียนผิดตัวแล้วโดน cron ทับ
-- ⏳ งานต่อ (ไม่ด่วน): ป้าย/แจ้งเตือน "manual ที่ยังไม่กรอกเดือนนี้" บน dashboard (discoverability)
+- ✅ discoverability (เสร็จ 24 มิ.ย.): Scorecard/dashboard มีป้าย "✍️ กรอกมือ" + แจ้ง "ยังไม่กรอกเดือนนี้" (value null) บน KPI ที่ flag manual
 
 ## ยังไม่ตรวจ (ความเสี่ยงต่ำ — dir=none "ติดตามเฉยๆ" ไม่ตัดสินผ่าน/ไม่ผ่าน)
 - s_colon_screen_w (ใช้ field ไตรมาส `fitposq2` — snapshot ตัด q ทิ้ง, flag ไว้แล้ว)

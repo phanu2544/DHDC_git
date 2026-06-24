@@ -7,7 +7,7 @@ import Navbar from '@/components/Navbar'
 import { useAuth } from '@/lib/useAuth'
 import { STATUS_META, evaluateKpiStatus } from '@/lib/kpiStatus'
 import { DIRECTION_LABEL } from '@/lib/scorecard'
-import { DISTRICT_NAME, TAMBON_NAMES } from '@/lib/areaRef'
+import { DISTRICT_NAME, HOSPCODE_NAMES } from '@/lib/areaRef'
 import { formatThaiMonth } from '@/lib/formatMonth'
 import type { KpiEvalStatus, EvalDirection } from '@/lib/types'
 
@@ -25,6 +25,11 @@ const BAR_COLOR: Record<string, string> = {
   pass: '#16a34a', watch: '#f59e0b', fail: '#dc2626',
   needs_review: '#f97316', invalid: '#9333ea', no_data: '#9ca3af', no_target: '#64748b',
 }
+
+// หน่วยบริการเรียงตามรหัส (localeCompare) — ตรงกับ sort ของ unit-view ใน /api/detail
+// (กัน JS เรียง key เลขล้วน เช่น '27980' ขึ้นก่อน key leading-zero '07705')
+const hospcodeEntries = () =>
+  Object.entries(HOSPCODE_NAMES).sort(([a], [b]) => a.localeCompare(b))
 
 interface GroupRow {
   code: string
@@ -45,6 +50,7 @@ interface DetailResp {
   }
   savedMonthly?: { value: number; target: number; enteredBy?: string | null; enteredAt?: string | null } | null
   manual?: boolean
+  view?: 'area' | 'unit'
   stale?: boolean
   lastMonth?: string | null
   mappingOk?: boolean
@@ -60,18 +66,21 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
   const [data, setData] = useState<DetailResp | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  // กรอกค่าเอง รายตำบล (manual KPI — admin เท่านั้น)
+  // กรอกค่าเอง รายหน่วยบริการ (manual KPI — admin เท่านั้น)
   const thisMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
   const [entryMonth, setEntryMonth] = useState(thisMonth)
   const [tRows, setTRows] = useState<{ code: string; name: string; target: string; result: string }[]>([])
   const [mSaving, setMSaving] = useState(false)
   const [mMsg, setMMsg] = useState('')
+  const [editing, setEditing] = useState(false) // ล็อกฟอร์มหลังบันทึก — ต้องกด "แก้ไข" ก่อนจึงพิมพ์ทับได้ (กันมือลั่น)
+  const [view, setView] = useState<'area' | 'unit'>('area') // มุมมอง drilldown (KPI auto)
 
-  const load = useCallback(async (month?: string) => {
+  const load = useCallback(async (month?: string, v?: 'area' | 'unit') => {
     setLoading(true)
     try {
       const q = month ? `&month=${month}` : ''
-      const res = await fetch(`/api/detail?kpiId=${params.id}${q}`)
+      const vq = v ? `&view=${v}` : ''
+      const res = await fetch(`/api/detail?kpiId=${params.id}${q}${vq}`)
       const j: DetailResp = await res.json()
       if (!res.ok) throw new Error(j.message || 'โหลดข้อมูลไม่สำเร็จ')
       setData(j)
@@ -82,11 +91,12 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
     }
   }, [params.id])
 
-  // sync ตารางกรอก จากข้อมูลที่โหลด (เติม 5 ตำบลครบ — ตำบลที่ยังไม่มีข้อมูล = ว่าง)
+  // sync ตารางกรอก จากข้อมูลที่โหลด (เติม 7 หน่วยบริการครบ — หน่วยที่ยังไม่มีข้อมูล = ว่าง)
+  // หมายเหตุ: tRows.code = hospcode (group key ของ detail route view=unit ก็คือ hospcode)
   useEffect(() => {
     if (!data?.manual) return
     const byCode = new Map((data.groups ?? []).map((g) => [g.code, g.fields]))
-    setTRows(Object.entries(TAMBON_NAMES).map(([code, name]) => {
+    setTRows(hospcodeEntries().map(([code, name]) => {
       const f = byCode.get(code)
       return {
         code, name,
@@ -95,6 +105,7 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
       }
     }))
     setEntryMonth(data.month ?? thisMonth)
+    setEditing(!data.savedMonthly) // เดือนที่แสดงมีข้อมูลแล้ว → ล็อก · ว่าง → กรอกได้เลย
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data])
 
@@ -109,7 +120,7 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           kpiId: params.id, month: entryMonth,
-          rows: tRows.map((r) => ({ code: r.code, target: Number(r.target) || 0, result: Number(r.result) || 0 })),
+          rows: tRows.map((r) => ({ hospcode: r.code, target: Number(r.target) || 0, result: Number(r.result) || 0 })),
         }),
       })
       const j = await res.json()
@@ -123,6 +134,12 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
     }
   }
 
+  function changeView(v: 'area' | 'unit') {
+    if (v === view) return
+    setView(v)
+    load(data?.month ?? undefined, v)
+  }
+
   useEffect(() => {
     if (!user) return
     load()
@@ -131,6 +148,7 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
   if (!user) return null
 
   const manual = data?.manual === true
+  const viewLabel = view === 'unit' ? 'หน่วยบริการ' : 'ตำบล'
   const groups = data?.groups ?? []
   const total = data?.total
   const fieldList = data?.fieldList ?? []
@@ -160,8 +178,12 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
   }
   function onEntryMonthChange(m: string) {
     setEntryMonth(m)
-    if (data?.months.includes(m)) load(m)
-    else setTRows(Object.entries(TAMBON_NAMES).map(([code, name]) => ({ code, name, target: '', result: '' })))
+    setMMsg('')
+    if (data?.months.includes(m)) load(m) // มีข้อมูล → โหลด (useEffect จะล็อกให้)
+    else { // เดือนว่าง → กรอกได้เลย ไม่ต้องล็อก
+      setTRows(hospcodeEntries().map(([code, name]) => ({ code, name, target: '', result: '' })))
+      setEditing(true)
+    }
   }
 
   return (
@@ -173,7 +195,7 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
         </div>
 
         {loading ? (
-          <div className="text-center py-20 text-gray-400">กำลังโหลดข้อมูลรายตำบล...</div>
+          <div className="text-center py-20 text-gray-400">กำลังโหลดข้อมูล...</div>
         ) : error ? (
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">⚠️ {error}</div>
         ) : !data ? null : (
@@ -189,13 +211,26 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                 <input type="month" value={entryMonth} onChange={(e) => onEntryMonthChange(e.target.value)}
                   className="border rounded-lg px-3 py-2 text-sm bg-white" />
               ) : data.months.length > 0 && (
-                <select
-                  value={data.month}
-                  onChange={(e) => load(e.target.value)}
-                  className="border rounded-lg px-3 py-2 text-sm bg-white"
-                >
-                  {data.months.map((m) => <option key={m} value={m}>{formatThaiMonth(m)}</option>)}
-                </select>
+                <div className="flex items-center gap-2">
+                  {/* มุมมอง: รายตำบล / รายหน่วยบริการ */}
+                  <div className="inline-flex rounded-lg border overflow-hidden text-sm">
+                    <button onClick={() => changeView('area')}
+                      className={`px-3 py-2 ${view === 'area' ? 'bg-blue-700 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+                      รายตำบล
+                    </button>
+                    <button onClick={() => changeView('unit')}
+                      className={`px-3 py-2 border-l ${view === 'unit' ? 'bg-blue-700 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+                      รายหน่วยบริการ
+                    </button>
+                  </div>
+                  <select
+                    value={data.month}
+                    onChange={(e) => load(e.target.value, view)}
+                    className="border rounded-lg px-3 py-2 text-sm bg-white"
+                  >
+                    {data.months.map((m) => <option key={m} value={m}>{formatThaiMonth(m)}</option>)}
+                  </select>
+                </div>
               )}
             </div>
 
@@ -229,17 +264,17 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                 {data.stale && (
                   <div className="mb-6 bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg text-sm">
                     ⚠️ ยังไม่ได้กรอกข้อมูล<b>เดือนนี้</b>
-                    {data.lastMonth ? ` — ค่าที่แสดงเป็นของเดือนล่าสุด (${formatThaiMonth(data.lastMonth)})` : ''} · กรุณากรอกรายตำบลด้านล่าง
+                    {data.lastMonth ? ` — ค่าที่แสดงเป็นของเดือนล่าสุด (${formatThaiMonth(data.lastMonth)})` : ''} · กรุณากรอกรายหน่วยบริการด้านล่าง
                   </div>
                 )}
 
                 <div className="mb-6 bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-lg text-sm leading-relaxed">
-                  ℹ️ KPI นี้ <b>กรอกค่าเอง รายตำบล</b> — เปิด HDC แล้วกรอก <b>ฐาน (B)</b> และ <b>ผลงาน (A)</b> ของแต่ละตำบล · ระบบคำนวณ % = A/B ให้อัตโนมัติ · ไม่ดึง/ทับค่าจาก MOPH
+                  ℹ️ KPI นี้ <b>กรอกค่าเอง รายหน่วยบริการ</b> — เปิด HDC (มุมมองรายหน่วยบริการ) แล้วกรอก <b>ฐาน (B)</b> และ <b>ผลงาน (A)</b> ของแต่ละหน่วย · ระบบคำนวณ % = A/B ให้อัตโนมัติ · ไม่ดึง/ทับค่าจาก MOPH
                 </div>
 
-                {/* กราฟแท่ง %รายตำบล (สด) */}
+                {/* กราฟแท่ง %รายหน่วยบริการ (สด) */}
                 <div className="bg-white rounded-xl shadow-sm border p-5 mb-6">
-                  <h2 className="font-semibold text-gray-800 mb-3 text-sm">แผนภูมิ %รายตำบล — เดือน{formatThaiMonth(entryMonth)}</h2>
+                  <h2 className="font-semibold text-gray-800 mb-3 text-sm">แผนภูมิ %รายหน่วยบริการ — เดือน{formatThaiMonth(entryMonth)}</h2>
                   <ResponsiveContainer width="100%" height={260}>
                     <BarChart data={chartData} margin={{ top: 16, right: 16, bottom: 4, left: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -257,16 +292,18 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                   </ResponsiveContainer>
                 </div>
 
-                {/* ตารางกรอกรายตำบล */}
+                {/* ตารางกรอกรายหน่วยบริการ */}
                 <div className="bg-white rounded-xl shadow-sm border overflow-hidden mb-3">
                   <div className="px-5 py-3 border-b flex items-center justify-between">
-                    <h2 className="font-semibold text-gray-800 text-sm">ตารางรายตำบล — เดือน{formatThaiMonth(entryMonth)} {user.role === 'admin' && <span className="text-xs font-normal text-blue-600">(แก้ไขได้)</span>}</h2>
+                    <h2 className="font-semibold text-gray-800 text-sm">ตารางรายหน่วยบริการ — เดือน{formatThaiMonth(entryMonth)} {user.role === 'admin' && (editing
+                      ? <span className="text-xs font-normal text-blue-600">(กำลังแก้ไข)</span>
+                      : <span className="text-xs font-normal text-gray-400">🔒 ล็อก</span>)}</h2>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead className="bg-gray-50 text-gray-500 text-xs">
                         <tr>
-                          <th className="text-left px-4 py-2 font-medium">ตำบล</th>
+                          <th className="text-left px-4 py-2 font-medium">หน่วยบริการ</th>
                           <th className="text-right px-3 py-2 font-medium">ฐาน (B)</th>
                           <th className="text-right px-3 py-2 font-medium">ผลงาน (A)</th>
                           <th className="text-right px-4 py-2 font-medium">% (A/B)</th>
@@ -277,13 +314,13 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                           <tr key={r.code} className="hover:bg-gray-50">
                             <td className="px-4 py-2 font-medium text-gray-900">{r.name}</td>
                             <td className="px-3 py-2 text-right">
-                              {user.role === 'admin'
+                              {user.role === 'admin' && editing
                                 ? <input type="number" min="0" value={r.target} onChange={(e) => setRow(r.code, 'target', e.target.value)}
                                     className="border rounded px-2 py-1 text-sm w-24 text-right" />
                                 : <span className="tabular-nums text-gray-700">{r.t.toLocaleString()}</span>}
                             </td>
                             <td className="px-3 py-2 text-right">
-                              {user.role === 'admin'
+                              {user.role === 'admin' && editing
                                 ? <input type="number" min="0" value={r.result} onChange={(e) => setRow(r.code, 'result', e.target.value)}
                                     className="border rounded px-2 py-1 text-sm w-24 text-right" />
                                 : <span className="tabular-nums text-gray-700">{r.a.toLocaleString()}</span>}
@@ -302,12 +339,35 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                   </div>
                   {user.role === 'admin' && (
                     <div className="px-5 py-4 border-t flex flex-wrap items-center gap-3">
-                      <button onClick={saveManualDetail} disabled={mSaving}
-                        className="bg-blue-800 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm px-5 py-2 rounded-lg font-medium">
-                        {mSaving ? 'กำลังบันทึก...' : 'บันทึกรายตำบล'}
-                      </button>
-                      {mMsg && <span className="text-sm">{mMsg}</span>}
-                      <span className="text-xs text-gray-400">เปิด HDC → คัดลอก B (เด็กในพื้นที่) / A (ได้ครบ) แต่ละตำบลมากรอก</span>
+                      {editing ? (
+                        <>
+                          <button onClick={saveManualDetail} disabled={mSaving}
+                            className="bg-blue-800 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm px-5 py-2 rounded-lg font-medium">
+                            {mSaving ? 'กำลังบันทึก...' : 'บันทึกรายหน่วยบริการ'}
+                          </button>
+                          {/* ยกเลิก: คืนค่ากลับเป็นที่บันทึกไว้ (เฉพาะเดือนที่มีข้อมูลเดิม) */}
+                          {manualSaved && (
+                            <button onClick={() => { setEditing(false); setMMsg(''); load(entryMonth) }} disabled={mSaving}
+                              className="border text-gray-600 hover:bg-gray-50 text-sm px-4 py-2 rounded-lg">
+                              ยกเลิก
+                            </button>
+                          )}
+                          {mMsg && <span className="text-sm">{mMsg}</span>}
+                          <span className="text-xs text-gray-400">เปิด HDC (รายหน่วยบริการ) → คัดลอก B (เป้าหมาย) / A (ผลงาน) แต่ละหน่วยมากรอก</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-sm text-gray-600">
+                            🔒 บันทึกแล้ว{manualSaved?.enteredBy ? ` โดย ${manualSaved.enteredBy}` : ''}
+                            {manualSaved?.enteredAt ? ` · ${new Date(manualSaved.enteredAt).toLocaleString('th-TH')}` : ''}
+                          </span>
+                          <button onClick={() => { setEditing(true); setMMsg('') }}
+                            className="bg-amber-500 hover:bg-amber-600 text-white text-sm px-4 py-2 rounded-lg font-medium">
+                            ✏️ แก้ไข
+                          </button>
+                          {mMsg && <span className="text-sm">{mMsg}</span>}
+                        </>
+                      )}
                     </div>
                   )}
                 </div>
@@ -345,14 +405,14 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
 
                 {!data.mappingOk && (
                   <div className="mb-6 bg-orange-50 border border-orange-200 text-orange-800 px-4 py-3 rounded-lg text-sm">
-                    ⚠️ สูตรคำนวณของ KPI นี้ยังไม่ได้รับการยืนยัน — แสดงเฉพาะยอดดิบรายตำบล ยังไม่คิด %
+                    ⚠️ สูตรคำนวณของ KPI นี้ยังไม่ได้รับการยืนยัน — แสดงเฉพาะยอดดิบราย{viewLabel} ยังไม่คิด %
                   </div>
                 )}
 
-                {/* กราฟแท่งรายตำบล + เส้นเป้าหมาย (แบบ HDC) */}
+                {/* กราฟแท่งรายพื้นที่/หน่วยบริการ + เส้นเป้าหมาย (แบบ HDC) */}
                 {showPct && (
                   <div className="bg-white rounded-xl shadow-sm border p-5 mb-6">
-                    <h2 className="font-semibold text-gray-800 mb-3 text-sm">แผนภูมิรายตำบล — เดือน{formatThaiMonth(data.month!)}</h2>
+                    <h2 className="font-semibold text-gray-800 mb-3 text-sm">แผนภูมิราย{viewLabel} — เดือน{formatThaiMonth(data.month!)}</h2>
                     <ResponsiveContainer width="100%" height={260}>
                       <BarChart data={chartData} margin={{ top: 16, right: 16, bottom: 4, left: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -371,16 +431,16 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                   </div>
                 )}
 
-                {/* ตารางรายตำบล (HDC-style) */}
+                {/* ตารางรายพื้นที่/หน่วยบริการ (HDC-style) */}
                 <div className="bg-white rounded-xl shadow-sm border overflow-hidden mb-6">
                   <div className="px-5 py-3 border-b">
-                    <h2 className="font-semibold text-gray-800 text-sm">ตารางรายตำบล — เดือน{formatThaiMonth(data.month!)}</h2>
+                    <h2 className="font-semibold text-gray-800 text-sm">ตารางราย{viewLabel} — เดือน{formatThaiMonth(data.month!)}</h2>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead className="bg-gray-50 text-gray-500 text-xs">
                         <tr>
-                          <th className="text-left px-4 py-2 font-medium">ตำบล</th>
+                          <th className="text-left px-4 py-2 font-medium">{viewLabel}</th>
                           {fieldList.map((f) => (
                             <th key={f} className="text-right px-3 py-2 font-medium whitespace-nowrap">{fieldLabels[f] ?? f}</th>
                           ))}

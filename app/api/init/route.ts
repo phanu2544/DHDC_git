@@ -154,6 +154,21 @@ export async function POST(req: NextRequest) {
       ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
     `)
 
+    // ── data_change_log (audit การลบ/ทับค่ารายเดือน — เก็บค่าเก่าไว้กู้คืน) ───
+    // ไม่ผูก FK cascade: ต้องเก็บ log ไว้แม้ KPI ถูกลบทิ้ง (ตามรอยย้อนหลังได้)
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS data_change_log (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        kpi_id VARCHAR(50) NOT NULL,
+        month VARCHAR(7) NOT NULL,
+        action VARCHAR(16) NOT NULL,
+        old_data TEXT NOT NULL,
+        changed_by VARCHAR(255) DEFAULT NULL,
+        changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        KEY idx_kpi_month (kpi_id, month)
+      ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+    `)
+
     // ── moph_report_catalog ─────────────────────────────────────────────────
     await conn.execute(`
       CREATE TABLE IF NOT EXISTS moph_report_catalog (
