@@ -2,6 +2,7 @@ import pool from '@/lib/db'
 import { buildMappingFromLegacy, computeMoph } from './mophEngine'
 import { saveMonthlyDetail } from './mophDetail'
 import { getTargetsForYear } from './targets'
+import { isManualEntry } from './manualKpi'
 import type { MophMapping } from './types'
 
 const MOPH_API = 'https://opendata.moph.go.th/api/report_data'
@@ -78,13 +79,14 @@ export async function runBatchSave(opts: BatchOptions = {}): Promise<BatchResult
     moph_target_field: string; moph_calc_mode: string
     target: number | null
     moph_config: string | null
+    manual_entry: number
   }[] = []
   // Phase 7A: เป้ารายปีงบ (kpi_targets) — fallback kpi_reports.target ถ้าไม่มี
   let targetMap = new Map<string, number>()
   try {
     const [rows] = await conn.execute(
       `SELECT id, name, moph_table, moph_value_field, moph_target_field, moph_calc_mode,
-              target, moph_config
+              target, moph_config, manual_entry
        FROM kpi_reports
        WHERE moph_table IS NOT NULL AND moph_table <> ''
          ${kpiId ? 'AND id = ?' : ''}
@@ -110,6 +112,15 @@ export async function runBatchSave(opts: BatchOptions = {}): Promise<BatchResult
 
   for (const kpi of kpis) {
     try {
+      // KPI กรอกมือ (flag manual_entry) — ข้าม ไม่ทับค่าที่กรอก
+      if (isManualEntry(kpi.manual_entry)) {
+        results.push({
+          kpiId: kpi.id, kpiName: kpi.name, status: 'skipped',
+          skipReason: 'กรอกค่าเอง (manual) — ระบบไม่ดึง/ทับค่าอัตโนมัติ',
+        })
+        continue
+      }
+
       let rows = await fetchMOPH(kpi.moph_table, year, province)
 
       if (hospcode) rows = rows.filter((r) => String(r.hospcode) === String(hospcode))

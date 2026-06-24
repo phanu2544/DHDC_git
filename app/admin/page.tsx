@@ -120,7 +120,7 @@ const PROVINCES = [
 ]
 
 function emptyForm(): Omit<KPIReport, 'id'> {
-  return { name: '', category: 'NCD', mophUrl: '', mophTable: '', mophValueField: '', mophTargetField: 'target', mophCalcMode: 'percent', direction: 'gte', owner: '', deadline: '', status: 'in_progress', target: 0, unit: '%', description: '' }
+  return { name: '', category: 'NCD', mophUrl: '', mophTable: '', mophValueField: '', mophTargetField: 'target', mophCalcMode: 'percent', direction: 'gte', manualEntry: false, owner: '', deadline: '', status: 'in_progress', target: 0, unit: '%', description: '' }
 }
 
 interface MophPreview {
@@ -297,6 +297,7 @@ export default function AdminPage() {
       mophValueField: kpi.mophValueField ?? '', mophTargetField: kpi.mophTargetField ?? 'target',
       mophCalcMode: kpi.mophCalcMode ?? 'percent',
       direction: kpi.direction ?? 'gte',
+      manualEntry: kpi.manualEntry ?? false,
       owner: kpi.owner, deadline: kpi.deadline, status: kpi.status,
       target: kpi.target, unit: kpi.unit, description: kpi.description ?? '',
     })
@@ -1689,6 +1690,15 @@ export default function AdminPage() {
               <Field label="กำหนดเสร็จ *"><input type="date" value={form.deadline} onChange={(e) => setForm({ ...form, deadline: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></Field>
 
               <div className="border-t pt-4">
+                <label className="flex items-start gap-2 mb-3 cursor-pointer">
+                  <input type="checkbox" checked={form.manualEntry ?? false}
+                    onChange={(e) => setForm({ ...form, manualEntry: e.target.checked })}
+                    className="mt-0.5" />
+                  <span className="text-sm">
+                    <span className="font-medium text-gray-800">📝 กรอกค่าเอง (manual)</span>
+                    <span className="block text-xs text-gray-500">ติ๊กเมื่อ HDC ไม่เปิด API ให้ดึง (เช่น fully immunized) — ระบบจะไม่ดึง/ทับค่าอัตโนมัติ ผู้ดูแลกรอกในหน้า KPI เอง</span>
+                  </span>
+                </label>
                 <p className="text-xs font-semibold text-blue-700 mb-3">🌐 MOPH API Config</p>
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Table Name"><input value={form.mophTable ?? ''} onChange={(e) => setForm({ ...form, mophTable: e.target.value })} placeholder="s_dm_hba1c" className="w-full border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" /></Field>

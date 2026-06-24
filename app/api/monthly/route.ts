@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
+import { COOKIE_NAME, verifySession } from '@/lib/auth'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -29,12 +30,18 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const { kpiId, month, value, target } = await req.json()
+  // audit: เก็บผู้กรอกจาก session (POST นี้ = กรอกค่าเอง manual) — ไม่เชื่อ client
+  const token = req.cookies.get(COOKIE_NAME)?.value
+  const session = token ? await verifySession(token) : null
+  const enteredBy = session?.name || 'ไม่ทราบผู้กรอก'
   const conn = await pool.getConnection()
   try {
     await conn.execute(
-      `INSERT INTO monthly_data (kpi_id, month, value, target) VALUES (?,?,?,?)
-       ON DUPLICATE KEY UPDATE value=VALUES(value), target=VALUES(target)`,
-      [kpiId, month, value, target],
+      `INSERT INTO monthly_data (kpi_id, month, value, target, source, entered_by, entered_at)
+       VALUES (?,?,?,?, 'manual', ?, NOW())
+       ON DUPLICATE KEY UPDATE value=VALUES(value), target=VALUES(target),
+         source='manual', entered_by=VALUES(entered_by), entered_at=NOW()`,
+      [kpiId, month, value, target, enteredBy],
     )
     return NextResponse.json({ message: 'บันทึกข้อมูลรายเดือนสำเร็จ' })
   } catch (err) {

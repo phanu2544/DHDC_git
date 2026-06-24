@@ -41,7 +41,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     const [rows] = await conn.execute(
       `SELECT id, name, category,
               moph_url, moph_table, moph_value_field, moph_target_field, moph_calc_mode,
-              moph_report_id, evaluation_direction, owner, deadline, status, target, unit, description,
+              moph_report_id, evaluation_direction, manual_entry, owner, deadline, status, target, unit, description,
               moph_config
        FROM kpi_reports WHERE id = ?`,
       [params.id],
@@ -64,6 +64,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       mophCalcMode:    row.moph_calc_mode,
       mophReportId:    row.moph_report_id,
       direction:       row.evaluation_direction ?? 'gte',
+      manualEntry:     Number(row.manual_entry) === 1,
       owner: row.owner, deadline: row.deadline, status: row.status,
       target: row.target, unit: row.unit, description: row.description,
       mophConfig,
@@ -79,7 +80,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   const body = await req.json()
   const { name, category, mophUrl, mophTable, mophValueField, mophTargetField, mophCalcMode,
-          direction, owner, deadline, status, target, unit, description } = body
+          direction, owner, deadline, status, target, unit, description, manualEntry } = body
+  const manualVal = manualEntry ? 1 : 0
 
   // Phase 4: validate direction เฉพาะกรณี "ส่งมา" — ถ้าไม่ส่งมาให้คงค่าเดิมใน DB
   // (ห้าม default 'gte' เงียบๆ เพราะจะลบทับ direction ที่ admin เคยตั้งไว้)
@@ -98,22 +100,22 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       await conn.execute(
         `UPDATE kpi_reports SET
           name=?, category=?, moph_url=?, moph_table=?, moph_value_field=?, moph_target_field=?, moph_calc_mode=?,
-          evaluation_direction=?, owner=?, deadline=?, status=?, target=?, unit=?, description=?
+          evaluation_direction=?, manual_entry=?, owner=?, deadline=?, status=?, target=?, unit=?, description=?
          WHERE id=?`,
         [name, category,
          mophUrl ?? null, mophTable ?? null, mophValueField ?? null, mophTargetField ?? null, mophCalcMode ?? 'percent',
-         direction, owner, deadline, status, target, unit, description ?? null, params.id],
+         direction, manualVal, owner, deadline, status, target, unit, description ?? null, params.id],
       )
     } else {
       // ไม่ส่ง direction → คงค่า evaluation_direction เดิมใน DB
       await conn.execute(
         `UPDATE kpi_reports SET
           name=?, category=?, moph_url=?, moph_table=?, moph_value_field=?, moph_target_field=?, moph_calc_mode=?,
-          owner=?, deadline=?, status=?, target=?, unit=?, description=?
+          manual_entry=?, owner=?, deadline=?, status=?, target=?, unit=?, description=?
          WHERE id=?`,
         [name, category,
          mophUrl ?? null, mophTable ?? null, mophValueField ?? null, mophTargetField ?? null, mophCalcMode ?? 'percent',
-         owner, deadline, status, target, unit, description ?? null, params.id],
+         manualVal, owner, deadline, status, target, unit, description ?? null, params.id],
       )
     }
     return NextResponse.json({ message: 'แก้ไข KPI สำเร็จ' })

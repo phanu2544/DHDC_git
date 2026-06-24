@@ -23,6 +23,7 @@ export interface KPIReport {
   mophReportId?: string    // FK → moph_report_catalog.id
   mophConfig?: MophMapping // Phase 2: JSON mapping เก็บใน moph_config column
   direction?: EvalDirection // Phase 4: ทิศทางประเมิน (default 'gte') — column evaluation_direction
+  manualEntry?: boolean     // true = กรอกค่าเอง (ไม่ดึง MOPH อัตโนมัติ) — column manual_entry
   owner: string
   deadline: string
   status: KPIStatus

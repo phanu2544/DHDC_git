@@ -76,6 +76,7 @@ export async function POST(req: NextRequest) {
         moph_calc_mode VARCHAR(20) DEFAULT 'percent',
         moph_report_id VARCHAR(64),
         evaluation_direction VARCHAR(10) DEFAULT 'gte',
+        manual_entry TINYINT(1) DEFAULT 0,
         owner VARCHAR(255) NOT NULL,
         deadline DATE NOT NULL,
         status ENUM('completed','in_progress','overdue') DEFAULT 'in_progress',
@@ -95,6 +96,10 @@ export async function POST(req: NextRequest) {
       "ALTER TABLE kpi_reports ADD COLUMN IF NOT EXISTS moph_calc_mode VARCHAR(20) DEFAULT 'percent'",
       "ALTER TABLE kpi_reports ADD COLUMN IF NOT EXISTS moph_report_id VARCHAR(64)",
       "ALTER TABLE kpi_reports ADD COLUMN IF NOT EXISTS evaluation_direction VARCHAR(10) DEFAULT 'gte'",
+      "ALTER TABLE kpi_reports ADD COLUMN IF NOT EXISTS manual_entry TINYINT(1) DEFAULT 0",
+      "ALTER TABLE monthly_data ADD COLUMN IF NOT EXISTS source VARCHAR(10) DEFAULT 'auto'",
+      "ALTER TABLE monthly_data ADD COLUMN IF NOT EXISTS entered_by VARCHAR(255) DEFAULT NULL",
+      "ALTER TABLE monthly_data ADD COLUMN IF NOT EXISTS entered_at TIMESTAMP NULL DEFAULT NULL",
     ]
     for (const sql of alterCols) {
       await conn.execute(sql).catch(() => {})
@@ -108,6 +113,9 @@ export async function POST(req: NextRequest) {
         month VARCHAR(7) NOT NULL,
         value DECIMAL(10,2) NOT NULL,
         target DECIMAL(10,2) NOT NULL,
+        source VARCHAR(10) DEFAULT 'auto',
+        entered_by VARCHAR(255) DEFAULT NULL,
+        entered_at TIMESTAMP NULL DEFAULT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE KEY uq_kpi_month (kpi_id, month),
         FOREIGN KEY (kpi_id) REFERENCES kpi_reports(id) ON DELETE CASCADE

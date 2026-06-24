@@ -4,6 +4,7 @@ import { buildMappingFromLegacy, computeMoph } from '@/lib/mophEngine'
 import { evaluateKpiStatus } from '@/lib/kpiStatus'
 import { tambonCodeOf, tambonNameOf } from '@/lib/areaRef'
 import { fieldLabelsFor } from '@/lib/detailLabels'
+import { isManualEntry } from '@/lib/manualKpi'
 import type { MophMapping, EvalDirection, KpiEvalStatus } from '@/lib/types'
 
 /**
@@ -36,15 +37,20 @@ export async function GET(req: NextRequest) {
   try {
     // ── KPI meta + mapping (ชุดเดียวกับ batch/scorecard) ──────────────────
     const [kpiRows] = await conn.execute(
-      `SELECT id, name, category, owner, unit, target, description, moph_table,
+      `SELECT id, name, category, owner, unit, target, description, moph_table, manual_entry,
               COALESCE(evaluation_direction,'gte') AS direction,
               moph_value_field, moph_target_field, moph_calc_mode, moph_config
        FROM kpi_reports WHERE id = ?`, [kpiId])
     const kpi = (kpiRows as Record<string, unknown>[])[0]
     if (!kpi) return NextResponse.json({ ok: false, message: 'ไม่พบ KPI' }, { status: 404 })
+    const manual = isManualEntry(kpi.manual_entry) // KPI กรอกมือ → หน้า drilldown ทำตารางให้แก้ไขได้
 
     let mapping: MophMapping
-    if (kpi.moph_config) {
+    if (manual) {
+      // manual เก็บข้อมูลเป็น {target,result} เสมอ (ผ่าน /api/monthly/detail)
+      // → บังคับ result/target ไม่สน moph_config/field config เดิม (กันเพี้ยนตอน toggle auto→manual)
+      mapping = buildMappingFromLegacy('result', 'target', 'percent')
+    } else if (kpi.moph_config) {
       try { mapping = JSON.parse(kpi.moph_config as string) as MophMapping }
       catch {
         mapping = buildMappingFromLegacy(
@@ -63,20 +69,31 @@ export async function GET(req: NextRequest) {
     const months = (mRows as { month: string }[]).map((r) => r.month)
     if (months.length === 0) {
       return NextResponse.json({
-        ok: true, kpiId, months: [],
+        ok: true, kpiId, months: [], manual,
         kpi: { name: kpi.name, category: kpi.category, owner: kpi.owner, unit: kpi.unit,
-               direction: kpi.direction, description: kpi.description },
-        message: 'ยังไม่มีข้อมูล detail (ระบบเริ่มเก็บอัตโนมัติ มิ.ย. 2569)',
+               direction: kpi.direction, description: kpi.description, target: Number(kpi.target ?? 0) },
+        savedMonthly: null, stale: manual, lastMonth: null,
+        message: manual
+          ? 'KPI นี้กรอกค่าเอง — ยังไม่มีข้อมูล (admin กรอกรายตำบลได้ด้านล่าง)'
+          : 'ยังไม่มีข้อมูล detail (ระบบเริ่มเก็บอัตโนมัติ มิ.ย. 2569)',
       })
     }
     const month = monthParam && months.includes(monthParam) ? monthParam : months[months.length - 1]
 
-    // ── target ของเดือนนั้นจาก monthly_data (เกณฑ์เดียวกับ Scorecard) ──────
+    // ── target ของเดือนนั้นจาก monthly_data (เกณฑ์เดียวกับ Scorecard) + audit ──────
     const [mdRows] = await conn.execute(
-      'SELECT value, target FROM monthly_data WHERE kpi_id = ? AND month = ?', [kpiId, month])
-    const md = (mdRows as { value: number; target: number }[])[0] ?? null
+      'SELECT value, target, source, entered_by, entered_at FROM monthly_data WHERE kpi_id = ? AND month = ?', [kpiId, month])
+    const md = (mdRows as { value: number; target: number; source: string | null; entered_by: string | null; entered_at: string | null }[])[0] ?? null
     const evalTarget = md ? Number(md.target) : Number(kpi.target ?? 0)
     const direction = kpi.direction as EvalDirection
+
+    // เตือน stale: ยังไม่ได้กรอก monthly_data ของเดือนปัจจุบัน (ใช้กับ manual)
+    const now = new Date()
+    const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const [allMd] = await conn.execute(
+      'SELECT MAX(month) AS lastMonth, MAX(CASE WHEN month=? THEN 1 ELSE 0 END) AS hasCur FROM monthly_data WHERE kpi_id = ?',
+      [thisMonth, kpiId])
+    const mdAgg = (allMd as { lastMonth: string | null; hasCur: number }[])[0]
 
     // ── detail rows → group ตามตำบล ───────────────────────────────────────
     const [dRows] = await conn.execute(
@@ -145,7 +162,12 @@ export async function GET(req: NextRequest) {
         direction, description: kpi.description,
         target: evalTarget,
       },
-      savedMonthly: md ? { value: Number(md.value), target: Number(md.target) } : null,
+      savedMonthly: md
+        ? { value: Number(md.value), target: Number(md.target), enteredBy: md.entered_by, enteredAt: md.entered_at }
+        : null,
+      manual,
+      stale: manual && !mdAgg?.hasCur, // manual + ยังไม่กรอกเดือนปัจจุบัน
+      lastMonth: mdAgg?.lastMonth ?? null,
       mappingOk: engineCheck.errors.length === 0,
       mappingErrors: engineCheck.errors,
       fieldList, fieldLabels, groups, total,
