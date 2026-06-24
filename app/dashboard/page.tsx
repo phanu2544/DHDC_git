@@ -224,6 +224,9 @@ export default function DashboardPage() {
                               <Link href={detailViewHref(r.kpi)} className="font-medium text-gray-900 hover:text-blue-700 hover:underline" title="ดูรายละเอียด">
                                 {r.kpi.name}
                               </Link>
+                              {r.kpi.manualEntry ? (
+                                <span className="ml-2 inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-700 align-middle">✍️ กรอกมือ</span>
+                              ) : null}
                               <div className="text-xs text-gray-400">{r.kpi.category} • {r.kpi.owner}</div>
                             </td>
                             <td className="px-4 py-2.5 text-right tabular-nums">
@@ -238,7 +241,11 @@ export default function DashboardPage() {
                                 {STATUS_META[r.status].label}
                               </span>
                             </td>
-                            <td className="px-4 py-2.5 text-xs text-gray-500">{r.message ?? ''}</td>
+                            <td className="px-4 py-2.5 text-xs text-gray-500">
+                              {r.kpi.manualEntry && r.value === null
+                                ? <span className="text-amber-700">✍️ ยังไม่กรอกเดือนนี้</span>
+                                : (r.message ?? '')}
+                            </td>
                           </tr>
                         ))
                       )}

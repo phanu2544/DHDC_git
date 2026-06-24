@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { buildMappingFromLegacy, computeMoph } from '@/lib/mophEngine'
 import { evaluateKpiStatus } from '@/lib/kpiStatus'
-import { tambonCodeOf, tambonNameOf } from '@/lib/areaRef'
+import { tambonCodeOf, tambonNameOf, hospcodeNameOf } from '@/lib/areaRef'
 import { fieldLabelsFor } from '@/lib/detailLabels'
 import { isManualEntry } from '@/lib/manualKpi'
 import type { MophMapping, EvalDirection, KpiEvalStatus } from '@/lib/types'
@@ -31,6 +31,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const kpiId = searchParams.get('kpiId')
   const monthParam = searchParams.get('month') || ''
+  const viewParam = searchParams.get('view') === 'unit' ? 'unit' : 'area' // มุมมอง: รายตำบล (area) / รายหน่วยบริการ (unit)
   if (!kpiId) return NextResponse.json({ ok: false, message: 'ต้องระบุ kpiId' }, { status: 400 })
 
   const conn = await pool.getConnection()
@@ -74,7 +75,7 @@ export async function GET(req: NextRequest) {
                direction: kpi.direction, description: kpi.description, target: Number(kpi.target ?? 0) },
         savedMonthly: null, stale: manual, lastMonth: null,
         message: manual
-          ? 'KPI นี้กรอกค่าเอง — ยังไม่มีข้อมูล (admin กรอกรายตำบลได้ด้านล่าง)'
+          ? 'KPI นี้กรอกค่าเอง — ยังไม่มีข้อมูล (admin กรอกรายหน่วยบริการได้ด้านล่าง)'
           : 'ยังไม่มีข้อมูล detail (ระบบเริ่มเก็บอัตโนมัติ มิ.ย. 2569)',
       })
     }
@@ -101,14 +102,22 @@ export async function GET(req: NextRequest) {
       [kpiId, month])
     const detail = dRows as { hospcode: string; areacode: string; data: string }[]
 
-    const byTambon = new Map<string, Record<string, unknown>[]>()
+    // มุมมอง: manual เก็บราย hospcode จริง → บังคับรายหน่วยบริการ
+    // (manual กรอกราย hospcode เพราะ hospcode→tambon ไม่ใช่ 1:1 — ดู /api/monthly/detail)
+    const grpView = manual ? 'unit' : viewParam
+    const keyOf = (r: { hospcode: string; areacode: string }) =>
+      grpView === 'unit' ? String(r.hospcode ?? '') : tambonCodeOf(r.areacode)
+    const nameOf = (key: string) =>
+      grpView === 'unit' ? hospcodeNameOf(key) : tambonNameOf(key)
+
+    const byGroup = new Map<string, Record<string, unknown>[]>()
     const allRows: Record<string, unknown>[] = []
     for (const r of detail) {
       let d: Record<string, unknown>
       try { d = JSON.parse(r.data) } catch { continue }
-      const t = tambonCodeOf(r.areacode)
-      if (!byTambon.has(t)) byTambon.set(t, [])
-      byTambon.get(t)!.push(d)
+      const k = keyOf(r)
+      if (!byGroup.has(k)) byGroup.set(k, [])
+      byGroup.get(k)!.push(d)
       allRows.push(d)
     }
 
@@ -124,10 +133,10 @@ export async function GET(req: NextRequest) {
       return { calcValue: res.calcValue, status: evaluateKpiStatus(res.calcValue, evalTarget, direction).status }
     }
 
-    const groups: GroupOut[] = [...byTambon.entries()]
+    const groups: GroupOut[] = [...byGroup.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([code, rows]) => ({
-        code, name: tambonNameOf(code), rows: rows.length,
+        code, name: nameOf(code), rows: rows.length,
         fields: sumFields(rows), ...evalGroup(rows),
       }))
 
@@ -165,7 +174,7 @@ export async function GET(req: NextRequest) {
       savedMonthly: md
         ? { value: Number(md.value), target: Number(md.target), enteredBy: md.entered_by, enteredAt: md.entered_at }
         : null,
-      manual,
+      manual, view: grpView,
       stale: manual && !mdAgg?.hasCur, // manual + ยังไม่กรอกเดือนปัจจุบัน
       lastMonth: mdAgg?.lastMonth ?? null,
       mappingOk: engineCheck.errors.length === 0,

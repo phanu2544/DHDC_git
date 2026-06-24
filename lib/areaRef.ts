@@ -24,6 +24,24 @@ export function tambonNameOf(code: string): string {
 }
 
 /**
+ * ชื่อหน่วยบริการ (hospcode) อำเภอดงเจริญ — ยืนยันจาก HDC screenshot ใน data/
+ * (owner ปรับชื่อได้ · hospcode นอกรายการนี้ → fallback โชว์รหัส)
+ */
+export const HOSPCODE_NAMES: Record<string, string> = {
+  '07705': 'รพ.สต.บ้านวังก้านเหลือง',
+  '07706': 'รพ.สต.วังงิ้วใต้ (ต.วังงิ้ว)',
+  '07707': 'รพ.สต.บ้านดงเจริญ (ต.วังงิ้ว)',
+  '07708': 'รพ.สต.ห้วยร่วม',
+  '07709': 'รพ.สต.ห้วยพุก',
+  '07710': 'สอน.เฉลิมพระเกียรติฯ สำนักขุนเณร',
+  '27980': 'รพช. ดงเจริญ',
+}
+
+export function hospcodeNameOf(code: string): string {
+  return HOSPCODE_NAMES[code] ?? `รพ. ${code}`
+}
+
+/**
  * จัดกลุ่มแถวดิบรายตำบล (เรียงตามรหัสตำบล) + คำนวณแถวรวมอำเภอ
  * build(rows, code, name) คืน object ของตำบลนั้น (กราฟแต่ละหน้านิยามเอง)
  */
