@@ -1,6 +1,6 @@
 # DHDC KPI — Plan / Checklist
 
-> งานที่ค้าง + ลำดับที่จะทำต่อ · ทำ**ทีละ step → tick `[x]` → review → commit** · อัปเดต 2026-06-16
+> งานที่ค้าง + ลำดับที่จะทำต่อ · ทำ**ทีละ step → tick `[x]` → review → commit** · อัปเดต 2026-06-24
 > กฎ/สถาปัตยกรรม: ดู [`CLAUDE.md`](../CLAUDE.md) · **ทุก DB op:** backup → preview/gate → COMMIT → verify · scope `6611` · ห้าม commit เองจนกว่า user สั่ง
 
 ---
@@ -41,12 +41,15 @@
 - [x] **dashboard discoverability (manual)** **(เสร็จ 24 มิ.ย.)** — Scorecard มีป้าย "✍️ กรอกมือ" + แจ้ง "ยังไม่กรอกเดือนนี้" (value=null) บน KPI ที่ flag manual
 - [x] **drilldown สลับมุมมอง รายตำบล ↔ รายหน่วยบริการ** **(เสร็จ 24 มิ.ย.)** — `/api/detail?view=area|unit` group ตาม tambon หรือ hospcode · `lib/areaRef.HOSPCODE_NAMES` (ดงเจริญ 7 หน่วย จาก HDC) · ปุ่ม toggle ในหน้า generic `/kpi/[id]` (เฉพาะ KPI auto) · verify: breast_screen area(5 ตำบล)↔unit(7 หน่วย) รวม 76.94% เท่ากัน · ⏳ custom pages (aged9/ageing/screen-risk/vaccines) ยังเป็นรายตำบล = follow-up
 - [x] **manual KPI: เปลี่ยนกรอกรายตำบล → รายหน่วยบริการ (hospcode)** **(เสร็จ 24 มิ.ย.)** — owner อยาก toggle 2 มุมในตัว manual แต่ตรวจข้อมูลจริงพบ **hospcode→tambon ไม่ใช่ 1:1** (07705 คุม ต.01+02, รพ.ดงเจริญ 27980 คุม ต.01+05) → กรอกราย hospcode แตกกลับเป็นตำบลไม่ได้ (ห้ามเดา) → ฟิกกรอกราย hospcode 7 หน่วย (ตรง HDC unit table) · `/api/monthly/detail` รับ `{hospcode,target,result}` validate กับ 7 หน่วยจริง · detail บังคับ `view=unit` เมื่อ manual · ฟอร์ม `/kpi/[id]` กรอก 7 หน่วยเรียงตามรหัส · migrate: ลบ detail รายตำบลเดิม 5 แถว [snapshot→gate→COMMIT] คง monthly_data 86.89% (total grouping-independent) → owner re-enter จาก HDC · verify preview ครบ (save/group/validation/live-recompute/order) ✅
+- [x] **data protection: orphan + audit log + ล็อกฟอร์ม** **(เสร็จ 24 มิ.ย., commit 7fb2da1)** — กันข้อมูล manual หาย/ขัดกันตอนถูกลบ · (1) ตารางใหม่ `data_change_log` (เก็บ `old_data` JSON ก่อนลบ/ทับ + `changed_by/changed_at` — ไม่ผูก FK cascade เก็บ log แม้ KPI ถูกลบ) · (2) `DELETE /api/monthly` ลบ `moph_monthly_detail` ตามไปด้วยใน transaction (แก้ orphan: เดิมลบแค่ monthly_data เหลือ detail ค้าง) + log action=delete · (3) `POST /api/monthly/detail` ครอบ transaction (atomic) + log action=overwrite ก่อนทับค่าเดิม · (4) ฟอร์ม manual `/kpi/[id]` **ล็อกหลังบันทึก** (inputs disabled + แบนเนอร์ 🔒 "บันทึกแล้วโดย…") → ต้องกด "✏️ แก้ไข" ก่อน + ปุ่ม "ยกเลิก" คืนค่าเดิม (กันมือลั่นกรอกทับ) · verify ครบ: orphan fix (test month detail=0) · audit (overwrite+delete log เก็บ 7 hospcode) · lock/edit/cancel cycle · ข้อมูลจริง 2026-06 (86.67%/7) คงเดิม · ⏳ ปุ่ม "กู้คืน" จาก log ใน UI = follow-up (ตอนนี้กู้มือ: อ่าน old_data → re-POST) · ⚠️ **production ต้องรัน `POST /api/init` 1 ครั้งเพื่อสร้างตาราง data_change_log**
 - [ ] **กราฟเส้น trend รายเดือน** — ⏳ รอ cron เก็บ **≥2 เดือน** ก่อน (โครงพร้อม)
 - [ ] ตาราง `kpi_monthly_measure` — เฉพาะถ้าทำ exec trend หนักๆ (ตอนนี้ field ดิบพอ)
+- [ ] *(follow-up)* **custom pages view toggle** — aged9/ageing/screen-risk/vaccines ยัง group รายตำบลอย่างเดียว (generic `/kpi/[id]` มี toggle area↔unit แล้ว) — ถ้า owner อยากได้ราย hospcode ในหน้าเหล่านี้ด้วย
+- [ ] *(follow-up)* **ปุ่มกู้คืนจาก data_change_log ใน UI** — ตอนนี้กู้มือ (อ่าน old_data JSON → re-POST /api/monthly/detail)
 
 ## D. 🚀 Production go-live (ก้อนใหญ่ — ต้อง owner sign-off)
 - [ ] ตั้ง `.env.local` (production DB) + ตรวจ `/api/dbinfo` ขึ้น "production"
-- [ ] `POST /api/init` บน production (สร้าง schema)
+- [ ] `POST /api/init` บน production (สร้าง schema — **รวมตาราง `data_change_log` ใหม่**; idempotent CREATE IF NOT EXISTS)
 - [ ] Replay config ตาม `production-runbook.md` (snapshot→gate→verify) — ⚠️ owner sign-off โลหิตจาง/NCD BP
 - [ ] ตั้ง target ปีงบ + batch scope 6611 + verify ตรง dev
 - [~] **Process manager (PM2/NSSM)** **(เตรียม 2026-06-18)** — ✅ `ecosystem.config.js` (รัน next start port 3002, autorestart) + runbook turnkey (A1 PM2 app / A2 MariaDB service auto-start / A3 verify) · build verify ผ่าน · **เหลือ user รันเอง:** `pm2 start ecosystem.config.js` + `sc.exe config MariaDB` (ต้อง UAC) → ปลดล็อก cron สะสมเดือน → trend ใช้ได้
