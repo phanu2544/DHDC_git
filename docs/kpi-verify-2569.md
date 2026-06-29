@@ -56,9 +56,32 @@
 - `/api/monthly/detail` รับเฉพาะ KPI ที่ flag manual (ไม่ใช่ → 400) กันเขียนผิดตัวแล้วโดน cron ทับ
 - ✅ discoverability (เสร็จ 24 มิ.ย.): Scorecard/dashboard มีป้าย "✍️ กรอกมือ" + แจ้ง "ยังไม่กรอกเดือนนี้" (value null) บน KPI ที่ flag manual
 
+## รอบที่ 2 — go-live readiness audit (2026-06-29) · ตรวจกลุ่มที่รอบ 1 ไม่ครอบคลุม
+ตรวจครบ 39 ตัว · เจอ **config bug จริง 1 ตัว** (แก้แล้ว) + cosmetic 2 (แก้แล้ว) + owner-pending 4
+
+| KPI (moph_table) | ระบบ | HDC | สถานะ |
+|---|---|---|---|
+| s_ht_screen_n (35-59) | 81.14 | 81.17 | ✅ `result1/target1` = ช่วง 35-59 ถูก |
+| s_dm_hypo | 1.36 | 1.37 | ✅ `result_1/target_1` ถูก (lte 2 = pass) |
+| s_dm_hba1c | 65.63 | — | ✅ `result/target` เป็น field เดียวที่มีค่า (result1 null) |
+| **s_dm_screen_n (35-59)** | **75.38→79.23** | (ไม่มี shot) | 🔴→✅ **แก้แล้ว** |
+
+### 🔴 BUG ที่เจอ+แก้: `s_dm_screen_n` (เบาหวาน 35-59) map ผิด
+- **ปัญหา:** ใช้ `result/target` (= ช่วง 35+) → 75.38% **ซ้ำกับ `s_dm_screen` (35+)** ทั้งที่ KPI นี้คือช่วง 35-59
+- **พิสูจน์ (ไม่เดา):** ตัวคู่ขนาน `s_ht_screen_n` (35-59) ใช้ `result1/target1` → 81.14 **ตรง HDC 81.17** → convention `result1/target1` = 35-59 · field layout `s_dm_screen_n` เหมือนกันเป๊ะ (`{target,result,target1,result1}`)
+- **แก้ (2026-06-29):** `kpi_reports.moph_value_field='result1', moph_target_field='target1'` [backup `_resync_backup/dm-screen-n-fix-2026-06-29/` → transaction gate ROW_COUNT=1 → COMMIT] → re-snapshot scope 6611 ผ่าน `/api/moph/batch` (kpiId เดียว) → **79.23%** (snapshot มิ.ย. = 79.04) · verify: Σresult1(2339)/Σtarget1(2952)=79.23 self-consistent · drilldown overall=79.23 · s_dm_screen/s_ht_screen_n ไม่ขยับ
+- ⚠️ **go-live:** ไม่มี HDC screenshot DM 35-59 ตรงๆ → owner เหลือบยืนยันเลขอีกครั้งตอน go-live
+
+### 🟡 cosmetic ที่แก้ (2026-06-29) [backup `_resync_backup/colon-tida4i-cosmetic-2026-06-29/`]
+- `s_colon_screen_w` — unit `%`→`ราย` (calc=raw count workload, dir=none) · drilldown ยังว่าง (field ไตรมาส `fitposq2` snapshot ตัด — ข้อจำกัดเชิงโครงสร้าง รอ owner ถ้าอยากได้)
+- `s_tida4i` — target `75`→`0` (ค้างครึ่งทาง: มี target แต่ dir=none + ไม่มีเคสจริง)
+
+### 🟠 owner-pending (ไม่เดา — รวมเป็น checklist)
+- s_child_hct (โลหิตจาง นิยาม ข้อ 9) · s_ncd_bp (NCD BP นิยาม ข้อ 10) — *ค่าถูกแล้ว รอเซ็น*
+- s_ht_diag_follow (numerator `result` vs `r1`/`r2`) · s_cf_dm_diag (field `result` vs `resultb2`) — dir=none
+
 ## ยังไม่ตรวจ (ความเสี่ยงต่ำ — dir=none "ติดตามเฉยๆ" ไม่ตัดสินผ่าน/ไม่ผ่าน)
-- s_colon_screen_w (ใช้ field ไตรมาส `fitposq2` — snapshot ตัด q ทิ้ง, flag ไว้แล้ว)
-- s_cf_dm_diag, s_dm_screen_risk, s_ht_diag_follow, s_aged9, s_aged9_app
+- s_dm_screen_risk, s_aged9, s_aged9_app (custom drilldown verify ตรง HDC แล้วในเฟสก่อน)
 
 ## หมายเหตุ
 - HDC screenshot ใน `data/` = ดงเจริญ เชื่อถือได้ (ดู CLAUDE.md) · `.txt` = จังหวัด 11 ใช้ดู schema เท่านั้น
