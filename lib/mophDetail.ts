@@ -52,7 +52,14 @@ export interface DetailSaveResult {
   error?: string
 }
 
-/** upsert detail รายแถว (kpi_id, month, hospcode, areacode) — เดือนเดียวกันทับค่าเดิม (snapshot ล่าสุดของเดือน) */
+/**
+ * upsert detail 1 แถวต่อ (kpi_id, month, hospcode, areacode) — เดือนเดียวกันทับค่าเดิม
+ *
+ * ⚠️ KPI บางตัว (เช่น s_childdev_specialpp) MOPH คืน **หลายแถวต่อพื้นที่** (1 แถว/เดือน) →
+ * ต้อง **รวม (sum) field ตัวเลขของแถว key ซ้ำก่อนเก็บ** เพื่อให้ detail = ผลรวมที่ computeMoph ใช้
+ * (engine sum ทุกแถว) → drilldown รวม = Scorecard เสมอ · field ที่ไม่ใช่ตัวเลขใช้ค่าแถวหลังสุด
+ * · KPI ปกติ (1 แถว/พื้นที่) = no-op
+ */
 export async function saveMonthlyDetail(
   kpiId: string,
   month: string,
@@ -60,22 +67,48 @@ export async function saveMonthlyDetail(
   tableName = '',
 ): Promise<DetailSaveResult> {
   if (rows.length === 0) return { saved: 0 }
+
+  // รวมแถวที่ (hospcode, areacode) ซ้ำกัน — sum field ตัวเลข, non-numeric เก็บค่าแถวหลังสุด
+  const groups = new Map<string, { hospcode: string; areacode: string; data: Record<string, unknown> }>()
+  for (const r of rows) {
+    const data = filterSummaryFields(r, tableName)
+    if (Object.keys(data).length === 0) continue
+    const hospcode = String(r.hospcode ?? '')
+    const areacode = String(r.areacode ?? '')
+    const key = `${hospcode}|${areacode}`
+    let g = groups.get(key)
+    if (!g) { g = { hospcode, areacode, data: {} }; groups.set(key, g) }
+    for (const [k, v] of Object.entries(data)) {
+      const nv = Number(v)
+      if (Number.isFinite(nv)) {
+        const pv = Number(g.data[k])
+        g.data[k] = (Number.isFinite(pv) ? pv : 0) + nv
+      } else {
+        g.data[k] = v
+      }
+    }
+  }
+  if (groups.size === 0) return { saved: 0 }
+
   const conn = await pool.getConnection()
   try {
+    await conn.beginTransaction()
+    // ล้าง snapshot เดิมของ (kpi, month) ทั้งหมดก่อน insert ใหม่ — กัน orphan row จาก batch ก่อน
+    // (พื้นที่ที่ MOPH เลิกคืน/เปลี่ยน key จะค้างถ้าใช้ upsert อย่างเดียว → detail รวม ≠ Scorecard)
+    await conn.execute('DELETE FROM moph_monthly_detail WHERE kpi_id=? AND month=?', [kpiId, month])
     let saved = 0
-    for (const r of rows) {
-      const data = filterSummaryFields(r, tableName)
-      if (Object.keys(data).length === 0) continue
+    for (const g of groups.values()) {
       await conn.execute(
         `INSERT INTO moph_monthly_detail (kpi_id, month, hospcode, areacode, data)
-         VALUES (?, ?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE data = VALUES(data)`,
-        [kpiId, month, String(r.hospcode ?? ''), String(r.areacode ?? ''), JSON.stringify(data)],
+         VALUES (?, ?, ?, ?, ?)`,
+        [kpiId, month, g.hospcode, g.areacode, JSON.stringify(g.data)],
       )
       saved++
     }
+    await conn.commit()
     return { saved }
   } catch (e) {
+    try { await conn.rollback() } catch { /* rollback best-effort */ }
     return { saved: 0, error: String(e) }
   } finally {
     conn.release()

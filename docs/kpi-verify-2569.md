@@ -83,6 +83,16 @@
 ## ยังไม่ตรวจ (ความเสี่ยงต่ำ — dir=none "ติดตามเฉยๆ" ไม่ตัดสินผ่าน/ไม่ผ่าน)
 - s_dm_screen_risk, s_aged9, s_aged9_app (custom drilldown verify ตรง HDC แล้วในเฟสก่อน)
 
+## 🔧 detail aggregation fix (option B — แก้ทั้งระบบ, 30 มิ.ย.)
+**เป้าหมาย: invariant "drilldown รวม = Scorecard เสมอ"** · สแกน 37 KPI เจอ detail ≠ Scorecard **3 ตัว** → แก้ `lib/mophDetail.saveMonthlyDetail` 2 จุด:
+- **(1) รวม row key ซ้ำด้วย sum** — KPI ที่ MOPH คืนหลาย row/พื้นที่ (เช่น `s_childdev_specialpp` รายเดือน 233 row = 53 พื้นที่ × ~4-5 เดือน) เดิม upsert ทับเหลือ row เดียว/พื้นที่ → drilldown เพี้ยน · ใหม่ = sum field ตัวเลขก่อนเก็บ (ตรงกับที่ computeMoph ทำ)
+- **(2) DELETE (kpi,month) ก่อน insert ใน transaction** — กัน orphan row จาก batch ก่อน (พื้นที่ที่ MOPH เลิกคืน/เปลี่ยน key) ค้างสะสม → detail = batch ล่าสุดเป๊ะ
+- **ผล (re-batch 3 ตัว scope 6611, backup `_resync_backup/detail-aggregate-fix-2026-06-30/`):**
+  - `s_childdev_specialpp` (DSPM): Scorecard **62.42** = drilldown 62.42 ✅ (เดิม 60.00, multi-row)
+  - `s_cervix_screen_n66`: Scorecard 153 = drilldown 153 ✅ (เดิม drilldown 306, orphan 2→1 row) · ⚠️ ค่า 153% ยังเป็น % เสีย (ไม่มีตัวหารประชากร) — รอ owner ตัดสินใจ count ราย (packet ข้อ 8)
+  - `s_ncd_bp`: Scorecard **53.24** = drilldown 53.24 ✅ (เดิม 55.09, orphan 23→12 row) · ⚠️ ค่าขยับ 54.96→53.24 (re-batch ดึง MOPH ปัจจุบัน, mapping a1/b1 ที่ owner รับรองไม่เปลี่ยน)
+- **verify:** full scan 36/36 OK 0 DIFF · control (anemia/colon/epi2/…) ไม่เปลี่ยน (1 row/พื้นที่ = no-op) · KPI ปกติ 34 ตัว detail เดิมถูกอยู่แล้ว (cron รอบหน้าจะ apply logic ใหม่เอง)
+
 ## หมายเหตุ
 - HDC screenshot ใน `data/` = ดงเจริญ เชื่อถือได้ (ดู CLAUDE.md) · `.txt` = จังหวัด 11 ใช้ดู schema เท่านั้น
 - ไม่มี DB write จากการ verify รอบนี้ (17 ตัวถูกอยู่แล้ว — value_field ว่างแต่ engine ใช้ default `'result'` ถูก)
