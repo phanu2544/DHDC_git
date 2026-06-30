@@ -151,12 +151,11 @@ export async function GET(req: NextRequest) {
     const rest = Object.keys(total.fields).filter((f) => !mappingFields.includes(f)).sort()
     let fieldList = [...mappingFields.filter((f) => f in total.fields), ...rest]
 
-    // ป้ายไทย + จัดลำดับคอลัมน์ตาม label map (ถ้ามี) — ให้หน้า generic อ่านง่ายแบบ HDC
-    // ไม่มี map → ใช้ชื่อ field ดิบ + ลำดับเดิม (KPI อื่นไม่กระทบ)
+    // ป้ายไทย + เลือก/จัดลำดับคอลัมน์ตาม label map (ถ้ามี) — ให้หน้า generic อ่านง่ายแบบ HDC
+    // มี map → โชว์**เฉพาะ**คอลัมน์ที่กำหนด (whitelist + ลำดับ + ป้ายไทย) · ไม่มี map → field ดิบทั้งหมด (KPI อื่นไม่กระทบ)
     const labelMap = fieldLabelsFor(kpi.moph_table as string)
     if (labelMap) {
-      const ordered = Object.keys(labelMap).filter((f) => f in total.fields)
-      fieldList = [...ordered, ...fieldList.filter((f) => !(f in labelMap))]
+      fieldList = Object.keys(labelMap).filter((f) => f in total.fields)
     }
     const fieldLabels: Record<string, string> = {}
     for (const f of fieldList) fieldLabels[f] = labelMap?.[f] ?? f

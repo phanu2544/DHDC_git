@@ -35,6 +35,7 @@ MOPH Open Data ─POST report_data─▶ computeMoph(engine) ─▶ monthly_data
 - **targets:** `lib/targets.ts` + `/admin/targets`
 - **manual KPI (กรอกค่าเอง):** `lib/manualKpi.ts` (`isManualEntry` อ่าน flag `kpi_reports.manual_entry`) · ติ๊ก "กรอกค่าเอง" ในฟอร์ม `/admin` · `runBatchSave`/cron **ข้าม** ตัว manual · กรอก**รายหน่วยบริการ** (B/A, 7 หน่วย `HOSPCODE_NAMES`) ที่หน้า `/kpi/[id]` (admin) → `POST /api/monthly/detail` เขียน `moph_monthly_detail` (hospcode จริง, {target,result}) + `monthly_data` รวม (ΣA/ΣB) + audit (`source/entered_by/entered_at`) · detail **บังคับ mapping result/target + view=unit** เมื่อ manual · **ทำไมราย hospcode ไม่ใช่ตำบล:** hospcode→tambon ไม่ใช่ 1:1 (07705 คุม ต.01+02, รพ.ดงเจริญ 27980 คุม ต.01+05) → เลขรวมต่อ hospcode แตกกลับเป็นตำบลไม่ได้ ห้ามเดา
 - **drilldown pages:** `app/kpi/{anemia,aged9,screen-risk,vaccines,ageing,colon-fit}/page.tsx` + API คู่ที่ `app/api/<name>/route.ts` · ทุกหน้ามี toggle รายตำบล↔รายหน่วยบริการ (`?view=area|unit` → `groupByTambon`/`groupByHospcode`)
+- **ป้ายคอลัมน์ generic `/kpi/[id]`:** `lib/detailLabels.ts` (map `moph_table`→{field:ป้ายไทย}) · **มี entry = whitelist โชว์เฉพาะคอลัมน์นั้น + ลำดับ + ป้ายไทย · ไม่มี = field ดิบทั้งหมด** · เพิ่มทีละ KPI (ห้ามเดา field — ดู [`docs/drilldown-labels-checklist.md`](docs/drilldown-labels-checklist.md)) · `saveMonthlyDetail` รวม row key ซ้ำด้วย sum + DELETE ก่อน insert → drilldown รวม = Scorecard เสมอ
 - **dashboard ลิงก์ drilldown** ตาม `mophTable` (ดู `app/dashboard/page.tsx`)
 
 ## เอกสารอื่น
