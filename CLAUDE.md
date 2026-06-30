@@ -30,11 +30,11 @@ MOPH Open Data ─POST report_data─▶ computeMoph(engine) ─▶ monthly_data
 
 ## ไฟล์สำคัญ (ดูที่ไหน)
 - **engine (pure):** `lib/mophEngine.ts` (computeMoph) · `lib/kpiStatus.ts` (evaluateKpiStatus) · `lib/scorecard.ts`
-- **batch/cron:** `lib/mophBatch.ts` (runBatchSave) · `lib/mophDetail.ts` (snapshot, มี `KEEP_MONTHLY_TABLES` สำหรับ s_epi2) · `lib/scheduler.ts`
+- **batch/cron:** `lib/mophBatch.ts` (runBatchSave) · `lib/mophDetail.ts` (snapshot, มี `KEEP_MONTHLY_TABLES` สำหรับ s_epi2/s_kpi_ageing/s_colon_screen_w เก็บ field ไตรมาส) · `lib/scheduler.ts`
 - **drilldown รายเดือน:** `lib/monthlyView.ts` (snapshot/live + DB-ล่ม→live) · `lib/useMonthlyData.ts` (hook) · `components/MonthPicker.tsx` · `lib/areaRef.ts` (`groupByTambon`, ชื่อตำบล)
 - **targets:** `lib/targets.ts` + `/admin/targets`
 - **manual KPI (กรอกค่าเอง):** `lib/manualKpi.ts` (`isManualEntry` อ่าน flag `kpi_reports.manual_entry`) · ติ๊ก "กรอกค่าเอง" ในฟอร์ม `/admin` · `runBatchSave`/cron **ข้าม** ตัว manual · กรอก**รายหน่วยบริการ** (B/A, 7 หน่วย `HOSPCODE_NAMES`) ที่หน้า `/kpi/[id]` (admin) → `POST /api/monthly/detail` เขียน `moph_monthly_detail` (hospcode จริง, {target,result}) + `monthly_data` รวม (ΣA/ΣB) + audit (`source/entered_by/entered_at`) · detail **บังคับ mapping result/target + view=unit** เมื่อ manual · **ทำไมราย hospcode ไม่ใช่ตำบล:** hospcode→tambon ไม่ใช่ 1:1 (07705 คุม ต.01+02, รพ.ดงเจริญ 27980 คุม ต.01+05) → เลขรวมต่อ hospcode แตกกลับเป็นตำบลไม่ได้ ห้ามเดา
-- **drilldown pages:** `app/kpi/{anemia,aged9,screen-risk,vaccines,ageing}/page.tsx` + API คู่ที่ `app/api/<name>/route.ts`
+- **drilldown pages:** `app/kpi/{anemia,aged9,screen-risk,vaccines,ageing,colon-fit}/page.tsx` + API คู่ที่ `app/api/<name>/route.ts` · ทุกหน้ามี toggle รายตำบล↔รายหน่วยบริการ (`?view=area|unit` → `groupByTambon`/`groupByHospcode`)
 - **dashboard ลิงก์ drilldown** ตาม `mophTable` (ดู `app/dashboard/page.tsx`)
 
 ## เอกสารอื่น
@@ -45,6 +45,6 @@ MOPH Open Data ─POST report_data─▶ computeMoph(engine) ─▶ monthly_data
 
 ## หมายเหตุข้อมูล
 - HDC screenshot ใน `data/` = ดงเจริญ (เชื่อถือได้) · CSV `.txt` ใน `data/` = จังหวัดรหัส 11 → **ใช้ได้แค่ดู schema ห้ามเทียบค่า**
-- KPI drilldown ที่ทำเป็น snapshot รายเดือนแล้ว: anemia (s_child_hct), aged9 (s_aged9/_app), screen-risk (s_dm/s_ht_screen_risk), vaccines (s_epi2), Healthy Ageing (s_kpi_ageing → `/kpi/ageing` 2 รอบ)
+- KPI drilldown ที่ทำเป็น snapshot รายเดือนแล้ว: anemia (s_child_hct), aged9 (s_aged9/_app), screen-risk (s_dm/s_ht_screen_risk), vaccines (s_epi2), Healthy Ageing (s_kpi_ageing → `/kpi/ageing` 2 รอบ), มะเร็งลำไส้ FIT test (s_colon_screen_w → `/kpi/colon-fit` แสดง FIT+/FIT− area/unit)
 - **KPI กรอกค่าเอง (manual):** `s_epi_complete` (fully immunized) — Open Data คำนวณ per-child ไม่ได้ (ดู [`docs/kpi-verify-2569.md`](docs/kpi-verify-2569.md)) → owner กรอก**รายหน่วยบริการ** (7 หน่วย) จาก HDC เดือนละครั้ง · มี flag `manual_entry` ให้ติ๊ก KPI อื่นเพิ่มได้เอง
 - **verify ค่าตรง HDC:** เทียบ `monthly_data` (ระบบ) ↔ HDC screenshot ใน `data/` **ช่วงเวลาเดียวกัน** (อย่าเทียบ MOPH live วันนี้ — ข้อมูลขยับ) · ผลรอบล่าสุด: 17/18 ตรง auto + 1 manual (ดู [`docs/kpi-verify-2569.md`](docs/kpi-verify-2569.md))

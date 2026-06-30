@@ -73,7 +73,7 @@
 - ⚠️ **go-live:** ไม่มี HDC screenshot DM 35-59 ตรงๆ → owner เหลือบยืนยันเลขอีกครั้งตอน go-live
 
 ### 🟡 cosmetic ที่แก้ (2026-06-29) [backup `_resync_backup/colon-tida4i-cosmetic-2026-06-29/`]
-- `s_colon_screen_w` — unit `%`→`ราย` (calc=raw count workload, dir=none) · drilldown ยังว่าง (field ไตรมาส `fitposq2` snapshot ตัด — ข้อจำกัดเชิงโครงสร้าง รอ owner ถ้าอยากได้)
+- `s_colon_screen_w` — **(30 มิ.ย. ยกระดับเป็น full fix)** เดิมแก้แค่ unit · ตรวจซ้ำพบ calc=raw อ่าน `fitposq2` แถวแรก = **1 ราย** (ผิด ไม่รวมข้ามแถว/ไตรมาส) → แก้ `moph_config` sumFields รวม fitpos+fitneg q1-q4 (calc=sum) + เพิ่ม `s_colon_screen_w`∈`KEEP_MONTHLY_TABLES` (เก็บ field ไตรมาส) → re-batch = **337 ราย** (FIT− 297 + FIT+ 40) ตรง HDC ทุกตำบล · drilldown `/kpi/colon-fit` (area/unit toggle, owner ยืนยันราย ต. ตรง HDC 30 มิ.ย.)
 - `s_tida4i` — target `75`→`0` (ค้างครึ่งทาง: มี target แต่ dir=none + ไม่มีเคสจริง)
 
 ### 🟠 owner-pending (ไม่เดา — รวมเป็น checklist)
