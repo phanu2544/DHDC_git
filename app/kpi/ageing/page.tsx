@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useCallback, useEffect } from 'react'
+import { Fragment, useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import Navbar from '@/components/Navbar'
@@ -8,15 +8,16 @@ import MonthPicker from '@/components/MonthPicker'
 import { DISTRICT_NAME } from '@/lib/areaRef'
 import { useMonthlyData } from '@/lib/useMonthlyData'
 
+type View = 'area' | 'unit'
+
 interface Round { screen: number; social: number; home: number; bed: number; pct: number | null }
 interface TambonRow { code: string; name: string; elderly: number; r1: Round; r2: Round }
 interface AgeingResp {
   ok: boolean; message?: string; table: string; year: string
   source: 'snapshot' | 'live'; month: string | null; availableMonths: string[]
-  tambons: TambonRow[]; total: TambonRow
+  view: View; tambons: TambonRow[]; total: TambonRow
 }
 
-// สี %ติดสังคม (ยิ่งสูงยิ่งดี — ผู้สูงอายุช่วยเหลือตัวเองได้)
 function socialColor(pct: number | null): string {
   if (pct === null) return '#9ca3af'
   if (pct >= 95) return '#16a34a'
@@ -30,16 +31,19 @@ const ROUNDS: { key: 'r1' | 'r2'; label: string; period: string; bar: string }[]
 ]
 
 export default function AgeingPage() {
+  const [view, setView] = useState<View>('area')
   const { user, data, month, loading, error, requireSession, loadUrl } = useMonthlyData<AgeingResp>()
-  const load = useCallback((m: string) => loadUrl(`/api/ageing${m ? `?month=${m}` : ''}`), [loadUrl])
 
-  useEffect(() => {
-    if (!requireSession()) return
-    load('')
-  }, [requireSession, load])
+  const load = useCallback((m: string, v: View) => {
+    loadUrl(`/api/ageing?view=${v}${m ? `&month=${m}` : ''}`)
+  }, [loadUrl])
+
+  useEffect(() => { if (requireSession()) load('', 'area') }, [requireSession, load])
 
   if (!user) return null
 
+  const toggleView = (v: View) => { setView(v); load(month || '', v) }
+  const groupLabel = view === 'unit' ? 'หน่วยบริการ' : 'ตำบล'
   const tambons = data?.tambons ?? []
 
   return (
@@ -51,18 +55,26 @@ export default function AgeingPage() {
         </div>
         <div className="mb-6 flex items-start justify-between flex-wrap gap-3">
           <div>
-            <h1 className="text-xl font-bold text-gray-900">Healthy Ageing — ผู้สูงอายุติดสังคม รายตำบล</h1>
+            <h1 className="text-xl font-bold text-gray-900">Healthy Ageing — ผู้สูงอายุติดสังคม ราย{groupLabel}</h1>
             <p className="text-gray-500 text-sm mt-1">
               {DISTRICT_NAME} • ประเมินสมรรถนะผู้สูงอายุ (ADL) แยก 2 รอบ • ปีงบ {data?.year ?? ''} • ติดตามเฉยๆ (ไม่ประเมินผ่าน/ไม่ผ่าน)
             </p>
           </div>
-          <MonthPicker
-            month={month}
-            source={data?.source}
-            availableMonths={data?.availableMonths ?? []}
-            onChange={(m) => load(m)}
-            disabled={loading}
-          />
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex gap-1 bg-white border rounded-lg p-1 text-sm">
+              <button type="button" onClick={() => toggleView('area')}
+                className={`px-3 py-1.5 rounded-md ${view === 'area' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>รายตำบล</button>
+              <button type="button" onClick={() => toggleView('unit')}
+                className={`px-3 py-1.5 rounded-md ${view === 'unit' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>รายหน่วยบริการ</button>
+            </div>
+            <MonthPicker
+              month={month}
+              source={data?.source}
+              availableMonths={data?.availableMonths ?? []}
+              onChange={(m) => load(m, view)}
+              disabled={loading}
+            />
+          </div>
         </div>
 
         {loading ? (
@@ -71,7 +83,6 @@ export default function AgeingPage() {
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">⚠️ {error}</div>
         ) : !data ? null : (
           <>
-            {/* กราฟ %ติดสังคม รายตำบล — แยก 2 รอบ (แบบ HDC) */}
             <div className="grid md:grid-cols-2 gap-4 mb-6">
               {ROUNDS.map((rd) => (
                 <div key={rd.key} className="bg-white rounded-xl shadow-sm border p-5">
@@ -91,16 +102,15 @@ export default function AgeingPage() {
               ))}
             </div>
 
-            {/* ตารางรายตำบล × 2 รอบ (HDC-style) */}
             <div className="bg-white rounded-xl shadow-sm border overflow-hidden mb-3">
               <div className="px-5 py-3 border-b">
-                <h2 className="font-semibold text-gray-800 text-sm">ตารางรายตำบล — แยก 2 รอบประเมิน</h2>
+                <h2 className="font-semibold text-gray-800 text-sm">ตารางราย{groupLabel} — แยก 2 รอบประเมิน</h2>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 text-gray-500 text-xs">
                     <tr>
-                      <th className="text-left px-3 py-2 font-medium sticky left-0 bg-gray-50" rowSpan={2}>ตำบล</th>
+                      <th className="text-left px-3 py-2 font-medium sticky left-0 bg-gray-50" rowSpan={2}>{groupLabel}</th>
                       <th className="text-right px-2 py-2 font-medium" rowSpan={2}>ผู้สูงอายุ</th>
                       {ROUNDS.map((rd) => (
                         <th key={rd.key} className="text-center px-2 py-2 font-medium border-l whitespace-nowrap" colSpan={5}>

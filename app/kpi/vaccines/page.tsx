@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import Navbar from '@/components/Navbar'
@@ -8,12 +8,14 @@ import MonthPicker from '@/components/MonthPicker'
 import { DISTRICT_NAME } from '@/lib/areaRef'
 import { useMonthlyData } from '@/lib/useMonthlyData'
 
+type View = 'area' | 'unit'
+
 interface VacCell { A: number; pct: number | null }
 interface TambonRow { code: string; name: string; B: number; vaccines: Record<string, VacCell> }
 interface VacResp {
   ok: boolean; message?: string; year: string
   source: 'snapshot' | 'live'; month: string | null; availableMonths: string[]
-  vaccines: { key: string; label: string }[]
+  view: View; vaccines: { key: string; label: string }[]
   tambons: TambonRow[]; total: TambonRow
 }
 
@@ -22,15 +24,19 @@ const COLORS: Record<string, string> = {
 }
 
 export default function VaccinesPage() {
+  const [view, setView] = useState<View>('area')
   const { user, data, month, loading, error, requireSession, loadUrl } = useMonthlyData<VacResp>()
-  const load = useCallback((m: string) => loadUrl(`/api/vaccines${m ? `?month=${m}` : ''}`), [loadUrl])
 
-  useEffect(() => {
-    if (!requireSession()) return
-    load('')
-  }, [requireSession, load])
+  const load = useCallback((m: string, v: View) => {
+    loadUrl(`/api/vaccines?view=${v}${m ? `&month=${m}` : ''}`)
+  }, [loadUrl])
+
+  useEffect(() => { if (requireSession()) load('', 'area') }, [requireSession, load])
 
   if (!user) return null
+
+  const toggleView = (v: View) => { setView(v); load(month || '', v) }
+  const groupLabel = view === 'unit' ? 'หน่วยบริการ' : 'ตำบล'
 
   const chartData = (data?.tambons ?? []).map((t) => {
     const row: Record<string, string | number | null> = { name: t.name }
@@ -52,13 +58,21 @@ export default function VaccinesPage() {
               {DISTRICT_NAME} • DTP4 / Polio4 / LAJE/JE / MMR1 เก็บตก / MMR2 • รายไตรมาส สะสมปีงบ {data?.year ?? ''} • ตัวติดตาม (ไม่ประเมินผ่าน/ไม่ผ่าน)
             </p>
           </div>
-          <MonthPicker
-            month={month}
-            source={data?.source}
-            availableMonths={data?.availableMonths ?? []}
-            onChange={load}
-            disabled={loading}
-          />
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex gap-1 bg-white border rounded-lg p-1 text-sm">
+              <button type="button" onClick={() => toggleView('area')}
+                className={`px-3 py-1.5 rounded-md ${view === 'area' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>รายตำบล</button>
+              <button type="button" onClick={() => toggleView('unit')}
+                className={`px-3 py-1.5 rounded-md ${view === 'unit' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>รายหน่วยบริการ</button>
+            </div>
+            <MonthPicker
+              month={month}
+              source={data?.source}
+              availableMonths={data?.availableMonths ?? []}
+              onChange={(m) => load(m, view)}
+              disabled={loading}
+            />
+          </div>
         </div>
 
         {loading ? (
@@ -67,9 +81,8 @@ export default function VaccinesPage() {
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">⚠️ {error}</div>
         ) : !data ? null : (
           <>
-            {/* กราฟแท่งกลุ่ม 5 วัคซีน × ตำบล */}
             <div className="bg-white rounded-xl shadow-sm border p-5 mb-6">
-              <h2 className="font-semibold text-gray-800 mb-3 text-sm">แผนภูมิรายตำบล — ความครอบคลุม (%)</h2>
+              <h2 className="font-semibold text-gray-800 mb-3 text-sm">แผนภูมิราย{groupLabel} — ความครอบคลุม (%)</h2>
               <ResponsiveContainer width="100%" height={340}>
                 <BarChart data={chartData} margin={{ top: 16, right: 16, bottom: 4, left: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -84,16 +97,15 @@ export default function VaccinesPage() {
               </ResponsiveContainer>
             </div>
 
-            {/* ตารางรายตำบล (B + ราย vaccine A/%) แบบ HDC */}
             <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
               <div className="px-5 py-3 border-b">
-                <h2 className="font-semibold text-gray-800 text-sm">ตารางรายตำบล</h2>
+                <h2 className="font-semibold text-gray-800 text-sm">ตารางราย{groupLabel}</h2>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 text-gray-500 text-xs">
                     <tr>
-                      <th className="text-left px-4 py-2 font-medium" rowSpan={2}>ตำบล</th>
+                      <th className="text-left px-4 py-2 font-medium" rowSpan={2}>{groupLabel}</th>
                       <th className="text-right px-3 py-2 font-medium" rowSpan={2}>B รวม</th>
                       {data.vaccines.map((v) => (
                         <th key={v.key} className="text-center px-3 py-2 font-medium border-l">{v.label}</th>

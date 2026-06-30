@@ -8,16 +8,17 @@ import MonthPicker from '@/components/MonthPicker'
 import { DISTRICT_NAME } from '@/lib/areaRef'
 import { useMonthlyData } from '@/lib/useMonthlyData'
 
+type View = 'area' | 'unit'
+
 interface DomainCell { n: number; name: string; screened: number; normal: number; risk: number; riskPct: number | null }
 interface TambonRow { code: string; name: string; total: number; screened9: number; coverPct: number | null; domains: DomainCell[] }
 interface Aged9Resp {
   ok: boolean; message?: string; table: string; year: string
   source: 'snapshot' | 'live'; month: string | null; availableMonths: string[]
-  domainNames: { n: number; name: string }[]
+  view: View; domainNames: { n: number; name: string }[]
   tambons: TambonRow[]; total: TambonRow
 }
 
-// สีตาม %เสี่ยง (ยิ่งสูงยิ่งแดง)
 function riskColor(pct: number | null): string {
   if (pct === null) return 'var(--c-none)'
   if (pct >= 15) return '#dc2626'
@@ -27,18 +28,24 @@ function riskColor(pct: number | null): string {
 
 export default function Aged9Page() {
   const [table, setTable] = useState('s_aged9')
+  const [view, setView] = useState<View>('area')
   const { user, data, month, loading, error, requireSession, loadUrl } = useMonthlyData<Aged9Resp>()
-  const load = useCallback((t: string, m: string) => loadUrl(`/api/aged9?table=${t}${m ? `&month=${m}` : ''}`), [loadUrl])
+
+  const load = useCallback((t: string, m: string, v: View) => {
+    loadUrl(`/api/aged9?table=${t}&view=${v}${m ? `&month=${m}` : ''}`)
+  }, [loadUrl])
 
   useEffect(() => {
     if (!requireSession()) return
     const t = new URLSearchParams(window.location.search).get('table') || 's_aged9'
     setTable(t)
-    load(t, '')
+    load(t, '', 'area')
   }, [requireSession, load])
 
   if (!user) return null
 
+  const toggleView = (v: View) => { setView(v); load(table, month || '', v) }
+  const groupLabel = view === 'unit' ? 'หน่วยบริการ' : 'ตำบล'
   const chartData = (data?.tambons ?? []).map((t) => ({ name: t.name, cover: t.coverPct ?? 0 }))
 
   return (
@@ -50,18 +57,32 @@ export default function Aged9Page() {
         </div>
         <div className="mb-6 flex items-start justify-between flex-wrap gap-3">
           <div>
-            <h1 className="text-xl font-bold text-gray-900">คัดกรองสุขภาพผู้สูงอายุ 9 ด้าน — รายตำบล</h1>
+            <h1 className="text-xl font-bold text-gray-900">คัดกรองสุขภาพผู้สูงอายุ 9 ด้าน — ราย{groupLabel}</h1>
             <p className="text-gray-500 text-sm mt-1">
               {DISTRICT_NAME} • {table === 's_aged9_app' ? 'จาก API' : 'Basic/Community STEP1'} • ปีงบ {data?.year ?? ''}
             </p>
           </div>
-          <MonthPicker
-            month={month}
-            source={data?.source}
-            availableMonths={data?.availableMonths ?? []}
-            onChange={(m) => load(table, m)}
-            disabled={loading}
-          />
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex gap-1 bg-white border rounded-lg p-1 text-sm">
+              <button type="button" onClick={() => { setTable('s_aged9'); load('s_aged9', month || '', view) }}
+                className={`px-3 py-1.5 rounded-md ${table === 's_aged9' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>Basic</button>
+              <button type="button" onClick={() => { setTable('s_aged9_app'); load('s_aged9_app', month || '', view) }}
+                className={`px-3 py-1.5 rounded-md ${table === 's_aged9_app' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>API</button>
+            </div>
+            <div className="flex gap-1 bg-white border rounded-lg p-1 text-sm">
+              <button type="button" onClick={() => toggleView('area')}
+                className={`px-3 py-1.5 rounded-md ${view === 'area' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>รายตำบล</button>
+              <button type="button" onClick={() => toggleView('unit')}
+                className={`px-3 py-1.5 rounded-md ${view === 'unit' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>รายหน่วยบริการ</button>
+            </div>
+            <MonthPicker
+              month={month}
+              source={data?.source}
+              availableMonths={data?.availableMonths ?? []}
+              onChange={(m) => load(table, m, view)}
+              disabled={loading}
+            />
+          </div>
         </div>
 
         {loading ? (
@@ -70,9 +91,8 @@ export default function Aged9Page() {
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">⚠️ {error}</div>
         ) : !data ? null : (
           <>
-            {/* กราฟ %คัดกรองครบ 9 ด้าน รายตำบล (แบบ HDC) */}
             <div className="bg-white rounded-xl shadow-sm border p-5 mb-6">
-              <h2 className="font-semibold text-gray-800 mb-3 text-sm">คัดกรองครบ 9 ด้าน — รายตำบล (%)</h2>
+              <h2 className="font-semibold text-gray-800 mb-3 text-sm">คัดกรองครบ 9 ด้าน — ราย{groupLabel} (%)</h2>
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={chartData} margin={{ top: 16, right: 16, bottom: 4, left: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -84,16 +104,15 @@ export default function Aged9Page() {
               </ResponsiveContainer>
             </div>
 
-            {/* ตาราง ตำบล × 9 ด้าน (%เสี่ยง color-coded) */}
             <div className="bg-white rounded-xl shadow-sm border overflow-hidden mb-3">
               <div className="px-5 py-3 border-b">
-                <h2 className="font-semibold text-gray-800 text-sm">ตารางรายตำบล × 9 ด้าน (% พบเสี่ยง)</h2>
+                <h2 className="font-semibold text-gray-800 text-sm">ตารางราย{groupLabel} × 9 ด้าน (% พบเสี่ยง)</h2>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 text-gray-500 text-xs">
                     <tr>
-                      <th className="text-left px-3 py-2 font-medium sticky left-0 bg-gray-50" rowSpan={2}>ตำบล</th>
+                      <th className="text-left px-3 py-2 font-medium sticky left-0 bg-gray-50" rowSpan={2}>{groupLabel}</th>
                       <th className="text-right px-2 py-2 font-medium" rowSpan={2}>ผู้สูงอายุ</th>
                       <th className="text-right px-2 py-2 font-medium border-l" rowSpan={2}>ครบ 9 ด้าน %</th>
                       {data.domainNames.map((d) => (

@@ -71,13 +71,13 @@ async function readSnapshot(kpiId: string, month: string, areacode: string): Pro
     const conn = await pool.getConnection()
     try {
       const [rows] = await conn.execute(
-        'SELECT areacode, data FROM moph_monthly_detail WHERE kpi_id=? AND month=?', [kpiId, month])
-      const list = rows as { areacode: string; data: unknown }[]
+        'SELECT hospcode, areacode, data FROM moph_monthly_detail WHERE kpi_id=? AND month=?', [kpiId, month])
+      const list = rows as { hospcode: string; areacode: string; data: unknown }[]
       if (list.length === 0) return null
       const out = list
         .map((r) => {
           const data = typeof r.data === 'string' ? JSON.parse(r.data) : (r.data as Record<string, unknown>)
-          return { areacode: r.areacode, ...data }
+          return { hospcode: r.hospcode, areacode: r.areacode, ...data }
         })
         .filter((r) => String(r.areacode ?? '').startsWith(areacode))
       // hardening: ถ้าทุกแถวมีแต่ areacode (data ว่าง {} เช่นตารางที่ยังไม่อุด) → ถือว่าไม่มี snapshot

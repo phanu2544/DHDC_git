@@ -8,6 +8,8 @@ import MonthPicker from '@/components/MonthPicker'
 import { DISTRICT_NAME } from '@/lib/areaRef'
 import { useMonthlyData } from '@/lib/useMonthlyData'
 
+type View = 'area' | 'unit'
+
 interface Cat { key: string; label: string }
 interface TambonRow {
   code: string; name: string; target: number; result: number; coverPct: number | null
@@ -16,32 +18,35 @@ interface TambonRow {
 interface Resp {
   ok: boolean; message?: string; disease: string; table: string; diseaseLabel: string; year: string
   source: 'snapshot' | 'live'; month: string | null; availableMonths: string[]
-  cats: Cat[]; tambons: TambonRow[]; total: TambonRow
+  view: View; cats: Cat[]; tambons: TambonRow[]; total: TambonRow
 }
 
-// สีตามระดับความเสี่ยง (เขียว→แดง)
 const CAT_COLOR: Record<string, string> = {
   normal: '#22c55e', risk: '#f59e0b', high_risk: '#f97316', ill: '#dc2626',
 }
 
 export default function ScreenRiskPage() {
   const [disease, setDisease] = useState('dm')
+  const [view, setView] = useState<View>('area')
   const { user, data, month, loading, error, requireSession, loadUrl } = useMonthlyData<Resp>()
-  const load = useCallback((d: string, m: string) => {
+
+  const load = useCallback((d: string, m: string, v: View) => {
     setDisease(d)
     window.history.replaceState(null, '', `/kpi/screen-risk?disease=${d}`)
-    loadUrl(`/api/screen-risk?disease=${d}${m ? `&month=${m}` : ''}`)
+    loadUrl(`/api/screen-risk?disease=${d}&view=${v}${m ? `&month=${m}` : ''}`)
   }, [loadUrl])
 
   useEffect(() => {
     if (!requireSession()) return
     const d = (new URLSearchParams(window.location.search).get('disease') || 'dm').toLowerCase()
-    load(d, '')
+    load(d, '', 'area')
   }, [requireSession, load])
 
   if (!user) return null
 
-  // stacked: จำนวนคน แต่ละกลุ่ม รายตำบล
+  const toggleView = (v: View) => { setView(v); load(disease, month || '', v) }
+  const groupLabel = view === 'unit' ? 'หน่วยบริการ' : 'ตำบล'
+
   const chartData = (data?.tambons ?? []).map((t) => {
     const row: Record<string, string | number> = { name: t.name }
     for (const c of data!.cats) row[c.label] = t.cats[c.key]?.count ?? 0
@@ -57,23 +62,29 @@ export default function ScreenRiskPage() {
         </div>
         <div className="mb-4 flex items-center justify-between flex-wrap gap-3">
           <div>
-            <h1 className="text-xl font-bold text-gray-900">คัดกรอง{data?.diseaseLabel ?? ''} ประชากร 35 ปีขึ้นไป — รายตำบล</h1>
+            <h1 className="text-xl font-bold text-gray-900">คัดกรอง{data?.diseaseLabel ?? ''} ประชากร 35 ปีขึ้นไป — ราย{groupLabel}</h1>
             <p className="text-gray-500 text-sm mt-1">
               {DISTRICT_NAME} • ปกติ / เสี่ยง / เสี่ยงสูง / สงสัยป่วย • ปีงบ {data?.year ?? ''}
             </p>
           </div>
-          <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
             <div className="flex gap-1 bg-white border rounded-lg p-1 text-sm">
-              <button type="button" onClick={() => load('dm', '')}
+              <button type="button" onClick={() => load('dm', '', view)}
                 className={`px-3 py-1.5 rounded-md ${disease === 'dm' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>เบาหวาน</button>
-              <button type="button" onClick={() => load('ht', '')}
+              <button type="button" onClick={() => load('ht', '', view)}
                 className={`px-3 py-1.5 rounded-md ${disease === 'ht' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>ความดัน</button>
+            </div>
+            <div className="flex gap-1 bg-white border rounded-lg p-1 text-sm">
+              <button type="button" onClick={() => toggleView('area')}
+                className={`px-3 py-1.5 rounded-md ${view === 'area' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>รายตำบล</button>
+              <button type="button" onClick={() => toggleView('unit')}
+                className={`px-3 py-1.5 rounded-md ${view === 'unit' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>รายหน่วยบริการ</button>
             </div>
             <MonthPicker
               month={month}
               source={data?.source}
               availableMonths={data?.availableMonths ?? []}
-              onChange={(m) => load(disease, m)}
+              onChange={(m) => load(disease, m, view)}
               disabled={loading}
             />
           </div>
@@ -85,9 +96,8 @@ export default function ScreenRiskPage() {
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">⚠️ {error}</div>
         ) : !data ? null : (
           <>
-            {/* กราฟแท่ง stacked: องค์ประกอบผลคัดกรอง รายตำบล */}
             <div className="bg-white rounded-xl shadow-sm border p-5 mb-6">
-              <h2 className="font-semibold text-gray-800 mb-3 text-sm">ผลคัดกรองรายตำบล — จำนวนคนแต่ละกลุ่ม</h2>
+              <h2 className="font-semibold text-gray-800 mb-3 text-sm">ผลคัดกรองราย{groupLabel} — จำนวนคนแต่ละกลุ่ม</h2>
               <ResponsiveContainer width="100%" height={340}>
                 <BarChart data={chartData} margin={{ top: 16, right: 16, bottom: 4, left: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -102,16 +112,15 @@ export default function ScreenRiskPage() {
               </ResponsiveContainer>
             </div>
 
-            {/* ตารางรายตำบล */}
             <div className="bg-white rounded-xl shadow-sm border overflow-hidden mb-3">
               <div className="px-5 py-3 border-b">
-                <h2 className="font-semibold text-gray-800 text-sm">ตารางรายตำบล (จำนวน / % ของผู้คัดกรอง)</h2>
+                <h2 className="font-semibold text-gray-800 text-sm">ตารางราย{groupLabel} (จำนวน / % ของผู้คัดกรอง)</h2>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 text-gray-500 text-xs">
                     <tr>
-                      <th className="text-left px-3 py-2 font-medium" rowSpan={2}>ตำบล</th>
+                      <th className="text-left px-3 py-2 font-medium" rowSpan={2}>{groupLabel}</th>
                       <th className="text-right px-2 py-2 font-medium" rowSpan={2}>เป้าหมาย</th>
                       <th className="text-right px-2 py-2 font-medium border-l" rowSpan={2}>คัดกรอง</th>
                       <th className="text-right px-2 py-2 font-medium" rowSpan={2}>คัดกรอง %</th>

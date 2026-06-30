@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { groupByTambon } from '@/lib/areaRef'
+import { groupByTambon, groupByHospcode } from '@/lib/areaRef'
 import { getMonthlyRows } from '@/lib/monthlyView'
 
 /**
@@ -42,6 +42,7 @@ export async function GET(req: NextRequest) {
   const province = searchParams.get('province') || '66'
   const areacode = searchParams.get('areacode') || '6611'
   const reqMonth = searchParams.get('month') || ''
+  const view = searchParams.get('view') === 'unit' ? 'unit' : 'area'
   const def = DISEASES[disease]
   if (!def) {
     return NextResponse.json({ ok: false, message: 'disease ไม่รองรับ (dm|ht)' }, { status: 400 })
@@ -49,9 +50,10 @@ export async function GET(req: NextRequest) {
 
   try {
     const { rows, source, month, availableMonths } = await getMonthlyRows({ table: def.table, month: reqMonth, year, province, areacode })
-    const { tambons, total } = groupByTambon(rows, buildGroup)
+    const group = view === 'unit' ? groupByHospcode : groupByTambon
+    const { tambons, total } = group(rows, buildGroup)
     return NextResponse.json({
-      ok: true, disease, table: def.table, diseaseLabel: def.label, year, province, areacode,
+      ok: true, disease, table: def.table, diseaseLabel: def.label, year, province, areacode, view,
       source, month, availableMonths,
       cats: CATS, tambons, total, rows: rows.length,
     })

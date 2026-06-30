@@ -61,3 +61,21 @@ export function groupByTambon<T>(
     .map(([code, rs]) => build(rs, code, tambonNameOf(code)))
   return { tambons, total: build(rows, 'all', totalName) }
 }
+
+/** จัดกลุ่มแถวดิบรายหน่วยบริการ (เรียงตาม hospcode) + คำนวณแถวรวมอำเภอ */
+export function groupByHospcode<T>(
+  rows: Record<string, unknown>[],
+  build: (rows: Record<string, unknown>[], code: string, name: string) => T,
+  totalName = 'รวมอำเภอ',
+): { tambons: T[]; total: T } {
+  const groups = new Map<string, Record<string, unknown>[]>()
+  for (const r of rows) {
+    const h = String(r.hospcode ?? '')
+    if (!groups.has(h)) groups.set(h, [])
+    groups.get(h)!.push(r)
+  }
+  const tambons = [...groups.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([code, rs]) => build(rs, code, hospcodeNameOf(code)))
+  return { tambons, total: build(rows, 'all', totalName) }
+}

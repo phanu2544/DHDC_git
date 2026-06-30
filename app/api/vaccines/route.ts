@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { groupByTambon } from '@/lib/areaRef'
+import { groupByTambon, groupByHospcode } from '@/lib/areaRef'
 import { getMonthlyRows } from '@/lib/monthlyView'
 
 /**
@@ -39,12 +39,14 @@ export async function GET(req: NextRequest) {
   const province = searchParams.get('province') || '66'
   const areacode = searchParams.get('areacode') || '6611'
   const reqMonth = searchParams.get('month') || ''
+  const view = searchParams.get('view') === 'unit' ? 'unit' : 'area'
 
   try {
     const { rows, source, month, availableMonths } = await getMonthlyRows({ table: 's_epi2', month: reqMonth, year, province, areacode })
-    const { tambons, total } = groupByTambon(rows, build)
+    const group = view === 'unit' ? groupByHospcode : groupByTambon
+    const { tambons, total } = group(rows, build)
     return NextResponse.json({
-      ok: true, year, province, areacode,
+      ok: true, year, province, areacode, view,
       source, month, availableMonths,
       vaccines: VACCINES, tambons, total, rows: rows.length,
     })

@@ -23,7 +23,7 @@ const MONTH_SUFFIX_RE = /(0[1-9]|1[0-2])$/
  *  - s_kpi_ageing : ค่าจริงอยู่รายไตรมาส (targetq1, result1q1 = คัดกรอง/ติดสังคม รอบ1-2)
  *                   ถ้าตัด q1-q4 จะเหลือแค่ target (จำนวนผู้สูงอายุ) คิด % ไม่ได้
  */
-const KEEP_MONTHLY_TABLES = new Set(['s_epi2', 's_kpi_ageing'])
+const KEEP_MONTHLY_TABLES = new Set(['s_epi2', 's_kpi_ageing', 's_colon_screen_w'])
 
 export function isSummaryField(name: string): boolean {
   if (META_FIELDS.has(name.toLowerCase())) return false

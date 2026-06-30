@@ -1,12 +1,14 @@
 'use client'
 
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import Navbar from '@/components/Navbar'
 import MonthPicker from '@/components/MonthPicker'
 import { DISTRICT_NAME } from '@/lib/areaRef'
 import { useMonthlyData } from '@/lib/useMonthlyData'
+
+type View = 'area' | 'unit'
 
 interface TambonRow {
   code: string; name: string; total: number; screened: number; found: number
@@ -16,19 +18,27 @@ interface TambonRow {
 interface Resp {
   ok: boolean; message?: string; table: string; year: string
   source: 'snapshot' | 'live'; month: string | null; availableMonths: string[]
-  tambons: TambonRow[]; total: TambonRow
+  view: View; tambons: TambonRow[]; total: TambonRow
 }
 
-const C_COVER = '#3b82f6' // ร้อยละการตรวจ (coverage)
-const C_PREV = '#dc2626'  // ร้อยละโลหิตจาง (prevalence)
-const fmtPct = (v: number) => v.toFixed(2) // แสดง 2 ตำแหน่งตรง HDC (0.00, 50.00)
+const C_COVER = '#3b82f6'
+const C_PREV = '#dc2626'
+const fmtPct = (v: number) => v.toFixed(2)
 
 export default function AnemiaPage() {
+  const [view, setView] = useState<View>('area')
   const { user, data, month, loading, error, requireSession, loadUrl } = useMonthlyData<Resp>()
-  const load = useCallback((m: string) => loadUrl(`/api/anemia${m ? `?month=${m}` : ''}`), [loadUrl])
-  useEffect(() => { if (requireSession()) load('') }, [requireSession, load])
+
+  const load = useCallback((m: string, v: View) => {
+    loadUrl(`/api/anemia?view=${v}${m ? `&month=${m}` : ''}`)
+  }, [loadUrl])
+
+  useEffect(() => { if (requireSession()) load('', 'area') }, [requireSession, load])
 
   if (!user) return null
+
+  const toggleView = (v: View) => { setView(v); load(month || '', v) }
+  const groupLabel = view === 'unit' ? 'หน่วยบริการ' : 'ตำบล'
 
   const chartData = (data?.tambons ?? []).map((t) => ({
     name: t.name,
@@ -46,18 +56,26 @@ export default function AnemiaPage() {
         <div className="mb-4">
           <div className="flex items-start justify-between flex-wrap gap-3">
             <div>
-              <h1 className="text-xl font-bold text-gray-900">เด็กอายุครบ 12 เดือนที่มีภาวะโลหิตจาง — รายตำบล</h1>
+              <h1 className="text-xl font-bold text-gray-900">เด็กอายุครบ 12 เดือนที่มีภาวะโลหิตจาง — ราย{groupLabel}</h1>
               <p className="text-gray-500 text-sm mt-1">
                 {DISTRICT_NAME} • ตรวจภาวะโลหิตจางในช่วงอายุ 6-12 เดือน • ปีงบ {data?.year ?? ''}
               </p>
             </div>
-            <MonthPicker
-              month={month}
-              source={data?.source}
-              availableMonths={data?.availableMonths ?? []}
-              onChange={load}
-              disabled={loading}
-            />
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex gap-1 bg-white border rounded-lg p-1 text-sm">
+                <button type="button" onClick={() => toggleView('area')}
+                  className={`px-3 py-1.5 rounded-md ${view === 'area' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>รายตำบล</button>
+                <button type="button" onClick={() => toggleView('unit')}
+                  className={`px-3 py-1.5 rounded-md ${view === 'unit' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>รายหน่วยบริการ</button>
+              </div>
+              <MonthPicker
+                month={month}
+                source={data?.source}
+                availableMonths={data?.availableMonths ?? []}
+                onChange={(m) => load(m, view)}
+                disabled={loading}
+              />
+            </div>
           </div>
           <div className="text-xs text-gray-500 mt-2 leading-relaxed bg-white border rounded-lg px-3 py-2">
             <div><b>B</b> = จำนวนเด็กอายุครบ 12 เดือน ในเขตรับผิดชอบทั้งหมด ได้รับการตรวจภาวะโลหิตจางในช่วงอายุ 6-12 เดือน</div>
@@ -72,13 +90,12 @@ export default function AnemiaPage() {
         ) : !data ? null : (
           <>
             <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg text-sm mb-6">
-              ⚠️ <b>ข้อมูลจำนวนน้อย</b> — เด็กที่ได้รับการตรวจในแต่ละตำบลมีเพียงหลักหน่วย ค่า "ความชุก" จึงอ่อนไหวมาก
-              (พบ 1 ใน 2 = 50%) ใช้ดูแนวโน้ม/ความครอบคลุมเป็นหลัก ไม่ควรตีความความชุกรายตำบลเป็นตัวเลขแม่นยำ
+              ⚠️ <b>ข้อมูลจำนวนน้อย</b> — เด็กที่ได้รับการตรวจในแต่ละ{groupLabel}มีเพียงหลักหน่วย ค่า "ความชุก" จึงอ่อนไหวมาก
+              (พบ 1 ใน 2 = 50%) ใช้ดูแนวโน้ม/ความครอบคลุมเป็นหลัก ไม่ควรตีความความชุกราย{groupLabel}เป็นตัวเลขแม่นยำ
             </div>
 
-            {/* dual bar: coverage + prevalence รายตำบล */}
             <div className="bg-white rounded-xl shadow-sm border p-5 mb-6">
-              <h2 className="font-semibold text-gray-800 mb-3 text-sm">ร้อยละการตรวจ vs ร้อยละโลหิตจาง รายตำบล (%)</h2>
+              <h2 className="font-semibold text-gray-800 mb-3 text-sm">ร้อยละการตรวจ vs ร้อยละโลหิตจาง ราย{groupLabel} (%)</h2>
               <ResponsiveContainer width="100%" height={320}>
                 <BarChart data={chartData} margin={{ top: 16, right: 16, bottom: 4, left: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -92,16 +109,15 @@ export default function AnemiaPage() {
               </ResponsiveContainer>
             </div>
 
-            {/* ตารางรายตำบล */}
             <div className="bg-white rounded-xl shadow-sm border overflow-hidden mb-3">
               <div className="px-5 py-3 border-b">
-                <h2 className="font-semibold text-gray-800 text-sm">ตารางรายตำบล</h2>
+                <h2 className="font-semibold text-gray-800 text-sm">ตารางราย{groupLabel}</h2>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 text-gray-500 text-xs">
                     <tr>
-                      <th className="text-left px-4 py-2 font-medium" rowSpan={2}>ตำบล</th>
+                      <th className="text-left px-4 py-2 font-medium" rowSpan={2}>{groupLabel}</th>
                       <th className="text-right px-3 py-2 font-medium border-l" rowSpan={2}>เด็กอายุครบ<br />12 เดือน (C)</th>
                       <th className="text-center px-3 py-2 font-medium border-l" colSpan={4}>จำนวนตรวจภาวะโลหิตจางทั้งหมด</th>
                       <th className="text-center px-3 py-2 font-medium border-l" colSpan={3}>ไม่พบรหัส ICD10 ตามรายการแนบท้าย TP</th>
