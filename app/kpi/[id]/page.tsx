@@ -51,6 +51,9 @@ interface DetailResp {
   savedMonthly?: { value: number; target: number; enteredBy?: string | null; enteredAt?: string | null } | null
   manual?: boolean
   view?: 'area' | 'unit'
+  live?: boolean
+  liveError?: string
+  legend?: string | null
   stale?: boolean
   lastMonth?: string | null
   mappingOk?: boolean
@@ -74,6 +77,7 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
   const [mMsg, setMMsg] = useState('')
   const [editing, setEditing] = useState(false) // ล็อกฟอร์มหลังบันทึก — ต้องกด "แก้ไข" ก่อนจึงพิมพ์ทับได้ (กันมือลั่น)
   const [view, setView] = useState<'area' | 'unit'>('area') // มุมมอง drilldown (KPI auto)
+  const [isLive, setIsLive] = useState(false) // โหมดสดจาก MOPH
 
   const load = useCallback(async (month?: string, v?: 'area' | 'unit') => {
     setLoading(true)
@@ -137,7 +141,7 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
   function changeView(v: 'area' | 'unit') {
     if (v === view) return
     setView(v)
-    load(data?.month ?? undefined, v)
+    load(isLive ? 'live' : (data?.month ?? undefined), v)
   }
 
   useEffect(() => {
@@ -210,24 +214,38 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
               {manual ? (
                 <input type="month" value={entryMonth} onChange={(e) => onEntryMonthChange(e.target.value)}
                   className="border rounded-lg px-3 py-2 text-sm bg-white" />
-              ) : data.months.length > 0 && (
-                <div className="flex items-center gap-2">
+              ) : (data.months.length > 0 || !manual) && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* indicator: สดจาก MOPH */}
+                  {isLive && !loading && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-red-50 border border-red-200 text-red-600 rounded-full text-xs font-medium">
+                      <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                      สดจาก MOPH
+                    </span>
+                  )}
                   {/* มุมมอง: รายตำบล / รายหน่วยบริการ */}
-                  <div className="inline-flex rounded-lg border overflow-hidden text-sm">
-                    <button onClick={() => changeView('area')}
-                      className={`px-3 py-2 ${view === 'area' ? 'bg-blue-700 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
-                      รายตำบล
-                    </button>
-                    <button onClick={() => changeView('unit')}
-                      className={`px-3 py-2 border-l ${view === 'unit' ? 'bg-blue-700 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
-                      รายหน่วยบริการ
-                    </button>
-                  </div>
+                  {data.months.length > 0 && (
+                    <div className="inline-flex rounded-lg border overflow-hidden text-sm">
+                      <button onClick={() => changeView('area')}
+                        className={`px-3 py-2 ${view === 'area' ? 'bg-blue-700 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+                        รายตำบล
+                      </button>
+                      <button onClick={() => changeView('unit')}
+                        className={`px-3 py-2 border-l ${view === 'unit' ? 'bg-blue-700 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+                        รายหน่วยบริการ
+                      </button>
+                    </div>
+                  )}
                   <select
-                    value={data.month}
-                    onChange={(e) => load(e.target.value, view)}
+                    value={isLive ? 'live' : (data.month ?? '')}
+                    onChange={(e) => {
+                      const val = e.target.value
+                      if (val === 'live') { setIsLive(true); load('live', view) }
+                      else { setIsLive(false); load(val, view) }
+                    }}
                     className="border rounded-lg px-3 py-2 text-sm bg-white"
                   >
+                    <option value="live">ล่าสุด (สดจาก MOPH)</option>
                     {data.months.map((m) => <option key={m} value={m}>{formatThaiMonth(m)}</option>)}
                   </select>
                 </div>
@@ -403,6 +421,19 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                   </div>
                 </div>
 
+                {data.liveError && (
+                  <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+                    ⚠️ ดึงข้อมูลจาก MOPH ไม่สำเร็จ: {data.liveError}
+                  </div>
+                )}
+
+                {/* คำนิยาม B/A (แบบ HDC — เหนือตาราง) */}
+                {data.legend && (
+                  <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-xs text-gray-600 leading-relaxed">
+                    {data.legend.split('\n').map((line, i) => <p key={i}>{line}</p>)}
+                  </div>
+                )}
+
                 {!data.mappingOk && (
                   <div className="mb-6 bg-orange-50 border border-orange-200 text-orange-800 px-4 py-3 rounded-lg text-sm">
                     ⚠️ สูตรคำนวณของ KPI นี้ยังไม่ได้รับการยืนยัน — แสดงเฉพาะยอดดิบราย{viewLabel} ยังไม่คิด %
@@ -440,7 +471,7 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                     <table className="w-full text-sm">
                       <thead className="bg-gray-50 text-gray-500 text-xs">
                         <tr>
-                          <th className="text-left px-4 py-2 font-medium">{viewLabel}</th>
+                          <th className="text-left px-4 py-2 font-medium sticky left-0 z-10 bg-gray-50">{viewLabel}</th>
                           {fieldList.map((f) => (
                             <th key={f} className="text-right px-3 py-2 font-medium whitespace-nowrap">{fieldLabels[f] ?? f}</th>
                           ))}
@@ -450,8 +481,8 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                       </thead>
                       <tbody className="divide-y">
                         {groups.map((g) => (
-                          <tr key={g.code} className="hover:bg-gray-50">
-                            <td className="px-4 py-2.5 font-medium text-gray-900">{g.name}</td>
+                          <tr key={g.code} className="group hover:bg-gray-50">
+                            <td className="px-4 py-2.5 font-medium text-gray-900 sticky left-0 z-10 bg-white group-hover:bg-gray-50">{g.name}</td>
                             {fieldList.map((f) => (
                               <td key={f} className="px-3 py-2.5 text-right tabular-nums text-gray-700">
                                 {(g.fields[f] ?? 0).toLocaleString()}
@@ -475,7 +506,7 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                         ))}
                         {total && (
                           <tr className="bg-gray-100 font-semibold">
-                            <td className="px-4 py-2.5">{total.name}</td>
+                            <td className="px-4 py-2.5 sticky left-0 z-10 bg-gray-100">{total.name}</td>
                             {fieldList.map((f) => (
                               <td key={f} className="px-3 py-2.5 text-right tabular-nums">
                                 {(total.fields[f] ?? 0).toLocaleString()}

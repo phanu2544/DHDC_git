@@ -7,7 +7,7 @@ import type { MophMapping } from './types'
 
 const MOPH_API = 'https://opendata.moph.go.th/api/report_data'
 
-async function fetchMOPH(tableName: string, year: string, province: string) {
+export async function fetchMOPH(tableName: string, year: string, province: string) {
   const res = await fetch(MOPH_API, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

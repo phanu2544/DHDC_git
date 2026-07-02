@@ -2,9 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { buildMappingFromLegacy, computeMoph } from '@/lib/mophEngine'
 import { evaluateKpiStatus } from '@/lib/kpiStatus'
-import { tambonCodeOf, tambonNameOf, hospcodeNameOf } from '@/lib/areaRef'
-import { fieldLabelsFor } from '@/lib/detailLabels'
+import { tambonCodeOf, tambonNameOf, hospcodeNameOf, HOSPCODE_NAMES } from '@/lib/areaRef'
+import { fieldLabelsFor, legendFor } from '@/lib/detailLabels'
 import { isManualEntry } from '@/lib/manualKpi'
+import { fetchMOPH, currentMophFiscalYear } from '@/lib/mophBatch'
+import { filterSummaryFields } from '@/lib/mophDetail'
 import type { MophMapping, EvalDirection, KpiEvalStatus } from '@/lib/types'
 
 /**
@@ -45,6 +47,7 @@ export async function GET(req: NextRequest) {
     const kpi = (kpiRows as Record<string, unknown>[])[0]
     if (!kpi) return NextResponse.json({ ok: false, message: 'ไม่พบ KPI' }, { status: 404 })
     const manual = isManualEntry(kpi.manual_entry) // KPI กรอกมือ → หน้า drilldown ทำตารางให้แก้ไขได้
+    const isLive = monthParam === 'live' && !manual && !!(kpi.moph_table as string)
 
     let mapping: MophMapping
     if (manual) {
@@ -68,7 +71,7 @@ export async function GET(req: NextRequest) {
     const [mRows] = await conn.execute(
       'SELECT DISTINCT month FROM moph_monthly_detail WHERE kpi_id = ? ORDER BY month', [kpiId])
     const months = (mRows as { month: string }[]).map((r) => r.month)
-    if (months.length === 0) {
+    if (months.length === 0 && !isLive) {
       return NextResponse.json({
         ok: true, kpiId, months: [], manual,
         kpi: { name: kpi.name, category: kpi.category, owner: kpi.owner, unit: kpi.unit,
@@ -79,7 +82,9 @@ export async function GET(req: NextRequest) {
           : 'ยังไม่มีข้อมูล detail (ระบบเริ่มเก็บอัตโนมัติ มิ.ย. 2569)',
       })
     }
-    const month = monthParam && months.includes(monthParam) ? monthParam : months[months.length - 1]
+    const now = new Date()
+    const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const month = isLive ? thisMonth : (monthParam && months.includes(monthParam) ? monthParam : months[months.length - 1])
 
     // ── target ของเดือนนั้นจาก monthly_data (เกณฑ์เดียวกับ Scorecard) + audit ──────
     const [mdRows] = await conn.execute(
@@ -89,18 +94,34 @@ export async function GET(req: NextRequest) {
     const direction = kpi.direction as EvalDirection
 
     // เตือน stale: ยังไม่ได้กรอก monthly_data ของเดือนปัจจุบัน (ใช้กับ manual)
-    const now = new Date()
-    const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
     const [allMd] = await conn.execute(
       'SELECT MAX(month) AS lastMonth, MAX(CASE WHEN month=? THEN 1 ELSE 0 END) AS hasCur FROM monthly_data WHERE kpi_id = ?',
       [thisMonth, kpiId])
     const mdAgg = (allMd as { lastMonth: string | null; hasCur: number }[])[0]
 
-    // ── detail rows → group ตามตำบล ───────────────────────────────────────
-    const [dRows] = await conn.execute(
-      'SELECT hospcode, areacode, data FROM moph_monthly_detail WHERE kpi_id = ? AND month = ?',
-      [kpiId, month])
-    const detail = dRows as { hospcode: string; areacode: string; data: string }[]
+    // ── detail rows: live (สดจาก MOPH) หรือ snapshot (moph_monthly_detail) ───
+    let detail: { hospcode: string; areacode: string; data: string }[]
+    let liveError: string | undefined
+    if (isLive) {
+      try {
+        const AREACODE_PREFIX = process.env.MOPH_FETCH_AREACODE ?? '6611'
+        const rawRows = await fetchMOPH(String(kpi.moph_table), currentMophFiscalYear(), '66')
+        const scopeRows = rawRows.filter((r) => String(r.areacode ?? '').startsWith(AREACODE_PREFIX))
+        detail = scopeRows.map((r) => ({
+          hospcode: String(r.hospcode ?? ''),
+          areacode: String(r.areacode ?? ''),
+          data: JSON.stringify(filterSummaryFields(r, String(kpi.moph_table))),
+        }))
+      } catch (e) {
+        liveError = String(e)
+        detail = []
+      }
+    } else {
+      const [dRows] = await conn.execute(
+        'SELECT hospcode, areacode, data FROM moph_monthly_detail WHERE kpi_id = ? AND month = ?',
+        [kpiId, month])
+      detail = dRows as { hospcode: string; areacode: string; data: string }[]
+    }
 
     // มุมมอง: manual เก็บราย hospcode จริง → บังคับรายหน่วยบริการ
     // (manual กรอกราย hospcode เพราะ hospcode→tambon ไม่ใช่ 1:1 — ดู /api/monthly/detail)
@@ -140,6 +161,17 @@ export async function GET(req: NextRequest) {
         fields: sumFields(rows), ...evalGroup(rows),
       }))
 
+    // unit view: inject hospcodes ที่ไม่มีข้อมูลเป็น row "ไม่มีข้อมูล" (ไม่ตัดทิ้ง = รู้ว่าหน่วยไหนขาด)
+    if (grpView === 'unit') {
+      const have = new Set(groups.map((g) => g.code))
+      for (const code of Object.keys(HOSPCODE_NAMES)) {
+        if (!have.has(code)) {
+          groups.push({ code, name: hospcodeNameOf(code), rows: 0, fields: {}, calcValue: null, status: null })
+        }
+      }
+      groups.sort((a, b) => a.code.localeCompare(b.code))
+    }
+
     const totalEval = evalGroup(allRows)
     const total: GroupOut = {
       code: 'all', name: 'รวมอำเภอ', rows: allRows.length,
@@ -176,6 +208,9 @@ export async function GET(req: NextRequest) {
       manual, view: grpView,
       stale: manual && !mdAgg?.hasCur, // manual + ยังไม่กรอกเดือนปัจจุบัน
       lastMonth: mdAgg?.lastMonth ?? null,
+      live: isLive,
+      liveError,
+      legend: legendFor(kpi.moph_table as string),
       mappingOk: engineCheck.errors.length === 0,
       mappingErrors: engineCheck.errors,
       fieldList, fieldLabels, groups, total,

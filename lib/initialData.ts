@@ -47,9 +47,9 @@ export const INITIAL_CATALOG: CatalogEntry[] = [
   {
     id: 'rpt-ht-control',
     name: 'ผู้ป่วยความดันโลหิตสูงที่ควบคุมความดันได้ดี',
-    mophTable: 's_ht_control', valueField: 'result', targetField: 'target', calcMode: 'percent',
+    mophTable: 's_ht_control', valueField: 'result_bp1_d', targetField: 'target', calcMode: 'percent',
     category: 'NCD', province: '66', hospcode: '', areacode: '6611',
-    description: 'ร้อยละผู้ป่วย HT ที่ BP < 140/90 mmHg',
+    description: 'ร้อยละผู้ป่วย HT ที่ BP < 140/90 mmHg (A1÷B1×100)',
   },
   {
     id: 'rpt-dm-ckd',
