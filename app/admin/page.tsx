@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import Navbar from '@/components/Navbar'
+import FieldChipBuilder, { FIELD_TYPE_COLOR } from '@/components/FieldChipBuilder'
+import KpiWizard from '@/components/KpiWizard'
 import { useAuth } from '@/lib/useAuth'
 import type { User, KPIReport, KPIStatus, KPICategory, MophCatalogEntry, MophMapping, CalcMode, EvalDirection } from '@/lib/types'
 
@@ -27,16 +29,20 @@ const DIRECTIONS: { value: EvalDirection; label: string }[] = [
   { value: 'none', label: '– ไม่ประเมิน / ติดตามเฉยๆ' },
 ]
 
-// สีตามประเภท field สำหรับ chips ใน preview
-const FIELD_TYPE_COLOR: Record<string, string> = {
-  dimension: 'bg-red-50 text-red-700 border-red-300',
-  time:      'bg-amber-50 text-amber-700 border-amber-300',
-  target:    'bg-green-50 text-green-700 border-green-300',
-  measure:   'bg-gray-50 text-gray-700 border-gray-200 hover:border-blue-400',
-}
-
 // Buddhist year list (2567-2569)
 const BY_YEARS = ['2569', '2568', '2567', '2566', '2565']
+
+// Table names ที่รู้จัก (quick-pick — ใช้ทั้ง MOPH tab และ KpiWizard)
+const KNOWN_TABLES: [string, string][] = [
+  ['s_dm_control', 'เบาหวาน - ควบคุมได้ (hba1c/result)'],
+  ['s_ht_control', 'ความดัน - ควบคุมได้'],
+  ['s_dm_ckd', 'เบาหวาน - ภาวะแทรกซ้อนไต'],
+  ['s_dm_hba1c', 'เบาหวาน - HbA1c (ทดสอบ)'],
+  ['s_anc', 'ฝากครรภ์ (ทดสอบก่อนใช้)'],
+  ['s_child', 'เด็ก - ส่วนสูง/น้ำหนัก'],
+  ['s_tb_success', 'วัณโรค (ทดสอบก่อนใช้)'],
+  ['s_hiv_arv', 'HIV ARV (ทดสอบก่อนใช้)'],
+]
 
 // Province codes
 const PROVINCES = [
@@ -150,6 +156,7 @@ export default function AdminPage() {
   const [users, setUsers] = useState<User[]>([])
   const [tab, setTab] = useState<'kpi' | 'users' | 'moph' | 'catalog' | 'db'>('kpi')
   const [showForm, setShowForm] = useState(false)
+  const [showWizard, setShowWizard] = useState(false)
   const [editKPI, setEditKPI] = useState<KPIReport | null>(null)
   const [form, setForm] = useState(emptyForm())
   const [msg, setMsg] = useState({ text: '', type: 'success' as 'success' | 'error' })
@@ -288,7 +295,6 @@ export default function AdminPage() {
     setTimeout(() => setMsg({ text: '', type: 'success' }), 5000)
   }
 
-  function openAdd() { setEditKPI(null); setForm(emptyForm()); setShowForm(true) }
   function openEdit(kpi: KPIReport) {
     setEditKPI(kpi)
     setForm({
@@ -690,7 +696,7 @@ export default function AdminPage() {
             </div>
 
             <div className="flex justify-end mb-4">
-              <button onClick={openAdd} className="bg-blue-800 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg">+ เพิ่ม KPI ใหม่</button>
+              <button onClick={() => setShowWizard(true)} className="bg-emerald-700 hover:bg-emerald-600 text-white text-sm px-4 py-2 rounded-lg font-medium">🧭 เพิ่มตัวชี้วัด (ครบ flow)</button>
             </div>
             <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
               {loading ? <div className="text-center py-16 text-gray-400">กำลังโหลด...</div> : (
@@ -1385,16 +1391,7 @@ export default function AdminPage() {
             <div className="bg-blue-50 rounded-xl border border-blue-100 p-5">
               <h3 className="font-semibold text-blue-800 mb-3 text-sm">📖 Table Names ที่รู้จัก</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-blue-700 font-mono">
-                {[
-                  ['s_dm_control', 'เบาหวาน - ควบคุมได้ (hba1c/result)'],
-                  ['s_ht_control', 'ความดัน - ควบคุมได้'],
-                  ['s_dm_ckd', 'เบาหวาน - ภาวะแทรกซ้อนไต'],
-                  ['s_dm_hba1c', 'เบาหวาน - HbA1c (ทดสอบ)'],
-                  ['s_anc', 'ฝากครรภ์ (ทดสอบก่อนใช้)'],
-                  ['s_child', 'เด็ก - ส่วนสูง/น้ำหนัก'],
-                  ['s_tb_success', 'วัณโรค (ทดสอบก่อนใช้)'],
-                  ['s_hiv_arv', 'HIV ARV (ทดสอบก่อนใช้)'],
-                ].map(([table, desc]) => (
+                {KNOWN_TABLES.map(([table, desc]) => (
                   <button key={table} onClick={() => setMophTable(table)}
                     className="text-left flex gap-2 p-2 rounded hover:bg-blue-100">
                     <span className="text-blue-800 font-bold">{table}</span>
@@ -1651,7 +1648,7 @@ export default function AdminPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowForm(false)}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="p-6 border-b flex items-center justify-between">
-              <h2 className="font-bold text-gray-900 text-lg">{editKPI ? 'แก้ไข KPI' : 'เพิ่ม KPI ใหม่'}</h2>
+              <h2 className="font-bold text-gray-900 text-lg">แก้ไข KPI</h2>
               <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
             </div>
             <div className="p-6 space-y-4">
@@ -1714,12 +1711,22 @@ export default function AdminPage() {
 
               <Field label="รายละเอียด"><textarea value={form.description ?? ''} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={2} className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></Field>
               <div className="flex gap-3 pt-2">
-                <button onClick={saveForm} className="flex-1 bg-blue-800 hover:bg-blue-700 text-white text-sm py-2.5 rounded-lg font-medium">{editKPI ? 'บันทึกการแก้ไข' : 'เพิ่ม KPI'}</button>
+                <button onClick={saveForm} className="flex-1 bg-blue-800 hover:bg-blue-700 text-white text-sm py-2.5 rounded-lg font-medium">บันทึกการแก้ไข</button>
                 <button onClick={() => setShowForm(false)} className="flex-1 border border-gray-300 text-gray-600 hover:bg-gray-50 text-sm py-2.5 rounded-lg">ยกเลิก</button>
               </div>
             </div>
           </div>
         </div>
+      )}
+
+      {/* KPI Wizard (เพิ่ม + ดึง ครบ flow) */}
+      {showWizard && (
+        <KpiWizard
+          categories={categories}
+          knownTables={KNOWN_TABLES}
+          onClose={() => setShowWizard(false)}
+          onDone={(m) => { loadData(); showMsg(m) }}
+        />
       )}
     </div>
   )
@@ -1734,107 +1741,6 @@ function InfoBox({ label, value, highlight }: { label: string; value: string; hi
     <div className={`rounded-lg p-3 text-center ${highlight ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50'}`}>
       <div className={`text-xl font-bold ${highlight ? 'text-blue-700' : 'text-gray-800'}`}>{value}</div>
       <div className="text-xs text-gray-500 mt-0.5">{label}</div>
-    </div>
-  )
-}
-
-/**
- * Chip-based field selector สำหรับ Mapping Builder
- * - แสดง chip ของ field ที่เลือกแล้ว (กด × เพื่อเอาออก)
- * - พิมพ์ชื่อ field เพิ่มเองหรือคลิกจาก availableFields
- * - multiSelect=false → เลือกได้ 1 field (แทนที่เดิม)
- * - multiSelect=true  → เลือกได้หลาย field (เพิ่มเข้าไป)
- */
-function FieldChipBuilder({
-  fields, onChange, availableFields, fieldTypes, color, placeholder, multiSelect,
-}: {
-  fields: string[]
-  onChange: (fields: string[]) => void
-  availableFields: string[]
-  fieldTypes: Record<string, string>
-  color: 'blue' | 'green'
-  placeholder: string
-  multiSelect: boolean
-}) {
-  const [input, setInput] = useState('')
-
-  function add(f: string) {
-    const trimmed = f.trim()
-    if (!trimmed) return
-    if (multiSelect) {
-      if (!fields.includes(trimmed)) onChange([...fields, trimmed])
-    } else {
-      onChange([trimmed])
-    }
-    setInput('')
-  }
-
-  function remove(f: string) {
-    onChange(fields.filter((x) => x !== f))
-  }
-
-  const chipClass     = color === 'blue' ? 'bg-blue-100 text-blue-800 border-blue-300'    : 'bg-green-100 text-green-800 border-green-300'
-  const selectedClass = color === 'blue' ? 'bg-blue-700 text-white border-blue-700'        : 'bg-green-700 text-white border-green-700'
-  const isBlocked     = (f: string) => ['dimension', 'time'].includes(fieldTypes[f] ?? '')
-
-  return (
-    <div className="space-y-2">
-      {/* Selected field chips */}
-      <div className="flex flex-wrap gap-1 min-h-[34px] p-1.5 border rounded-lg bg-gray-50">
-        {fields.length === 0
-          ? <span className="text-xs text-gray-400 italic px-1">ยังไม่ได้เลือก</span>
-          : fields.map((f) => (
-            <span key={f} className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded font-mono border ${chipClass}`}>
-              {f}
-              <button onClick={() => remove(f)} className="ml-0.5 hover:text-red-500 font-bold leading-none" title={`เอา ${f} ออก`}>×</button>
-            </span>
-          ))
-        }
-      </div>
-
-      {/* Text input */}
-      <div className="flex gap-1">
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') { add(input); e.preventDefault() } }}
-          placeholder={placeholder}
-          className="flex-1 border rounded-lg px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
-        />
-        <button onClick={() => add(input)} disabled={!input.trim()}
-          className="bg-gray-200 hover:bg-gray-300 disabled:opacity-40 text-xs px-2.5 py-1.5 rounded-lg">+</button>
-      </div>
-
-      {/* Available fields from preview — click to add/toggle */}
-      {availableFields.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {availableFields.map((f) => {
-            const blocked  = isBlocked(f)
-            const selected = fields.includes(f)
-            const ftype    = fieldTypes[f] ?? 'measure'
-            const typeColor = FIELD_TYPE_COLOR[ftype] ?? FIELD_TYPE_COLOR.measure
-            return (
-              <button key={f}
-                onClick={() => {
-                  if (blocked) return
-                  if (multiSelect && selected) remove(f)
-                  else add(f)
-                }}
-                disabled={blocked}
-                title={
-                  blocked  ? `${ftype} field — ใช้เป็น value/target ไม่ได้` :
-                  selected ? `คลิกซ้ำเพื่อถอด "${f}"` :
-                  `เพิ่ม "${f}"`
-                }
-                className={`text-xs px-1.5 py-0.5 rounded font-mono border transition-colors
-                  ${selected ? selectedClass : typeColor}
-                  ${blocked ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}>
-                {f}{selected && ' ✓'}
-              </button>
-            )
-          })}
-        </div>
-      )}
     </div>
   )
 }
