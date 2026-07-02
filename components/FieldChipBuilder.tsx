@@ -10,6 +10,11 @@ export const FIELD_TYPE_COLOR: Record<string, string> = {
   measure:   'bg-gray-50 text-gray-700 border-gray-200 hover:border-blue-400',
 }
 
+/** dimension/time field ใช้เป็น value/target ไม่ได้ — ใช้ร่วมกันทุกจุดที่คลิกเลือก field (chip, header ตาราง preview) */
+export function isBlockedFieldType(fieldTypes: Record<string, string>, f: string): boolean {
+  return ['dimension', 'time'].includes(fieldTypes[f] ?? '')
+}
+
 /**
  * Chip-based field selector สำหรับ Mapping Builder
  * - แสดง chip ของ field ที่เลือกแล้ว (กด × เพื่อเอาออก)
@@ -47,7 +52,7 @@ export default function FieldChipBuilder({
 
   const chipClass     = color === 'blue' ? 'bg-blue-100 text-blue-800 border-blue-300'    : 'bg-green-100 text-green-800 border-green-300'
   const selectedClass = color === 'blue' ? 'bg-blue-700 text-white border-blue-700'        : 'bg-green-700 text-white border-green-700'
-  const isBlocked     = (f: string) => ['dimension', 'time'].includes(fieldTypes[f] ?? '')
+  const isBlocked     = (f: string) => isBlockedFieldType(fieldTypes, f)
 
   return (
     <div className="space-y-2">

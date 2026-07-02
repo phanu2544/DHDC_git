@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Navbar from '@/components/Navbar'
-import FieldChipBuilder, { FIELD_TYPE_COLOR } from '@/components/FieldChipBuilder'
+import FieldChipBuilder, { isBlockedFieldType } from '@/components/FieldChipBuilder'
 import KpiWizard from '@/components/KpiWizard'
 import { useAuth } from '@/lib/useAuth'
 import type { User, KPIReport, KPIStatus, KPICategory, MophCatalogEntry, MophMapping, CalcMode, EvalDirection } from '@/lib/types'
@@ -171,8 +171,6 @@ export default function AdminPage() {
   const [mophProvince, setMophProvince] = useState('66')
   const [mophHospcode, setMophHospcode] = useState('')
   const [mophAreacode, setMophAreacode] = useState('6611')  // จังหวัด66 + อำเภอ11
-  const [mophValueField, setMophValueField] = useState('result')
-  const [mophTargetField, setMophTargetField] = useState('target')
   const [mophCalcMode, setMophCalcMode] = useState('percent')
   const [mophMonth, setMophMonth] = useState(() => {
     const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
@@ -182,8 +180,6 @@ export default function AdminPage() {
   const [mophSaveKpiId, setMophSaveKpiId] = useState('')
   const [batchResult, setBatchResult] = useState<BatchResult | null>(null)
   const [batchLoading, setBatchLoading] = useState(false)
-  // ติดตาม field config ที่บันทึกใน DB ของ KPI ที่เลือก (สำหรับ dirty indicator)
-  const [savedFieldConfig, setSavedFieldConfig] = useState<{ valueField: string; targetField: string; calcMode: string } | null>(null)
 
   // Mapping Builder state (Phase 2)
   const [mophFieldMode, setMophFieldMode] = useState<'singleField' | 'sumFields'>('singleField')
@@ -236,8 +232,8 @@ export default function AdminPage() {
     if (withMoph && !mophTable) {
       setMophKpiId(withMoph.id)
       setMophTable(withMoph.mophTable || '')
-      setMophValueField(withMoph.mophValueField || 'result')
-      setMophTargetField(withMoph.mophTargetField || 'target')
+      setMophValueFields([withMoph.mophValueField || 'result'])
+      setMophDenomFields([withMoph.mophTargetField || 'target'])
       setMophCalcMode(withMoph.mophCalcMode || 'percent')
     }
   }
@@ -427,11 +423,8 @@ export default function AdminPage() {
       const vf = kpi.mophValueField || 'result'
       const tf = kpi.mophTargetField || 'target'
       const cm = kpi.mophCalcMode || 'percent'
-      setMophValueField(vf)
-      setMophTargetField(tf)
       setMophCalcMode(cm)
-      setSavedFieldConfig({ valueField: vf, targetField: tf, calcMode: cm })
-      // Phase 2: โหลด mophConfig จาก DB (non-blocking — fallback legacy ถ้า error)
+      // Phase 2: โหลด mophConfig จาก DB (non-blocking — fallback legacy column ถ้าไม่มี/error)
       try {
         const res = await fetch(`/api/kpis/${kpiId}`)
         if (res.ok) {
@@ -461,37 +454,20 @@ export default function AdminPage() {
         setMophDenomFields([tf])
       }
     } else {
-      setSavedFieldConfig(null)
       setMophFieldMode('singleField')
       setMophValueFields(['result'])
       setMophDenomFields(['target'])
     }
   }
 
-  async function saveMophFieldConfig() {
-    if (!mophKpiId) { showMsg('กรุณาเลือก KPI ก่อน', 'error'); return }
-    const res = await fetch(`/api/kpis/${mophKpiId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mophValueField, mophTargetField, mophCalcMode }),
-    })
-    if (res.ok) {
-      setSavedFieldConfig({ valueField: mophValueField, targetField: mophTargetField, calcMode: mophCalcMode })
-      setKpis((prev) => prev.map((k) =>
-        k.id === mophKpiId ? { ...k, mophValueField, mophTargetField, mophCalcMode } : k
-      ))
-      showMsg('🔒 บันทึก Field Config เรียบร้อย — Batch Save จะใช้ค่านี้')
-    } else {
-      showMsg('บันทึกไม่สำเร็จ', 'error')
-    }
-  }
-
-  async function saveMophMapping() {
-    if (!mophKpiId) { showMsg('กรุณาเลือก KPI ก่อน', 'error'); return }
+  // opts.silent = ข้าม toast สำเร็จ (ใช้ตอนเรียกจาก mophBatchFetch กันข้อความซ้อนกับผล batch)
+  // error ยังโชว์เสมอไม่ว่า silent — คืน true/false ให้ caller ตัดสินใจว่าจะดึงข้อมูลต่อไหม
+  async function saveMophMapping(opts: { silent?: boolean } = {}): Promise<boolean> {
+    if (!mophKpiId) { showMsg('กรุณาเลือก KPI ก่อน', 'error'); return false }
     const trimmedVF = mophValueFields.map((f) => f.trim()).filter(Boolean)
-    if (trimmedVF.length === 0) { showMsg('กรุณาระบุ Value Field อย่างน้อย 1 field', 'error'); return }
+    if (trimmedVF.length === 0) { showMsg('กรุณาระบุ Value Field อย่างน้อย 1 field', 'error'); return false }
     if (mophCalcMode === 'percent' && mophDenomFields.filter((f) => f.trim()).length === 0) {
-      showMsg('Calc Mode = percent ต้องระบุ Denominator Field อย่างน้อย 1 field', 'error'); return
+      showMsg('Calc Mode = percent ต้องระบุ Denominator Field อย่างน้อย 1 field', 'error'); return false
     }
 
     const mapping: MophMapping = {
@@ -511,10 +487,12 @@ export default function AdminPage() {
     if (res.ok) {
       setMappingSaved(true)
       setMappingDirty(false)
-      showMsg('🔒 บันทึก Mapping สำเร็จ — Batch/บันทึกลง DB จะใช้ config นี้')
+      if (!opts.silent) showMsg('🔒 บันทึก Mapping สำเร็จ — Batch/บันทึกลง DB จะใช้ config นี้')
+      return true
     } else {
       const data = await res.json()
       showMsg(data.message || 'บันทึก Mapping ไม่สำเร็จ', 'error')
+      return false
     }
   }
 
@@ -546,6 +524,12 @@ export default function AdminPage() {
   async function mophSave() {
     const kpiId = mophSaveKpiId || mophKpiId
     if (!kpiId) { showMsg('กรุณาเลือก KPI ที่จะบันทึก', 'error'); return }
+    // ถ้ากำลังบันทึก KPI เดียวกับที่แก้ mapping อยู่บนจอและยังไม่ได้ Save → auto-save ก่อนเสมอ
+    // (กัน POST /api/moph fallback ไปใช้ field เดียวจาก mophValueFields[0] แทนที่จะรวมทุก field ที่เลือกไว้)
+    if (kpiId === mophKpiId && mappingDirty) {
+      const ok = await saveMophMapping({ silent: true })
+      if (!ok) return
+    }
     setMophLoading(true)
     const res = await fetch('/api/moph', {
       method: 'POST',
@@ -554,7 +538,8 @@ export default function AdminPage() {
         kpiId, tableName: mophTable, year: mophYear, province: mophProvince,
         hospcode: mophHospcode || undefined,
         areacode: mophAreacode || undefined,
-        valueField: mophValueField, targetField: mophTargetField,
+        valueField: mophValueFields[0]?.trim() || 'result',
+        targetField: mophDenomFields[0]?.trim() || 'target',
         calcMode: mophCalcMode, month: mophMonth,
       }),
     })
@@ -577,21 +562,11 @@ export default function AdminPage() {
   }
 
   async function mophBatchFetch() {
-    // batch อ่าน valueField/targetField จาก DB ของแต่ละ KPI
-    // → sync field ที่เลือกบนหน้าจอ (ตาราง/ฟอร์ม) ลง DB ของ KPI ที่กำลังโฟกัสก่อนเสมอ
-    const activeKpiId = mophKpiId || mophSaveKpiId
-    if (activeKpiId) {
-      await fetch(`/api/kpis/${activeKpiId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mophValueField, mophTargetField, mophCalcMode }),
-      })
-      setKpis((prev) => prev.map((k) =>
-        k.id === activeKpiId ? { ...k, mophValueField, mophTargetField, mophCalcMode } : k
-      ))
-      if (activeKpiId === mophKpiId) {
-        setSavedFieldConfig({ valueField: mophValueField, targetField: mophTargetField, calcMode: mophCalcMode })
-      }
+    // batch อ่าน moph_config (mapping) จาก DB ของแต่ละ KPI เอง
+    // → ถ้า KPI ที่กำลังแก้ mapping อยู่บนจอ (mophKpiId) ยังไม่ได้กด Save ให้ auto-save ก่อนดึงเสมอ
+    if (mophKpiId && mappingDirty) {
+      const ok = await saveMophMapping({ silent: true })
+      if (!ok) return // mapping ไม่ผ่าน validation — showMsg แสดง error ไปแล้ว ไม่ดึงต่อ
     }
 
     setBatchLoading(true); setBatchResult(null)
@@ -613,12 +588,6 @@ export default function AdminPage() {
   }
 
   if (!user) return null
-
-  const isFieldDirty = !!(mophKpiId && savedFieldConfig && (
-    mophValueField !== savedFieldConfig.valueField ||
-    mophTargetField !== savedFieldConfig.targetField ||
-    mophCalcMode !== savedFieldConfig.calcMode
-  ))
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -952,57 +921,16 @@ export default function AdminPage() {
                 </div>
 
                 <div>
-                  <label className="text-xs font-medium text-gray-600 mb-1 flex items-center gap-1.5">
-                    Value Field (field ที่ใช้เป็นค่า)
-                    {savedFieldConfig && (
-                      mophValueField !== savedFieldConfig.valueField
-                        ? <span className="text-orange-500 font-bold" title="ยังไม่ได้บันทึก">●</span>
-                        : <span className="text-green-500" title="ตรงกับที่บันทึกไว้">🔒</span>
-                    )}
-                  </label>
-                  <input value={mophValueField} onChange={(e) => setMophValueField(e.target.value)}
-                    placeholder="เช่น hba1c, result, count"
-                    className={`w-full border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 ${savedFieldConfig && mophValueField !== savedFieldConfig.valueField ? 'border-orange-300 bg-orange-50' : ''}`} />
-                </div>
-
-                <div>
-                  <label className="text-xs font-medium text-gray-600 mb-1 flex items-center gap-1.5">
-                    Target Field
-                    {savedFieldConfig && (
-                      mophTargetField !== savedFieldConfig.targetField
-                        ? <span className="text-orange-500 font-bold" title="ยังไม่ได้บันทึก">●</span>
-                        : <span className="text-green-500" title="ตรงกับที่บันทึกไว้">🔒</span>
-                    )}
-                  </label>
-                  <input value={mophTargetField} onChange={(e) => setMophTargetField(e.target.value)}
-                    placeholder="เช่น target"
-                    className={`w-full border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 ${savedFieldConfig && mophTargetField !== savedFieldConfig.targetField ? 'border-orange-300 bg-orange-50' : ''}`} />
-                </div>
-
-                <div>
-                  <label className="text-xs font-medium text-gray-600 mb-1 flex items-center gap-1.5">
-                    วิธีคำนวณ
-                    {savedFieldConfig && (
-                      mophCalcMode !== savedFieldConfig.calcMode
-                        ? <span className="text-orange-500 font-bold" title="ยังไม่ได้บันทึก">●</span>
-                        : <span className="text-green-500" title="ตรงกับที่บันทึกไว้">🔒</span>
-                    )}
-                  </label>
+                  <label className="text-xs font-medium text-gray-600 mb-1 block">วิธีคำนวณ</label>
                   <select value={mophCalcMode}
                     onChange={(e) => { setMophCalcMode(e.target.value); if (mophKpiId) setMappingDirty(true) }}
                     className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                     {CALC_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
                   </select>
-                  {isFieldDirty && (
-                    <button onClick={saveMophFieldConfig}
-                      className="mt-1.5 w-full bg-orange-500 hover:bg-orange-400 text-white text-xs px-3 py-1.5 rounded-lg font-medium flex items-center justify-center gap-1.5">
-                      🔒 บันทึก Field Config สู่ KPI (Batch จะใช้ค่านี้)
-                    </button>
-                  )}
                 </div>
               </div>
 
-              {/* ─── Mapping Builder (Phase 2) ─────────────────────────────────── */}
+              {/* ─── Mapping Builder (Phase 2) — ทางเดียวในการตั้ง field ───────── */}
               <div className="mt-5 border-t pt-5">
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                   <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
@@ -1014,7 +942,7 @@ export default function AdminPage() {
                       <span className="text-orange-500 text-xs font-normal animate-pulse">● ยังไม่ได้บันทึก</span>
                     )}
                     {!mappingSaved && !mappingDirty && mophKpiId && (
-                      <span className="text-gray-400 text-xs font-normal">(ยังไม่มี Mapping — จะใช้ legacy field)</span>
+                      <span className="text-gray-400 text-xs font-normal">(ยังไม่มี Mapping — field ด้านล่างเป็นค่าเริ่มต้น/ค่าที่เคยตั้งไว้ ถ้ามี — ตรวจก่อนกด Save)</span>
                     )}
                   </h3>
                   <p className="text-xs text-gray-400">กำหนด field → Save → Batch/บันทึกลง DB จะใช้ config นี้</p>
@@ -1043,6 +971,16 @@ export default function AdminPage() {
                       </span>
                     </label>
                   ))}
+                </div>
+
+                {/* Legend สี field type — ใช้กับ chip ที่คลิกได้ทั้งสองคอลัมน์ด้านล่าง */}
+                <div className="flex flex-wrap gap-3 mb-3 text-xs text-gray-400">
+                  <span>คลิก field ด้านล่างเพื่อเพิ่ม/ถอด</span>
+                  <span className="text-gray-300">|</span>
+                  <span><span className="inline-block w-2 h-2 rounded-full bg-gray-400 mr-1"></span>measure</span>
+                  <span><span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1"></span>target</span>
+                  <span><span className="inline-block w-2 h-2 rounded-full bg-amber-500 mr-1"></span>time</span>
+                  <span><span className="inline-block w-2 h-2 rounded-full bg-red-500 mr-1"></span>dimension (ห้ามใช้)</span>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -1088,7 +1026,7 @@ export default function AdminPage() {
                 </div>
 
                 <button
-                  onClick={saveMophMapping}
+                  onClick={() => saveMophMapping()}
                   disabled={!mophKpiId || !mappingDirty}
                   className={`px-5 py-2 rounded-lg text-sm font-medium transition-colors ${
                     !mophKpiId || !mappingDirty
@@ -1109,7 +1047,7 @@ export default function AdminPage() {
                   {batchLoading ? '⏳ กำลังดึงทั้งหมด...' : '🚀 ดึงข้อมูลทั้งหมด (Batch Save)'}
                 </button>
               </div>
-              <p className="text-xs text-gray-400 mt-2">Batch Save: ดึงและบันทึกให้ทุก KPI ที่ตั้งค่า MOPH Table ไว้ — ใช้ <strong className="text-gray-600">Value/Target Field ที่ล็อคไว้ของแต่ละ KPI</strong> + ปี/จังหวัด/อำเภอ/เดือนด้านบน (ถ้าแก้ field ค้างไว้ จะถูกล็อคให้อัตโนมัติก่อนดึง)</p>
+              <p className="text-xs text-gray-400 mt-2">Batch Save: ดึงและบันทึกให้ทุก KPI ที่ตั้งค่า MOPH Table ไว้ — ใช้ <strong className="text-gray-600">Mapping ที่บันทึกไว้ของแต่ละ KPI</strong> + ปี/จังหวัด/อำเภอ/เดือนด้านบน (ถ้า KPI ที่กำลังแก้อยู่ยังไม่ได้กด Save Mapping จะบันทึกให้อัตโนมัติก่อนดึง)</p>
             </div>
 
             {/* Preview Result */}
@@ -1150,33 +1088,6 @@ export default function AdminPage() {
                       </div>
                     )}
 
-                    <div className="mb-4">
-                      <p className="text-xs font-medium text-gray-600 mb-2">Fields ที่มีใน response:</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {mophPreview.fields?.map((f) => {
-                          const ftype = mophPreview.fieldTypes?.[f] ?? 'measure'
-                          const isDimension = ftype === 'dimension'
-                          const typeColor = FIELD_TYPE_COLOR[ftype] ?? FIELD_TYPE_COLOR.measure
-                          return (
-                            <button key={f}
-                              onClick={() => { if (!isDimension) setMophValueField(f) }}
-                              title={isDimension ? 'dimension field — ใช้เป็น value ไม่ได้' : ftype === 'time' ? 'time field — ระวังการเลือกเป็น value' : `เลือก "${f}" เป็น Value Field`}
-                              className={`text-xs px-2 py-1 rounded font-mono border transition-colors ${mophValueField === f ? 'bg-blue-700 text-white border-blue-700' : typeColor} ${isDimension ? 'cursor-not-allowed opacity-70' : ''}`}>
-                              {f}
-                            </button>
-                          )
-                        })}
-                      </div>
-                      <div className="flex flex-wrap gap-3 mt-2 text-xs text-gray-400">
-                        <span>คลิก field เพื่อเลือกเป็น Value Field</span>
-                        <span className="text-gray-300">|</span>
-                        <span><span className="inline-block w-2 h-2 rounded-full bg-gray-400 mr-1"></span>measure</span>
-                        <span><span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1"></span>target</span>
-                        <span><span className="inline-block w-2 h-2 rounded-full bg-amber-500 mr-1"></span>time</span>
-                        <span><span className="inline-block w-2 h-2 rounded-full bg-red-500 mr-1"></span>dimension (ห้ามใช้)</span>
-                      </div>
-                    </div>
-
                     {/* Sample data — ตารางทุก hcode ที่ผ่าน filter */}
                     {mophPreview.sample && mophPreview.sample.length > 0 && (() => {
                       const cols = Object.keys(mophPreview.sample[0])
@@ -1188,6 +1099,18 @@ export default function AdminPage() {
                       numCols.forEach((c) => {
                         colSums[c] = mophPreview.sample.reduce((s, r) => s + (Number(r[c]) || 0), 0)
                       })
+                      // Σ รวมทุก field ใน Mapping Builder (sumFields-aware — เหมือน components/KpiWizard.tsx)
+                      const numSum = mophValueFields.reduce((s, f) => s + (colSums[f.trim()] ?? 0), 0)
+                      const denSum = mophDenomFields.reduce((s, f) => s + (colSums[f.trim()] ?? 0), 0)
+                      // คลิก header เพื่อเลือกเป็นตัวเศษ (Value Field) — เว้น dimension/time เหมือน FieldChipBuilder
+                      const clickHeader = (col: string) => {
+                        if (isBlockedFieldType(mophPreview.fieldTypes ?? {}, col)) return
+                        setMophValueFields((prev) =>
+                          mophFieldMode === 'singleField'
+                            ? [col]
+                            : prev.includes(col) ? prev.filter((f) => f !== col) : [...prev, col])
+                        if (mophKpiId) setMappingDirty(true)
+                      }
                       return (
                         <div className="mb-4">
                           <div className="flex items-center justify-between mb-2">
@@ -1198,7 +1121,7 @@ export default function AdminPage() {
                                 <span className="text-gray-400"> (แสดง {mophPreview.sample.length}/{mophPreview.rows})</span>
                               )}
                             </p>
-                            <p className="text-xs text-gray-400">คลิก header → เลือก Value Field</p>
+                            <p className="text-xs text-gray-400">คลิก header → เพิ่ม/ถอดตัวเศษ (Numerator)</p>
                           </div>
                           <div className="overflow-x-auto rounded-lg border max-h-[420px] overflow-y-auto">
                             <table className="w-max text-xs border-collapse">
@@ -1208,18 +1131,18 @@ export default function AdminPage() {
                                   {cols.map((col) => (
                                     <th
                                       key={col}
-                                      onClick={() => setMophValueField(col)}
-                                      title={`คลิกเลือก "${col}" เป็น Value Field`}
+                                      onClick={() => clickHeader(col)}
+                                      title={`คลิกเพิ่ม/ถอด "${col}" เป็นตัวเศษ (Numerator)`}
                                       className={`px-3 py-2 border-b border-r text-left font-mono cursor-pointer select-none whitespace-nowrap transition-colors
-                                        ${mophValueField === col
+                                        ${mophValueFields.includes(col)
                                           ? 'bg-blue-700 text-white'
-                                          : mophTargetField === col
+                                          : mophDenomFields.includes(col)
                                           ? 'bg-green-600 text-white'
                                           : 'bg-gray-100 text-gray-700 hover:bg-blue-100 hover:text-blue-800'}`}
                                     >
                                       {col}
-                                      {mophValueField === col && ' ▲'}
-                                      {mophTargetField === col && ' ●'}
+                                      {mophValueFields.includes(col) && ' ▲'}
+                                      {mophDenomFields.includes(col) && ' ●'}
                                     </th>
                                   ))}
                                 </tr>
@@ -1230,8 +1153,8 @@ export default function AdminPage() {
                                     <td className="px-2 py-1.5 border-b border-r text-gray-400 text-center">{ri + 1}</td>
                                     {cols.map((col) => {
                                       const val = row[col]
-                                      const isVal    = col === mophValueField
-                                      const isTgt    = col === mophTargetField
+                                      const isVal    = mophValueFields.includes(col)
+                                      const isTgt    = mophDenomFields.includes(col)
                                       return (
                                         <td key={col}
                                           className={`px-3 py-1.5 border-b border-r font-mono whitespace-nowrap
@@ -1251,8 +1174,8 @@ export default function AdminPage() {
                                 <tr className="bg-yellow-50 border-t-2 border-yellow-300">
                                   <td className="px-2 py-2 border-r text-yellow-700 font-bold text-center text-xs">Σ</td>
                                   {cols.map((col) => {
-                                    const isVal = col === mophValueField
-                                    const isTgt = col === mophTargetField
+                                    const isVal = mophValueFields.includes(col)
+                                    const isTgt = mophDenomFields.includes(col)
                                     const s     = colSums[col]
                                     return (
                                       <td key={col}
@@ -1270,12 +1193,16 @@ export default function AdminPage() {
                             </table>
                           </div>
                           <div className="flex gap-4 mt-1.5 text-xs text-gray-500">
-                            <span><span className="inline-block w-3 h-3 bg-blue-700 rounded mr-1 align-middle" />Value Field: <strong>{mophValueField}</strong> = {colSums[mophValueField]?.toLocaleString() ?? '–'}</span>
-                            <span><span className="inline-block w-3 h-3 bg-green-600 rounded mr-1 align-middle" />Target Field: <strong>{mophTargetField}</strong> = {colSums[mophTargetField]?.toLocaleString() ?? '–'}</span>
-                            {(colSums[mophTargetField] ?? 0) > 0 && (
-                              <span className="text-blue-700 font-semibold">
-                                → {((colSums[mophValueField] / colSums[mophTargetField]) * 100).toFixed(2)}%
-                              </span>
+                            <span><span className="inline-block w-3 h-3 bg-blue-700 rounded mr-1 align-middle" />ตัวเศษ: <strong>{mophValueFields.join(', ') || '—'}</strong> = {numSum.toLocaleString()}</span>
+                            {mophCalcMode === 'percent' && (
+                              <>
+                                <span><span className="inline-block w-3 h-3 bg-green-600 rounded mr-1 align-middle" />ตัวส่วน: <strong>{mophDenomFields.join(', ') || '—'}</strong> = {denSum.toLocaleString()}</span>
+                                {denSum > 0 && (
+                                  <span className="text-blue-700 font-semibold">
+                                    → {((numSum / denSum) * 100).toFixed(2)}%
+                                  </span>
+                                )}
+                              </>
                             )}
                           </div>
                         </div>
@@ -1696,7 +1623,8 @@ export default function AdminPage() {
                     <span className="block text-xs text-gray-500">ติ๊กเมื่อ HDC ไม่เปิด API ให้ดึง (เช่น fully immunized) — ระบบจะไม่ดึง/ทับค่าอัตโนมัติ ผู้ดูแลกรอกในหน้า KPI เอง</span>
                   </span>
                 </label>
-                <p className="text-xs font-semibold text-blue-700 mb-3">🌐 MOPH API Config</p>
+                <p className="text-xs font-semibold text-blue-700 mb-1">🌐 MOPH API Config</p>
+                <p className="text-xs text-gray-400 mb-3">ℹ️ ถ้า KPI นี้เคยตั้ง Mapping ไว้แล้ว (แท็บ 🌐 ดึงข้อมูล MOPH) ระบบจะใช้ Mapping นั้นเป็นหลัก — ช่อง Value/Target Field ด้านล่างจะไม่มีผลจนกว่าจะล้าง Mapping</p>
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Table Name"><input value={form.mophTable ?? ''} onChange={(e) => setForm({ ...form, mophTable: e.target.value })} placeholder="s_dm_hba1c" className="w-full border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" /></Field>
                   <Field label="Value Field"><input value={form.mophValueField ?? ''} onChange={(e) => setForm({ ...form, mophValueField: e.target.value })} placeholder="hba1c" className="w-full border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" /></Field>
