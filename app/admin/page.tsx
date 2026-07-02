@@ -5,7 +5,7 @@ import Navbar from '@/components/Navbar'
 import FieldChipBuilder, { isBlockedFieldType } from '@/components/FieldChipBuilder'
 import KpiWizard from '@/components/KpiWizard'
 import { useAuth } from '@/lib/useAuth'
-import type { User, KPIReport, KPIStatus, KPICategory, MophCatalogEntry, MophMapping, CalcMode, EvalDirection } from '@/lib/types'
+import type { User, KPIReport, KPIStatus, KPICategory, MophMapping, CalcMode, EvalDirection } from '@/lib/types'
 
 // หมวดหมู่จะถูกโหลดจาก DB ผ่าน /api/categories (ดูใน state)
 const STATUSES: KPIStatus[] = ['in_progress', 'completed', 'overdue']
@@ -154,7 +154,7 @@ export default function AdminPage() {
   const { user } = useAuth({ requireAdmin: true })
   const [kpis, setKpis] = useState<KPIReport[]>([])
   const [users, setUsers] = useState<User[]>([])
-  const [tab, setTab] = useState<'kpi' | 'users' | 'moph' | 'catalog' | 'db'>('kpi')
+  const [tab, setTab] = useState<'kpi' | 'users' | 'moph' | 'db'>('kpi')
   const [showForm, setShowForm] = useState(false)
   const [showWizard, setShowWizard] = useState(false)
   const [editKPI, setEditKPI] = useState<KPIReport | null>(null)
@@ -197,21 +197,6 @@ export default function AdminPage() {
   const [userForm, setUserForm] = useState({ email: '', name: '', password: '', role: 'staff' as 'admin' | 'staff', department: '' })
   const [changePwModal, setChangePwModal] = useState<{ user: User; newPw: string } | null>(null)
 
-  // Catalog state
-  const [catalog, setCatalog] = useState<MophCatalogEntry[]>([])
-  const [catLoading, setCatLoading] = useState(false)
-  const [catSnapshotLoading, setCatSnapshotLoading] = useState(false)
-  const [catSnapResult, setCatSnapResult] = useState<BatchResult | null>(null)
-  const [catYear, setCatYear] = useState('2569')
-  const [catMonth, setCatMonth] = useState(() => {
-    const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-  })
-  const [showCatForm, setShowCatForm] = useState(false)
-  const [catForm, setCatForm] = useState({
-    id: '', name: '', mophTable: '', valueField: 'result', targetField: 'target',
-    calcMode: 'percent', category: 'NCD', province: '66', hospcode: '', areacode: '6611', description: '',
-  })
-
   useEffect(() => {
     if (!user) return
     loadData()
@@ -236,54 +221,6 @@ export default function AdminPage() {
       setMophDenomFields([withMoph.mophTargetField || 'target'])
       setMophCalcMode(withMoph.mophCalcMode || 'percent')
     }
-  }
-
-  async function loadCatalog() {
-    setCatLoading(true)
-    const res = await fetch('/api/moph/catalog')
-    if (res.ok) setCatalog(await res.json())
-    setCatLoading(false)
-  }
-
-  async function saveCatalogEntry() {
-    if (!catForm.id || !catForm.name || !catForm.mophTable) {
-      showMsg('กรุณากรอก ID, ชื่อ และ Table Name', 'error'); return
-    }
-    const res = await fetch('/api/moph/catalog', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: catForm.id, name: catForm.name, mophTable: catForm.mophTable,
-        valueField: catForm.valueField, targetField: catForm.targetField,
-        calcMode: catForm.calcMode, category: catForm.category,
-        province: catForm.province, hospcode: catForm.hospcode,
-        areacode: catForm.areacode,
-        description: catForm.description,
-      }),
-    })
-    const data = await res.json()
-    if (res.ok) { showMsg('บันทึกรายงานสำเร็จ'); setShowCatForm(false); loadCatalog() }
-    else showMsg(data.message, 'error')
-  }
-
-  async function deleteCatalogEntry(id: string) {
-    if (!confirm(`ลบรายงาน ${id}?`)) return
-    const res = await fetch(`/api/moph/catalog?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
-    if (res.ok) { showMsg('ลบสำเร็จ'); loadCatalog() }
-    else showMsg('ลบไม่สำเร็จ', 'error')
-  }
-
-  async function snapshotAll() {
-    setCatSnapshotLoading(true); setCatSnapResult(null)
-    const res = await fetch('/api/moph/snapshot', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ year: catYear, month: catMonth }),
-    })
-    const data: BatchResult = await res.json()
-    setCatSnapResult(data); setCatSnapshotLoading(false)
-    if (data.ok) showMsg(`Snapshot สำเร็จ ${data.saved}/${data.total} รายงาน เดือน ${data.savedMonth}`)
-    else showMsg(data.message || 'เกิดข้อผิดพลาด', 'error')
   }
 
   function showMsg(text: string, type: 'success' | 'error' = 'success') {
@@ -608,12 +545,11 @@ export default function AdminPage() {
         <div className="flex flex-wrap gap-2 mb-6">
           {([
             { key: 'kpi', label: `📋 KPI (${kpis.length})` },
-            { key: 'catalog', label: `📊 Catalog (${catalog.length})` },
             { key: 'moph', label: '🌐 ดึงข้อมูล MOPH' },
             { key: 'users', label: `👥 ผู้ใช้ (${users.length})` },
             { key: 'db', label: '🗄️ Database' },
           ] as { key: typeof tab; label: string }[]).map(({ key, label }) => (
-            <button key={key} onClick={() => { setTab(key); if (key === 'db') checkDb(); if (key === 'catalog') loadCatalog() }}
+            <button key={key} onClick={() => { setTab(key); if (key === 'db') checkDb() }}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tab === key ? 'bg-blue-800 text-white' : 'bg-white text-gray-600 hover:bg-gray-100 border'}`}>
               {label}
             </button>
@@ -715,144 +651,6 @@ export default function AdminPage() {
               )}
             </div>
           </>
-        )}
-
-        {/* ===== CATALOG TAB ===== */}
-        {tab === 'catalog' && (
-          <div className="space-y-5">
-            {/* Header row */}
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="font-semibold text-gray-800">📊 คลังรายงาน MOPH (Province 66)</h2>
-                <p className="text-xs text-gray-400 mt-0.5">ลงทะเบียนรายงาน → ดึงข้อมูลทีเดียว → ผูกกับ KPI</p>
-              </div>
-              <div className="flex gap-2">
-                <button onClick={() => { setCatForm({ id: '', name: '', mophTable: '', valueField: 'result', targetField: 'target', calcMode: 'percent', category: 'NCD', province: '66', hospcode: '', areacode: '6611', description: '' }); setShowCatForm(true) }}
-                  className="bg-blue-800 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg">+ เพิ่มรายงาน</button>
-              </div>
-            </div>
-
-            {/* Snapshot controls */}
-            <div className="bg-white rounded-xl shadow-sm border p-5">
-              <h3 className="font-semibold text-gray-800 mb-3">🗄️ ดึงข้อมูลทั้ง Catalog → Snapshot DB</h3>
-              <div className="flex flex-wrap gap-3 items-end">
-                <div>
-                  <label className="text-xs font-medium text-gray-600 mb-1 block">ปีงบประมาณ</label>
-                  <select value={catYear} onChange={(e) => setCatYear(e.target.value)}
-                    className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    {BY_YEARS.map((y) => <option key={y}>{y}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-600 mb-1 block">เดือนที่บันทึก</label>
-                  <input type="month" value={catMonth} onChange={(e) => setCatMonth(e.target.value)}
-                    className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <button onClick={snapshotAll} disabled={catSnapshotLoading}
-                  className="bg-indigo-700 hover:bg-indigo-600 disabled:bg-indigo-400 text-white text-sm px-5 py-2 rounded-lg font-medium">
-                  {catSnapshotLoading ? '⏳ กำลังดึง...' : '🚀 Snapshot ทั้งหมด'}
-                </button>
-              </div>
-              <p className="text-xs text-gray-400 mt-2">ดึงข้อมูลจาก MOPH ทุกรายงานใน catalog แล้วเก็บใน moph_snapshot</p>
-            </div>
-
-            {/* Snapshot result */}
-            {catSnapResult && (
-              <div className="bg-white rounded-xl shadow-sm border p-5">
-                <h3 className="font-semibold text-gray-800 mb-3">
-                  {catSnapResult.ok ? '✅ ผล Snapshot' : '❌ เกิดข้อผิดพลาด'}
-                </h3>
-                {catSnapResult.ok ? (
-                  <>
-                    <div className="grid grid-cols-3 gap-3 mb-3">
-                      <InfoBox label="รายงานทั้งหมด" value={String(catSnapResult.total ?? 0)} />
-                      <InfoBox label="บันทึกสำเร็จ" value={String(catSnapResult.saved ?? 0)} highlight />
-                      <InfoBox label="ล้มเหลว" value={String(catSnapResult.failed ?? 0)} />
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs">
-                        <thead className="bg-gray-50"><tr>
-                          <th className="text-left px-3 py-2 font-medium text-gray-600">ชื่อรายงาน</th>
-                          <th className="text-center px-3 py-2 font-medium text-gray-600">Rows</th>
-                          <th className="text-center px-3 py-2 font-medium text-gray-600">ค่า</th>
-                          <th className="text-center px-3 py-2 font-medium text-gray-600">สถานะ</th>
-                        </tr></thead>
-                        <tbody className="divide-y">
-                          {catSnapResult.results?.map((r) => (
-                            <tr key={r.kpiId || r.reportId} className={r.status === 'error' ? 'bg-red-50' : ''}>
-                              <td className="px-3 py-2 text-gray-700">{r.kpiName || r.reportName}</td>
-                              <td className="px-3 py-2 text-center text-gray-500">{r.rows ?? '-'}</td>
-                              <td className="px-3 py-2 text-center font-mono font-medium text-blue-700">{r.calcValue ?? '-'}</td>
-                              <td className="px-3 py-2 text-center">
-                                {r.status === 'ok'
-                                  ? <span className="text-green-600 font-medium">✅ OK</span>
-                                  : <span className="text-red-500" title={r.error}>❌ {r.error?.slice(0, 40)}</span>}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </>
-                ) : <p className="text-red-600 text-sm">{catSnapResult.message}</p>}
-              </div>
-            )}
-
-            {/* Catalog list */}
-            <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
-              {catLoading ? (
-                <div className="text-center py-12 text-gray-400">กำลังโหลด...</div>
-              ) : catalog.length === 0 ? (
-                <div className="text-center py-12 text-gray-400">ยังไม่มีรายงาน — กด &quot;+ เพิ่มรายงาน&quot; หรือ Migrate & Seed เพื่อโหลดข้อมูลเริ่มต้น</div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50 border-b">
-                      <tr>
-                        <th className="text-left px-4 py-3 font-medium text-gray-600">ชื่อรายงาน</th>
-                        <th className="text-left px-4 py-3 font-medium text-gray-600">MOPH Table</th>
-                        <th className="text-center px-4 py-3 font-medium text-gray-600">Field</th>
-                        <th className="text-center px-4 py-3 font-medium text-gray-600">Filter</th>
-                        <th className="text-left px-4 py-3 font-medium text-gray-600">ID (รหัสรายงาน)</th>
-                        <th className="px-4 py-3"></th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {catalog.map((c) => (
-                        <tr key={c.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3">
-                            <p className="font-medium text-gray-900 text-xs">{c.name}</p>
-                            <span className="text-gray-400 text-xs">{c.category}</span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs font-mono">{c.mophTable}</span>
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <span className="font-mono text-xs text-gray-700">{c.valueField}</span>
-                            <span className="text-gray-400 text-xs"> / {c.targetField}</span>
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            {(c as MophCatalogEntry & { areacode?: string }).areacode
-                              ? <span className="bg-indigo-100 text-indigo-700 font-mono text-xs px-2 py-0.5 rounded">areacode: {(c as MophCatalogEntry & { areacode?: string }).areacode}*</span>
-                              : c.hospcode
-                              ? <span className="bg-orange-100 text-orange-700 font-mono text-xs px-2 py-0.5 rounded">hosp: {c.hospcode}</span>
-                              : <span className="text-gray-300 text-xs">ทั้งจังหวัด</span>}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className="font-mono text-xs text-gray-400 break-all">{c.id.slice(0, 20)}…</span>
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            <button onClick={() => deleteCatalogEntry(c.id)}
-                              className="text-red-500 hover:text-red-700 text-xs px-2 py-1 rounded hover:bg-red-50">ลบ</button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          </div>
         )}
 
         {/* ===== MOPH TAB ===== */}
@@ -1400,12 +1198,10 @@ export default function AdminPage() {
               <div className={`p-4 rounded-lg mb-4 text-sm ${dbStatus.ok ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
                 {dbStatus.ok ? (
                   <div>✅ เชื่อมต่อสำเร็จ
-                    <div className="grid grid-cols-5 gap-2 mt-3">
+                    <div className="grid grid-cols-3 gap-2 mt-3">
                       <div className="bg-white rounded p-2 text-center"><div className="text-xl font-bold">{dbStatus.counts?.users}</div><div className="text-xs text-gray-500">users</div></div>
                       <div className="bg-white rounded p-2 text-center"><div className="text-xl font-bold">{dbStatus.counts?.kpis}</div><div className="text-xs text-gray-500">kpi_reports</div></div>
                       <div className="bg-white rounded p-2 text-center"><div className="text-xl font-bold">{dbStatus.counts?.monthly}</div><div className="text-xs text-gray-500">monthly_data</div></div>
-                      <div className="bg-white rounded p-2 text-center"><div className="text-xl font-bold">{dbStatus.counts?.catalog ?? 0}</div><div className="text-xs text-gray-500">catalog</div></div>
-                      <div className="bg-white rounded p-2 text-center"><div className="text-xl font-bold">{dbStatus.counts?.snapshot ?? 0}</div><div className="text-xs text-gray-500">snapshot</div></div>
                     </div>
                   </div>
                 ) : <div>❌ {dbStatus.message}</div>}
@@ -1418,80 +1214,6 @@ export default function AdminPage() {
           </div>
         )}
       </div>
-
-      {/* Catalog Form Modal */}
-      {showCatForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowCatForm(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="p-6 border-b flex items-center justify-between">
-              <h2 className="font-bold text-gray-900 text-lg">เพิ่มรายงาน MOPH</h2>
-              <button onClick={() => setShowCatForm(false)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
-            </div>
-            <div className="p-6 space-y-4">
-              <Field label="รหัสรายงาน (ID) *">
-                <input value={catForm.id} onChange={(e) => setCatForm({ ...catForm, id: e.target.value })}
-                  placeholder="เช่น 137a726340e4dfde7bbbc5d8aeee3ac3"
-                  className="w-full border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                <p className="text-xs text-gray-400 mt-1">รหัสจาก MOPH portal หรือตั้งเองก็ได้ ต้อง unique</p>
-              </Field>
-              <Field label="ชื่อรายงาน *">
-                <input value={catForm.name} onChange={(e) => setCatForm({ ...catForm, name: e.target.value })}
-                  placeholder="เช่น ผู้ป่วยเบาหวานที่ควบคุม HbA1c < 7%"
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </Field>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="MOPH Table Name *">
-                  <input value={catForm.mophTable} onChange={(e) => setCatForm({ ...catForm, mophTable: e.target.value })}
-                    placeholder="s_dm_control"
-                    className="w-full border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </Field>
-                <Field label="หมวดหมู่">
-                  <select value={catForm.category} onChange={(e) => setCatForm({ ...catForm, category: e.target.value })}
-                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    {categories.map((c) => <option key={c}>{c}</option>)}
-                  </select>
-                </Field>
-                <Field label="Value Field">
-                  <input value={catForm.valueField} onChange={(e) => setCatForm({ ...catForm, valueField: e.target.value })}
-                    placeholder="result"
-                    className="w-full border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </Field>
-                <Field label="Target Field">
-                  <input value={catForm.targetField} onChange={(e) => setCatForm({ ...catForm, targetField: e.target.value })}
-                    placeholder="target"
-                    className="w-full border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </Field>
-                <Field label="วิธีคำนวณ">
-                  <select value={catForm.calcMode} onChange={(e) => setCatForm({ ...catForm, calcMode: e.target.value })}
-                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    {CALC_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-                  </select>
-                </Field>
-                <Field label="Areacode prefix (จ.+อ. เช่น 6611)">
-                  <input value={(catForm as typeof catForm & { areacode?: string }).areacode ?? ''}
-                    onChange={(e) => setCatForm({ ...catForm, areacode: e.target.value } as typeof catForm)}
-                    placeholder="6611 = จ.66 อ.11"
-                    className="w-full border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                  <p className="text-xs text-gray-400 mt-0.5">กรอง rows ที่ areacode ขึ้นต้นด้วย prefix นี้</p>
-                </Field>
-                <Field label="Hospcode (กรณีต้องการรพ.เดียว)">
-                  <input value={catForm.hospcode} onChange={(e) => setCatForm({ ...catForm, hospcode: e.target.value })}
-                    placeholder="27980 (ถ้าต้องการ)"
-                    className="w-full border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </Field>
-              </div>
-              <Field label="หมายเหตุ">
-                <input value={catForm.description} onChange={(e) => setCatForm({ ...catForm, description: e.target.value })}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </Field>
-              <div className="flex gap-3 pt-2">
-                <button onClick={saveCatalogEntry} className="flex-1 bg-blue-800 hover:bg-blue-700 text-white text-sm py-2.5 rounded-lg font-medium">บันทึก</button>
-                <button onClick={() => setShowCatForm(false)} className="flex-1 border border-gray-300 text-gray-600 hover:bg-gray-50 text-sm py-2.5 rounded-lg">ยกเลิก</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Add User Modal */}
       {showUserForm && (
