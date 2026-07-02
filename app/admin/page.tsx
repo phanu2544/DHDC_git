@@ -180,6 +180,7 @@ export default function AdminPage() {
   const [mophSaveKpiId, setMophSaveKpiId] = useState('')
   const [batchResult, setBatchResult] = useState<BatchResult | null>(null)
   const [batchLoading, setBatchLoading] = useState(false)
+  const [pullingKpiId, setPullingKpiId] = useState<string | null>(null)  // KPI ที่กำลังดึงรายตัว (ปุ่ม 🔄 ในตาราง)
 
   // Mapping Builder state (Phase 2)
   const [mophFieldMode, setMophFieldMode] = useState<'singleField' | 'sumFields'>('singleField')
@@ -335,7 +336,39 @@ export default function AdminPage() {
     setKpis((prev) => prev.map((k) => k.id === kpi.id ? { ...k, status } : k))
   }
 
+  // ดึงข้อมูล MOPH ของ KPI ตัวเดียวจากตาราง (reuse runBatchSave ผ่าน /api/moph/batch {kpiId})
+  // ใช้ scope เดียวกับแท็บ MOPH (ปี/จังหวัด/อำเภอ/เดือน) — เขียน monthly_data+detail จริง แต่ idempotent
+  async function pullSingleKpi(kpi: KPIReport) {
+    setPullingKpiId(kpi.id)
+    try {
+      const res = await fetch('/api/moph/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kpiId: kpi.id, year: mophYear, province: mophProvince,
+          areacode: mophAreacode || undefined,
+          hospcode: mophHospcode || undefined,
+          month: mophMonth,
+        }),
+      })
+      const data: BatchResult = await res.json()
+      const r = data.results?.[0]
+      if (data.ok && r?.status === 'ok') {
+        showMsg(`ดึง "${kpi.name.slice(0, 30)}" เดือน ${data.savedMonth} สำเร็จ — ค่า ${r.calcValue}`)
+      } else if (r?.status === 'skipped') {
+        showMsg(`ข้าม: ${r.skipReason ?? 'ไม่ระบุเหตุผล'}`, 'error')
+      } else {
+        showMsg(r?.error || data.message || 'ดึงไม่สำเร็จ', 'error')
+      }
+    } catch (e) {
+      showMsg(String(e), 'error')
+    } finally {
+      setPullingKpiId(null)
+    }
+  }
+
   async function initDb() {
+    if (!confirm(`ยืนยันรัน Migrate & Seed บนฐานข้อมูล "${dbInfo?.database ?? ''}" (${dbInfo?.label ?? ''})?\n\nสร้างตาราง + seed ข้อมูลเริ่มต้นที่ยังไม่มี (ไม่ทับ/ไม่ลบข้อมูลเดิม)`)) return
     const res = await fetch('/api/init', { method: 'POST' })
     const data = await res.json()
     if (res.ok) { showMsg('สร้างตาราง + Seed สำเร็จ'); await loadData() }
@@ -636,6 +669,14 @@ export default function AdminPage() {
                             </select>
                           </td>
                           <td className="px-4 py-3 text-right space-x-1">
+                            {kpi.mophTable && !kpi.manualEntry && (
+                              <button onClick={() => pullSingleKpi(kpi)}
+                                disabled={pullingKpiId === kpi.id}
+                                title={`ดึงข้อมูลเดือน ${mophMonth} (area ${mophAreacode || 'ทั้งจังหวัด'})`}
+                                className="text-indigo-600 hover:text-indigo-800 disabled:opacity-40 text-xs font-medium px-2 py-1 rounded hover:bg-indigo-50">
+                                {pullingKpiId === kpi.id ? '⏳' : '🔄'}
+                              </button>
+                            )}
                             <button onClick={() => { onMophKpiChange(kpi.id); setTab('moph') }}
                               className="text-green-600 hover:text-green-800 text-xs font-medium px-2 py-1 rounded hover:bg-green-50">🌐</button>
                             <button onClick={() => openEdit(kpi)}
