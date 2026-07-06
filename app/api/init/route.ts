@@ -169,6 +169,21 @@ export async function POST(req: NextRequest) {
       ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
     `)
 
+    // ── cron_log (ประวัติการรัน full-batch — cron อัตโนมัติ / กดดึงทั้งหมด) ───
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS cron_log (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        run_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        trigger_by VARCHAR(16) NOT NULL,
+        saved_month VARCHAR(7),
+        total INT DEFAULT 0,
+        saved INT DEFAULT 0,
+        skipped INT DEFAULT 0,
+        failed INT DEFAULT 0,
+        KEY idx_run_at (run_at)
+      ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+    `)
+
     // ── moph_report_catalog ─────────────────────────────────────────────────
     await conn.execute(`
       CREATE TABLE IF NOT EXISTS moph_report_catalog (

@@ -28,6 +28,8 @@ export interface BatchOptions {
   month?: string
   /** จำกัดเฉพาะ KPI เดียว (re-snapshot ตัวเดียวหลังแก้ config โดยไม่กระทบตัวอื่น) — ว่าง = ทุกตัว */
   kpiId?: string
+  /** ที่มาของการรัน — 'cron' (อัตโนมัติ) | 'manual' (กดเอง) · บันทึกลง cron_log เฉพาะ full-batch */
+  trigger?: string
 }
 
 export interface BatchItemResult {
@@ -57,6 +59,23 @@ export interface BatchResult {
   results: BatchItemResult[]
 }
 
+/** best-effort: log 1 แถวลง cron_log — ล้มเหลวไม่ throw (เช่น ตารางยังไม่ถูก migrate) */
+async function logCronRun(
+  trigger: string, saveMonth: string,
+  s: { total: number; saved: number; skipped: number; failed: number },
+) {
+  try {
+    const c = await pool.getConnection()
+    try {
+      await c.execute(
+        `INSERT INTO cron_log (trigger_by, saved_month, total, saved, skipped, failed)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [trigger, saveMonth, s.total, s.saved, s.skipped, s.failed],
+      )
+    } finally { c.release() }
+  } catch { /* logging ล้มเหลว ไม่กระทบ batch */ }
+}
+
 /**
  * ดึงข้อมูล MOPH ของทุก KPI ที่ตั้งค่า moph_table ไว้ แล้ว upsert ลง monthly_data
  * ใช้ร่วมกันระหว่าง API route (/api/moph/batch) และ cron อัตโนมัติ
@@ -67,7 +86,7 @@ export interface BatchResult {
  *   - ok      → INSERT monthly_data (target = kpi.target เท่านั้น)
  */
 export async function runBatchSave(opts: BatchOptions = {}): Promise<BatchResult> {
-  const { year = '2569', province = '66', hospcode = '', areacode = '', month, kpiId = '' } = opts
+  const { year = '2569', province = '66', hospcode = '', areacode = '', month, kpiId = '', trigger = 'manual' } = opts
 
   const saveMonth =
     month || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
@@ -100,6 +119,8 @@ export async function runBatchSave(opts: BatchOptions = {}): Promise<BatchResult
   }
 
   if (kpis.length === 0) {
+    // heartbeat: cron รันจริงแต่ไม่เจอ KPI (config หาย) — ยัง log ให้แผงเห็นว่า cron เดินอยู่
+    if (!kpiId) await logCronRun(trigger, saveMonth, { total: 0, saved: 0, skipped: 0, failed: 0 })
     return {
       ok: false, message: 'ไม่มี KPI ที่ตั้งค่า MOPH Table ไว้',
       savedMonth: saveMonth, year, province,
@@ -243,7 +264,7 @@ export async function runBatchSave(opts: BatchOptions = {}): Promise<BatchResult
     }
   }
 
-  return {
+  const summary: BatchResult = {
     ok: true,
     savedMonth: saveMonth, year, province,
     areacode: areacode || null, hospcode: hospcode || null,
@@ -253,6 +274,12 @@ export async function runBatchSave(opts: BatchOptions = {}): Promise<BatchResult
     failed:  results.filter((r) => r.status === 'error').length,
     results,
   }
+
+  // บันทึก cron_log เฉพาะการรัน full-batch (ไม่รวมดึงทีละ KPI) — best-effort ไม่ให้ล้มกระทบผลลัพธ์
+  // trigger='cron' (อัตโนมัติจาก scheduler) / 'manual' (ปุ่มดึงทั้งหมด) → แยกได้ในแผงสถานะ
+  if (!kpiId) await logCronRun(trigger, saveMonth, summary)
+
+  return summary
 }
 
 /** ปีงบประมาณ พ.ศ. ปัจจุบัน (เริ่ม 1 ต.ค.) เช่น พ.ค. 2026 → 2569, พ.ย. 2025 → 2569 */

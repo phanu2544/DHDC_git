@@ -5,6 +5,7 @@ import Navbar from '@/components/Navbar'
 import FieldChipBuilder, { isBlockedFieldType } from '@/components/FieldChipBuilder'
 import KpiWizard from '@/components/KpiWizard'
 import { useAuth } from '@/lib/useAuth'
+import { formatThaiMonth } from '@/lib/formatMonth'
 import type { User, KPIReport, KPIStatus, KPICategory, MophMapping, CalcMode, EvalDirection } from '@/lib/types'
 
 // หมวดหมู่จะถูกโหลดจาก DB ผ่าน /api/categories (ดูใน state)
@@ -31,6 +32,10 @@ const DIRECTIONS: { value: EvalDirection; label: string }[] = [
 
 // Buddhist year list (2567-2569)
 const BY_YEARS = ['2569', '2568', '2567', '2566', '2565']
+
+// เกณฑ์ badge "สด/เก่า" ของ "ดึงล่าสุด" — cron รายวัน (07:00) → เผื่อ ~1 รอบ + slack (30 ชม.)
+// ปรับที่นี่ถ้าเปลี่ยนความถี่ cron (เช่น รายชั่วโมง = ลดลง)
+const FRESH_THRESHOLD_HOURS = 30
 
 // Table names ที่รู้จัก (quick-pick — ใช้ทั้ง MOPH tab และ KpiWizard)
 const KNOWN_TABLES: [string, string][] = [
@@ -150,6 +155,24 @@ interface BatchResult {
   }[]
 }
 
+interface CronStatus {
+  ok: boolean
+  lastRun: string | null
+  latestMonth: string | null
+  currentMonth: string
+  currentMonthKpiCount: number
+  autoKpiCount: number
+  missingKpis: string[]
+  cronLastRun: string | null
+  cronLastSaved: number | null
+  cronLastTotal: number | null
+  cronLastFailed: number | null
+  cronExpr: string
+  cronTz: string
+  cronDisabled: boolean
+  message?: string
+}
+
 export default function AdminPage() {
   const { user } = useAuth({ requireAdmin: true })
   const [kpis, setKpis] = useState<KPIReport[]>([])
@@ -163,6 +186,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true)
   const [dbStatus, setDbStatus] = useState<{ ok: boolean; counts?: { users: number; kpis: number; monthly: number; catalog: number; snapshot: number }; message?: string } | null>(null)
   const [dbInfo, setDbInfo] = useState<{ host: string; port: number; database: string; label: string } | null>(null)
+  const [cronStatus, setCronStatus] = useState<CronStatus | null>(null)
 
   // MOPH state
   const [mophKpiId, setMophKpiId] = useState('')
@@ -339,6 +363,7 @@ export default function AdminPage() {
   // ดึงข้อมูล MOPH ของ KPI ตัวเดียวจากตาราง (reuse runBatchSave ผ่าน /api/moph/batch {kpiId})
   // ใช้ scope เดียวกับแท็บ MOPH (ปี/จังหวัด/อำเภอ/เดือน) — เขียน monthly_data+detail จริง แต่ idempotent
   async function pullSingleKpi(kpi: KPIReport) {
+    if (!confirm(`ดึงข้อมูล MOPH เดือน ${mophMonth} ของ "${kpi.name.slice(0, 40)}" แล้วบันทึกทับค่าเดิมของเดือนนี้เลยหรือไม่?`)) return
     setPullingKpiId(kpi.id)
     try {
       const res = await fetch('/api/moph/batch', {
@@ -379,6 +404,13 @@ export default function AdminPage() {
   async function checkDb() {
     const res = await fetch('/api/init')
     setDbStatus(await res.json())
+  }
+
+  async function loadCronStatus() {
+    try {
+      const res = await fetch('/api/cron-status')
+      setCronStatus(await res.json())
+    } catch { /* non-critical — แท็บยังใช้ได้ */ }
   }
 
   // MOPH functions
@@ -582,7 +614,7 @@ export default function AdminPage() {
             { key: 'users', label: `👥 ผู้ใช้ (${users.length})` },
             { key: 'db', label: '🗄️ Database' },
           ] as { key: typeof tab; label: string }[]).map(({ key, label }) => (
-            <button key={key} onClick={() => { setTab(key); if (key === 'db') checkDb() }}
+            <button key={key} onClick={() => { setTab(key); if (key === 'db') { checkDb(); loadCronStatus() } }}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tab === key ? 'bg-blue-800 text-white' : 'bg-white text-gray-600 hover:bg-gray-100 border'}`}>
               {label}
             </button>
@@ -1229,6 +1261,7 @@ export default function AdminPage() {
 
         {/* ===== DB TAB ===== */}
         {tab === 'db' && (
+          <div className="space-y-5">
           <div className="bg-white rounded-xl shadow-sm border p-6">
             <h2 className="font-semibold text-gray-800 mb-4">🗄️ สถานะฐานข้อมูล MariaDB</h2>
             <div className="grid grid-cols-2 gap-3 text-sm mb-4">
@@ -1252,6 +1285,86 @@ export default function AdminPage() {
               <button onClick={checkDb} className="border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm px-4 py-2 rounded-lg">ตรวจสอบการเชื่อมต่อ</button>
               <button onClick={initDb} className="bg-blue-800 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg">🚀 Migrate & Seed</button>
             </div>
+          </div>
+
+          {/* การ์ดสถานะ cron / ความสดข้อมูล */}
+          <div className="bg-white rounded-xl shadow-sm border p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-semibold text-gray-800">⏰ สถานะการดึงข้อมูลอัตโนมัติ (cron)</h2>
+              <button onClick={loadCronStatus} className="text-gray-400 hover:text-gray-600 text-xs">🔄 รีเฟรช</button>
+            </div>
+            {!cronStatus ? (
+              <div className="text-gray-400 text-sm">กำลังโหลด...</div>
+            ) : !cronStatus.ok ? (
+              <div className="bg-red-50 text-red-700 text-sm p-3 rounded-lg">❌ {cronStatus.message}</div>
+            ) : (() => {
+              const fmt = (s: string | null) => s ? new Date(s).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : '—'
+              // อายุสัมพัทธ์ (ผู้ใช้ตัดสินความสดเองได้ ไม่ต้องพึ่ง badge อย่างเดียว)
+              const rel = (s: string | null) => {
+                if (!s) return ''
+                const h = (Date.now() - new Date(s).getTime()) / 3.6e6
+                if (h < 1) return `${Math.round(h * 60)} นาทีที่แล้ว`
+                if (h < 48) return `${Math.round(h)} ชม.ที่แล้ว`
+                return `${Math.round(h / 24)} วันที่แล้ว`
+              }
+              return (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <div className="text-gray-500 text-xs mb-1">🕐 ดึงล่าสุด (รวมกดเอง)</div>
+                      <div className="font-medium flex items-center gap-2 flex-wrap">
+                        {fmt(cronStatus.lastRun)}
+                        {(() => {
+                          const ageH = cronStatus.lastRun ? (Date.now() - new Date(cronStatus.lastRun).getTime()) / 3.6e6 : Infinity
+                          const fresh = ageH < FRESH_THRESHOLD_HOURS
+                          return (
+                            <span className={`text-xs px-1.5 py-0.5 rounded-full ${fresh ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                              {cronStatus.lastRun ? (fresh ? 'สด' : 'เก่า') : 'ยังไม่มี'}
+                            </span>
+                          )
+                        })()}
+                      </div>
+                      {cronStatus.lastRun && <div className="text-gray-400 text-xs mt-0.5">{rel(cronStatus.lastRun)}</div>}
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <div className="text-gray-500 text-xs mb-1">🤖 cron อัตโนมัติล่าสุด</div>
+                      {cronStatus.cronLastRun ? (
+                        <>
+                          <div className="font-medium">{fmt(cronStatus.cronLastRun)}</div>
+                          <div className="text-gray-400 text-xs mt-0.5">
+                            {rel(cronStatus.cronLastRun)} · สำเร็จ {cronStatus.cronLastSaved}/{cronStatus.cronLastTotal}
+                            {(cronStatus.cronLastFailed ?? 0) > 0 && <span className="text-red-500"> · ล้ม {cronStatus.cronLastFailed}</span>}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="text-amber-600 text-xs">ยังไม่เคยรันตั้งแต่ server เปิดล่าสุด</div>
+                      )}
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <div className="text-gray-500 text-xs mb-1">📅 เดือนล่าสุด / 📊 coverage</div>
+                      <div className="font-medium">{cronStatus.latestMonth ? formatThaiMonth(cronStatus.latestMonth) : '—'}</div>
+                      <div className="text-gray-400 text-xs mt-0.5"
+                        title={cronStatus.missingKpis.length ? `ยังไม่มีข้อมูล:\n- ${cronStatus.missingKpis.join('\n- ')}` : 'ครบทุกตัว'}>
+                        เดือนนี้ {cronStatus.currentMonthKpiCount}/{cronStatus.autoKpiCount} KPI
+                        {cronStatus.missingKpis.length > 0 && <span className="text-amber-600 cursor-help"> ⚠️ ขาด {cronStatus.missingKpis.length} (ชี้ดู)</span>}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm flex-wrap">
+                    <span className="text-gray-500">⏰ ตารางเวลา:</span>
+                    <span className="font-mono bg-gray-100 px-2 py-0.5 rounded">{cronStatus.cronExpr}</span>
+                    <span className="text-gray-400 text-xs">({cronStatus.cronTz})</span>
+                    <span className={`text-xs px-1.5 py-0.5 rounded-full ${cronStatus.cronDisabled ? 'bg-gray-200 text-gray-600' : 'bg-green-100 text-green-700'}`}>
+                      {cronStatus.cronDisabled ? 'ปิดอยู่' : 'เปิดอยู่'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-400 border-t pt-2">
+                    ℹ️ &quot;ดึงล่าสุด&quot; = ครั้งล่าสุดที่บันทึกข้อมูล (cron หรือกดเอง) · &quot;cron อัตโนมัติล่าสุด&quot; = รอบที่ระบบตั้งเวลารันเอง (แยกชัด) · cron ทำงานเฉพาะตอน server เปิด — production ต้องมี process manager
+                  </p>
+                </div>
+              )
+            })()}
+          </div>
           </div>
         )}
       </div>

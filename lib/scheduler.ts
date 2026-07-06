@@ -47,6 +47,7 @@ export function startScheduler() {
           province: process.env.MOPH_FETCH_PROVINCE || '66',
           areacode: process.env.MOPH_FETCH_AREACODE ?? '6611',
           hospcode: process.env.MOPH_FETCH_HOSPCODE ?? '',
+          trigger:  'cron',
         })
         console.log(
           `[cron] เสร็จสิ้น: เดือน ${result.savedMonth} | สำเร็จ ${result.saved}/${result.total} | ` +
