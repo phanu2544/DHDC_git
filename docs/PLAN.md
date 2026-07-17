@@ -1,7 +1,18 @@
 # DHDC KPI — Plan / Checklist
 
-> งานที่ค้าง + ลำดับที่จะทำต่อ · ทำ**ทีละ step → tick `[x]` → review → commit** · อัปเดต 2026-06-30
+> งานที่ค้าง + ลำดับที่จะทำต่อ · ทำ**ทีละ step → tick `[x]` → review → commit** · อัปเดต 2026-07-03
 > กฎ/สถาปัตยกรรม: ดู [`CLAUDE.md`](../CLAUDE.md) · **ทุก DB op:** backup → preview/gate → COMMIT → verify · scope `6611` · ห้าม commit เองจนกว่า user สั่ง
+
+---
+
+## ✅ เสร็จแล้ว (Admin page overhaul — 2-3 ก.ค.)
+> รื้อ/เพิ่มหน้า `/admin` ครบชุด · commit dbd4fa2→c0d9922 push แล้ว · หน้าเหลือ **4 แท็บ** (KPI / MOPH / ผู้ใช้ / Database)
+- [x] **ป้ายคอลัมน์ generic drilldown ครบ 29/29 KPI** (`lib/detailLabels.ts` — ปิด checklist `drilldown-labels-checklist.md` ยกเว้น s_childdev_specialpp48 ที่ไม่มีข้อมูล 2569) + แก้ s_ht_control สูตร A1÷B1
+- [x] **KpiWizard** (`components/KpiWizard.tsx`) — เพิ่ม KPI + ดึงข้อมูลครั้งแรก จบใน flow เดียว (POST /api/kpis → PATCH mophConfig → POST /api/moph/batch) · แยก `components/FieldChipBuilder.tsx` ใช้ร่วม
+- [x] **ยุบ legacy Value/Target Field** ในแท็บ MOPH → เหลือ Mapping Builder ทางเดียว (ตัด state/UI ซ้ำ · fallback legacy column ยังอยู่ฝั่ง engine)
+- [x] **ตัดแท็บ Catalog (dead code)** — `moph_snapshot` ไม่มีใครอ่าน (grep ทั้ง repo) · ลบแท็บ + route `/api/moph/catalog`,`/snapshot` (-535 บรรทัด) · ตาราง/คอลัมน์ DB ยังอยู่ (ไม่ drop)
+- [x] **ปุ่ม 🔄 ดึงทีละ KPI** ต่อแถวในตาราง KPI (มี confirm) + **confirm dialog** ปุ่ม Migrate&Seed (กันคลิกพลาด ไม่ env-block เพราะ runbook สั่งรันตอน go-live)
+- [x] **แผงสถานะ cron/ความสดข้อมูล** ในแท็บ Database — ตาราง `cron_log` ใหม่ + `GET /api/cron-status` · heartbeat แยก "cron อัตโนมัติ" (trigger='cron' จาก scheduler เท่านั้น) ออกจาก "กดเอง" · `/api/moph/batch` บังคับ trigger='manual' กัน spoof · รันล่าสุด/coverage/KPI ขาด/ตารางเวลา · ⚠️ **production ต้องรัน `/api/init` สร้างตาราง cron_log** (idempotent)
 
 ---
 
@@ -48,7 +59,7 @@
 - [x] *(follow-up)* **custom pages view toggle** **(เสร็จ 30 มิ.ย., commit d686da1)** — เพิ่ม `groupByHospcode` ใน `areaRef` + 5 API/page (anemia/aged9/screen-risk/vaccines/ageing) รับ `?view=area|unit` · 🔴 root fix: `monthlyView.readSnapshot` เดิม SELECT แค่ areacode → unit view ว่าง → เพิ่ม SELECT hospcode
 - [x] **FIT test (มะเร็งลำไส้) full fix + drilldown** **(เสร็จ 30 มิ.ย., commit d686da1)** — `s_colon_screen_w` เดิม calc=raw=1 ราย (ผิด) → `moph_config` sumFields fitpos+fitneg q1-q4 (calc=sum) + `KEEP_MONTHLY_TABLES` → **337 ราย** ตรง HDC · หน้าใหม่ `/kpi/colon-fit` + `/api/colon-fit` แสดง FIT+/FIT− area/unit · register `detailView` · owner ยืนยันราย ต. ตรง HDC
 - [ ] *(follow-up)* **ปุ่มกู้คืนจาก data_change_log ใน UI** — ตอนนี้กู้มือ (อ่าน old_data JSON → re-POST /api/monthly/detail)
-- [~] **ป้ายคอลัมน์ generic drilldown (`lib/detailLabels.ts`)** — เริ่ม 30 มิ.ย.: เปลี่ยน `/api/detail` ให้ labelMap = whitelist (โชว์เฉพาะคอลัมน์ที่กำหนด) + ทำ `s_ncd_bp` ตรง HDC แล้ว · **เหลือ 29 KPI ยัง field ดิบ — ดู [`docs/drilldown-labels-checklist.md`](drilldown-labels-checklist.md)** (ทำทีละตัว, ขอ HDC ก่อน ห้ามเดา)
+- [x] **ป้ายคอลัมน์ generic drilldown (`lib/detailLabels.ts`)** **(เสร็จ 2 ก.ค. — ดูบล็อกบนสุด)** — labelMap = whitelist · ครบ **29/29 KPI** (ยกเว้น s_childdev_specialpp48 ที่ไม่มีข้อมูล 2569) · checklist ปิดหมด
 - [x] *(follow-up B)* **detail aggregation — invariant drilldown=Scorecard** **(เสร็จ 30 มิ.ย.)** — `saveMonthlyDetail`: (1) รวม row key ซ้ำด้วย sum (KPI รายเดือนหลาย row/พื้นที่) + (2) DELETE (kpi,month) ก่อน insert ใน transaction (กัน orphan ข้าม batch) · re-batch 3 ตัวที่เพี้ยน (DSPM 60→62.42, cervix 306→153, ncd_bp 55.09→53.24) [backup `detail-aggregate-fix-2026-06-30/`] · full scan 36/36 OK · control ไม่เปลี่ยน (1 row/พื้นที่ = no-op) · ดู [`kpi-verify-2569.md`](kpi-verify-2569.md)
 
 ## D. 🚀 Production go-live (ก้อนใหญ่ — ต้อง owner sign-off)
@@ -59,16 +70,24 @@
 - [~] **Process manager (PM2/NSSM)** **(เตรียม 2026-06-18)** — ✅ `ecosystem.config.js` (รัน next start port 3002, autorestart) + runbook turnkey (A1 PM2 app / A2 MariaDB service auto-start / A3 verify) · build verify ผ่าน · **เหลือ user รันเอง:** `pm2 start ecosystem.config.js` + `sc.exe config MariaDB` (ต้อง UAC) → ปลดล็อก cron สะสมเดือน → trend ใช้ได้
 
 ## E. 💡 เพิ่ม KPI จาก MOPH ผ่านเว็บ (ทำเมื่อ owner เริ่มอยากเพิ่มเอง)
-> มีแล้ว: `/admin` tab MOPH+catalog → ใส่ table → Preview field → map (single/sumFields) → Save → ขึ้น Scorecard + generic drilldown `/kpi/[id]` + snapshot อัตโนมัติ
-- [ ] **MOPH table browser** — เลือกตารางจาก catalog แทนพิมพ์เอง (กันพิมพ์ผิด/เดา)
-- [ ] **Auto-suggest mapping + ปุ่ม "ทดสอบคำนวณ"** ก่อน save (โชว์ค่า+สถานะที่จะได้)
+> มีแล้ว: **KpiWizard** (`/admin` แท็บ KPI → "🧭 เพิ่มตัวชี้วัด") จบใน flow เดียว: ตั้งชื่อ → เลือก table (quick-pick known tables) → Preview field + live% → map (single/sumFields) → สร้าง+ดึง · ขึ้น Scorecard + generic drilldown + snapshot อัตโนมัติ · (Catalog tab ถูกลบแล้ว — dead code)
+- [x] **MOPH table quick-pick** — wizard มี known-tables list (บางส่วนของ "table browser"; ยังพิมพ์เองได้)
+- [x] **ทดสอบคำนวณก่อน save** — wizard Step 2-3 โชว์ preview table + live% ก่อนกดสร้าง (ครอบคลุม "ทดสอบคำนวณ")
 - [ ] (ขั้นสูง) **drilldown builder** — กำหนดกราฟ/คอลัมน์จาก field เองได้ (ลดการเขียนโค้ด per KPI)
+
+## F. 🧹 Admin page polish (optional — ไม่ด่วน, จาก review 3 ก.ค.)
+> หน้า `/admin` สภาพดีแล้ว · 3 ข้อนี้เป็น "รู้ไว้/เลือกทำ" ไม่ใช่บั๊ก
+- [ ] **ยุบ single-save ที่ทับซ้อน** — "💾 บันทึกลง DB" ในแท็บ MOPH (`mophSave`, เลือก KPI+เดือน → POST /api/moph) ให้ผลเหมือนปุ่ม 🔄 ดึงทีละ KPI ที่เพิ่งเพิ่ม · พิจารณายุบให้ "บันทึกลง DB" เหลือแค่ commit ค่าที่เพิ่ง preview (คนละเจตนากับ 🔄) · **คุณค่า UX สูงสุดใน 3 ข้อ**
+- [ ] **แยก `app/admin/page.tsx` (~1550 บรรทัด)** เป็น component ต่อแท็บ (KpiTab/MophTab/UsersTab/DbTab) แบบที่แยก KpiWizard/FieldChipBuilder ไปแล้ว · maintainability ล้วน · มี regression risk · คุ้มเมื่อไฟล์โตต่อ
+- [ ] **cleanup เล็ก** (value ต่ำ) — Promise.all 6 queries ใน `/api/cron-status` (~10ms) · truncate `missingKpis` ใน native title tooltip ถ้ารายการยาว · hoist `fmt`/`rel` ในการ์ด cron เป็น helper (ลด nested IIFE)
+- [ ] *(deferred, แนะนำข้าม)* **data_change_log viewer** — audit ลบ/ทับ manual KPI · ปัจจุบัน 1 แถว/8วัน · กู้คืนผ่าน `SELECT old_data ...` ตรงๆ พอ · รอ volume จริง/owner ร้องขอ
 
 ---
 
-## ลำดับที่แนะนำ
-**B (cleanup, ได้ของเร็ว) → C (detail_view + formatter) → เตรียม D (production)**
-· A = ติดตาม owner ขนาน · E = เมื่อ owner เริ่มเพิ่ม KPI เอง
+## ลำดับที่แนะนำ (ปัจจุบัน 3 ก.ค.)
+**งานหลักที่เหลือ = D (production go-live)** — รอ owner sign-off (โลหิตจาง/NCD BP) + ตั้ง env production + `/api/init` + replay config + PM2/MariaDB auto-start (user รันเอง)
+· A = ติดตาม owner (target มะเร็งเต้านม 85% ยืนยัน, ติ๊ก ก.1/ก.2) · F = admin polish เลือกทำ (ไม่ด่วน) · trend รอ cron ≥2 เดือน
+· **B/C เสร็จหมดแล้ว** · E ครอบคลุมด้วย KpiWizard แล้ว (เหลือ drilldown builder ขั้นสูง)
 
 ## วิธีใช้ไฟล์นี้
 ทำทีละข้อ → `[ ]` เป็น `[x]` → review + commit · ข้อที่แตะ DB ทำตามกฎ backup→gate→verify เสมอ

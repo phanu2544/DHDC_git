@@ -26,11 +26,12 @@ MOPH Open Data ─POST report_data─▶ computeMoph(engine) ─▶ monthly_data
                                                         └▶ moph_monthly_detail (field ดิบราย รพ.สต. → drilldown)
 ```
 - **Scorecard** (`/dashboard`) อ่าน `monthly_data` · **drilldown** อ่าน `moph_monthly_detail` (snapshot) หรือ live ผ่าน `lib/monthlyView.getMonthlyRows`
-- cron (`lib/scheduler.ts`) ทุกวัน 07:00 เขียนทั้งสองตาราง scope 6611 — **ทำงานเฉพาะตอน server เปิด** (production ต้อง process manager)
+- cron (`lib/scheduler.ts`) ทุกวัน 07:00 เขียนทั้งสองตาราง scope 6611 + log 1 แถวลง `cron_log` (trigger='cron') — **ทำงานเฉพาะตอน server เปิด** (production ต้อง process manager) · สถานะ cron/ความสดข้อมูลดูได้ที่ `/admin` แท็บ Database (`GET /api/cron-status`)
 
 ## ไฟล์สำคัญ (ดูที่ไหน)
 - **engine (pure):** `lib/mophEngine.ts` (computeMoph) · `lib/kpiStatus.ts` (evaluateKpiStatus) · `lib/scorecard.ts`
-- **batch/cron:** `lib/mophBatch.ts` (runBatchSave) · `lib/mophDetail.ts` (snapshot, มี `KEEP_MONTHLY_TABLES` สำหรับ s_epi2/s_kpi_ageing/s_colon_screen_w เก็บ field ไตรมาส) · `lib/scheduler.ts`
+- **batch/cron:** `lib/mophBatch.ts` (runBatchSave — มี opt `trigger`, log `cron_log` เฉพาะ full-batch) · `lib/mophDetail.ts` (snapshot, มี `KEEP_MONTHLY_TABLES` สำหรับ s_epi2/s_kpi_ageing/s_colon_screen_w เก็บ field ไตรมาส) · `lib/scheduler.ts`
+- **หน้า `/admin` (`app/admin/page.tsx` ~1550 บรรทัด):** 4 แท็บ — **KPI** (จัดการ KPI/หมวดหมู่ + ปุ่ม "🧭 เพิ่มตัวชี้วัด"=`components/KpiWizard.tsx` + 🔄 ดึงทีละตัว) · **MOPH** (Mapping Builder=`components/FieldChipBuilder.tsx` + preview + batch) · **ผู้ใช้** · **Database** (สถานะ DB + Migrate&Seed + แผง cron) · *(Catalog tab ถูกลบ 2 ก.ค. — dead code)*
 - **drilldown รายเดือน:** `lib/monthlyView.ts` (snapshot/live + DB-ล่ม→live) · `lib/useMonthlyData.ts` (hook) · `components/MonthPicker.tsx` · `lib/areaRef.ts` (`groupByTambon`, ชื่อตำบล)
 - **targets:** `lib/targets.ts` + `/admin/targets`
 - **manual KPI (กรอกค่าเอง):** `lib/manualKpi.ts` (`isManualEntry` อ่าน flag `kpi_reports.manual_entry`) · ติ๊ก "กรอกค่าเอง" ในฟอร์ม `/admin` · `runBatchSave`/cron **ข้าม** ตัว manual · กรอก**รายหน่วยบริการ** (B/A, 7 หน่วย `HOSPCODE_NAMES`) ที่หน้า `/kpi/[id]` (admin) → `POST /api/monthly/detail` เขียน `moph_monthly_detail` (hospcode จริง, {target,result}) + `monthly_data` รวม (ΣA/ΣB) + audit (`source/entered_by/entered_at`) · detail **บังคับ mapping result/target + view=unit** เมื่อ manual · **ทำไมราย hospcode ไม่ใช่ตำบล:** hospcode→tambon ไม่ใช่ 1:1 (07705 คุม ต.01+02, รพ.ดงเจริญ 27980 คุม ต.01+05) → เลขรวมต่อ hospcode แตกกลับเป็นตำบลไม่ได้ ห้ามเดา
