@@ -1,14 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
 
-// GET /api/categories → string[]
-export async function GET() {
+// GET /api/categories → string[] (ค่าเริ่มต้น ใช้กับ dropdown ทั่วไป)
+// GET /api/categories?detail=1 → { name, groupName }[] (ใช้กับหน้าจัดการหมวดหมู่ใน /admin)
+export async function GET(req: NextRequest) {
+  const detail = new URL(req.url).searchParams.get('detail')
   const conn = await pool.getConnection()
   try {
     const [rows] = await conn.execute(
-      'SELECT name FROM categories ORDER BY sort_order ASC, id ASC',
+      'SELECT name, group_name FROM categories ORDER BY sort_order ASC, id ASC',
     )
-    return NextResponse.json((rows as { name: string }[]).map((r) => r.name))
+    const list = rows as { name: string; group_name: string | null }[]
+    if (detail) {
+      return NextResponse.json(list.map((r) => ({ name: r.name, groupName: r.group_name })))
+    }
+    return NextResponse.json(list.map((r) => r.name))
   } catch (err) {
     return NextResponse.json({ message: String(err) }, { status: 500 })
   } finally {
@@ -16,15 +22,18 @@ export async function GET() {
   }
 }
 
-// POST /api/categories  body: { name }
+// POST /api/categories  body: { name, groupName? }
 export async function POST(req: NextRequest) {
-  const { name } = await req.json()
+  const { name, groupName } = await req.json()
   if (!name?.trim()) {
     return NextResponse.json({ message: 'กรุณาระบุชื่อหมวดหมู่' }, { status: 400 })
   }
   const conn = await pool.getConnection()
   try {
-    await conn.execute('INSERT INTO categories (name) VALUES (?)', [name.trim()])
+    await conn.execute(
+      'INSERT INTO categories (name, group_name) VALUES (?, ?)',
+      [name.trim(), groupName?.trim() || null],
+    )
     return NextResponse.json({ ok: true, message: 'เพิ่มหมวดหมู่สำเร็จ' })
   } catch (err: unknown) {
     if ((err as { code?: string }).code === 'ER_DUP_ENTRY') {

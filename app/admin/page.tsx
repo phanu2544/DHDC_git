@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Navbar from '@/components/Navbar'
 import FieldChipBuilder, { isBlockedFieldType } from '@/components/FieldChipBuilder'
 import KpiWizard from '@/components/KpiWizard'
@@ -213,9 +213,28 @@ export default function AdminPage() {
   const [mappingSaved, setMappingSaved] = useState(false)
   const [mappingDirty, setMappingDirty] = useState(false)
 
-  // Categories state
-  const [categories, setCategories] = useState<string[]>([])
+  // Categories state — { name, groupName } เพื่อจัดกลุ่มหลัก/หมวดย่อย (docs/kpi-category-mapping-2569.md)
+  const [categories, setCategories] = useState<{ name: string; groupName: string | null }[]>([])
   const [newCatInput, setNewCatInput] = useState('')
+  const [newCatGroupInput, setNewCatGroupInput] = useState('')
+
+  // ชื่อหมวดหมู่ล้วน (สำหรับ dropdown ทั่วไป — ฟอร์มแก้ไข KPI, KpiWizard)
+  const categoryNames = useMemo(() => categories.map((c) => c.name), [categories])
+  // กลุ่มหลักที่มีอยู่แล้ว (สำหรับ datalist ตอนเพิ่มหมวดหมู่ใหม่)
+  const existingGroupNames = useMemo(
+    () => Array.from(new Set(categories.map((c) => c.groupName).filter((g): g is string => !!g))),
+    [categories],
+  )
+  // จัดกลุ่ม categories ตาม groupName สำหรับแสดงผล
+  const categoryGroups = useMemo(() => {
+    const map = new Map<string, { name: string; groupName: string | null }[]>()
+    for (const cat of categories) {
+      const key = cat.groupName ?? 'ยังไม่ระบุกลุ่มหลัก'
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(cat)
+    }
+    return Array.from(map.entries())
+  }, [categories])
 
   // User management state
   const [showUserForm, setShowUserForm] = useState(false)
@@ -231,7 +250,7 @@ export default function AdminPage() {
 
   async function loadData() {
     setLoading(true)
-    const [kRes, uRes, catRes] = await Promise.all([fetch('/api/kpis'), fetch('/api/users'), fetch('/api/categories')])
+    const [kRes, uRes, catRes] = await Promise.all([fetch('/api/kpis'), fetch('/api/users'), fetch('/api/categories?detail=1')])
     const kData = await kRes.json()
     setKpis(kData)
     setUsers(await uRes.json())
@@ -335,15 +354,17 @@ export default function AdminPage() {
   async function addCategory() {
     const name = newCatInput.trim()
     if (!name) return
+    const groupName = newCatGroupInput.trim() || null
     const res = await fetch('/api/categories', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, groupName }),
     })
     const data = await res.json()
     if (!res.ok) { showMsg(data.message, 'error'); return }
-    setCategories((prev) => [...prev, name])
+    setCategories((prev) => [...prev, { name, groupName }])
     setNewCatInput('')
+    setNewCatGroupInput('')
     showMsg(`เพิ่มหมวดหมู่ "${name}" สำเร็จ`)
   }
 
@@ -351,7 +372,7 @@ export default function AdminPage() {
     const res = await fetch(`/api/categories?name=${encodeURIComponent(name)}`, { method: 'DELETE' })
     const data = await res.json()
     if (!res.ok) { showMsg(data.message, 'error'); return }
-    setCategories((prev) => prev.filter((c) => c !== name))
+    setCategories((prev) => prev.filter((c) => c.name !== name))
     showMsg(`ลบหมวดหมู่ "${name}" สำเร็จ`)
   }
 
@@ -628,20 +649,27 @@ export default function AdminPage() {
             <div className="bg-white rounded-xl shadow-sm border p-4 mb-4">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-gray-700">🏷️ จัดการหมวดหมู่</h3>
-                <span className="text-xs text-gray-400">{categories.length} หมวดหมู่</span>
+                <span className="text-xs text-gray-400">{categories.length} หมวดหมู่ · {existingGroupNames.length} กลุ่มหลัก</span>
               </div>
-              {/* รายการหมวดหมู่ */}
-              <div className="flex flex-wrap gap-2 mb-3">
-                {categories.map((cat) => (
-                  <span key={cat} className="inline-flex items-center gap-1 bg-blue-50 border border-blue-200 text-blue-800 text-xs font-medium px-2.5 py-1 rounded-full">
-                    {cat}
-                    <button
-                      onClick={() => deleteCategory(cat)}
-                      className="ml-0.5 text-blue-400 hover:text-red-500 transition-colors font-bold leading-none"
-                      title={`ลบ ${cat}`}>
-                      ×
-                    </button>
-                  </span>
+              {/* รายการหมวดหมู่ จัดกลุ่มตามกลุ่มหลัก */}
+              <div className="space-y-3 mb-3">
+                {categoryGroups.map(([groupName, cats]) => (
+                  <div key={groupName}>
+                    <div className="text-xs font-semibold text-gray-500 mb-1">{groupName}</div>
+                    <div className="flex flex-wrap gap-2">
+                      {cats.map((cat) => (
+                        <span key={cat.name} className="inline-flex items-center gap-1 bg-blue-50 border border-blue-200 text-blue-800 text-xs font-medium px-2.5 py-1 rounded-full">
+                          {cat.name}
+                          <button
+                            onClick={() => deleteCategory(cat.name)}
+                            className="ml-0.5 text-blue-400 hover:text-red-500 transition-colors font-bold leading-none"
+                            title={`ลบ ${cat.name}`}>
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
                 ))}
                 {categories.length === 0 && (
                   <span className="text-xs text-gray-400 italic">ยังไม่มีหมวดหมู่ — กด Migrate &amp; Seed หรือเพิ่มด้านล่าง</span>
@@ -653,9 +681,20 @@ export default function AdminPage() {
                   value={newCatInput}
                   onChange={(e) => setNewCatInput(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && addCategory()}
-                  placeholder="ชื่อหมวดหมู่ใหม่ เช่น เวชศาสตร์ครอบครัว"
+                  placeholder="ชื่อหมวดย่อยใหม่ เช่น เวชศาสตร์ครอบครัว"
                   className="flex-1 border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
+                <input
+                  list="category-group-list"
+                  value={newCatGroupInput}
+                  onChange={(e) => setNewCatGroupInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && addCategory()}
+                  placeholder="กลุ่มหลัก (เลือกหรือพิมพ์ใหม่)"
+                  className="w-56 border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <datalist id="category-group-list">
+                  {existingGroupNames.map((g) => <option key={g} value={g} />)}
+                </datalist>
                 <button
                   onClick={addCategory}
                   disabled={!newCatInput.trim()}
@@ -663,6 +702,7 @@ export default function AdminPage() {
                   + เพิ่ม
                 </button>
               </div>
+              <p className="text-xs text-gray-400 mt-1.5">ไม่ระบุกลุ่มหลัก = ปล่อยว่างได้ (จะไปอยู่ช่อง &quot;ยังไม่ระบุกลุ่มหลัก&quot;)</p>
             </div>
 
             <div className="flex justify-end mb-4">
@@ -1459,7 +1499,7 @@ export default function AdminPage() {
               <div className="grid grid-cols-2 gap-3">
                 <Field label="หมวดหมู่">
                   <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value as KPICategory })} className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    {categories.map((c) => <option key={c}>{c}</option>)}
+                    {categoryNames.map((c) => <option key={c}>{c}</option>)}
                   </select>
                 </Field>
                 <Field label="สถานะ">
@@ -1526,7 +1566,7 @@ export default function AdminPage() {
       {/* KPI Wizard (เพิ่ม + ดึง ครบ flow) */}
       {showWizard && (
         <KpiWizard
-          categories={categories}
+          categories={categoryNames}
           knownTables={KNOWN_TABLES}
           onClose={() => setShowWizard(false)}
           onDone={(m) => { loadData(); showMsg(m) }}
