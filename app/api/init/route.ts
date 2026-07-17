@@ -35,19 +35,54 @@ export async function POST(req: NextRequest) {
 
   const conn = await pool.getConnection()
   try {
-    // ── categories ─────────────────────────────────────────────────────────
+    // ── categories (หมวดย่อย + กลุ่มหลัก ตามโครง HDC — docs/kpi-category-mapping-2569.md) ──
     await conn.execute(`
       CREATE TABLE IF NOT EXISTS categories (
         id INT AUTO_INCREMENT PRIMARY KEY,
         name VARCHAR(100) NOT NULL UNIQUE,
+        group_name VARCHAR(100) NULL,
         sort_order INT DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
     `)
-    // Seed หมวดหมู่เริ่มต้น
-    const DEFAULT_CATEGORIES = ['NCD', 'แม่และเด็ก', 'โรคติดต่อ', 'ผู้สูงอายุ', 'สุขภาพจิต', 'อื่นๆ']
-    for (const cat of DEFAULT_CATEGORIES) {
-      await conn.execute('INSERT IGNORE INTO categories (name) VALUES (?)', [cat])
+    // migrate DB เดิมที่สร้างก่อนมี group_name (idempotent)
+    await conn
+      .execute('ALTER TABLE categories ADD COLUMN IF NOT EXISTS group_name VARCHAR(100) NULL AFTER name')
+      .catch(() => {})
+
+    // Seed หมวดหมู่เริ่มต้น [หมวดย่อย, กลุ่มหลัก] — ชื่อทางการจาก breadcrumb HDC
+    const DEFAULT_CATEGORIES: [string, string][] = [
+      ['การคัดกรอง', 'ส่งเสริมป้องกัน'],
+      ['อนามัยแม่และเด็ก', 'ส่งเสริมป้องกัน'],
+      ['สร้างเสริมภูมิคุ้มกัน', 'ส่งเสริมป้องกัน'],
+      ['งานโภชนาการ', 'ส่งเสริมป้องกัน'],
+      ['ข้อมูลเพื่อตอบสนอง Service Plan สาขาโรคไม่ติดต่อ (NCD DM,HT,CVD)', 'ข้อมูลตอบสนอง Service Plan'],
+      ['ข้อมูลเพื่อตอบสนอง Service Plan สาขามะเร็ง', 'ข้อมูลตอบสนอง Service Plan'],
+      ['การใช้บริการสาธารณสุข', 'การเข้าถึงบริการ'],
+    ]
+    for (const [name, groupName] of DEFAULT_CATEGORIES) {
+      await conn.execute('INSERT IGNORE INTO categories (name, group_name) VALUES (?, ?)', [name, groupName])
+    }
+
+    // ── work_groups (กลุ่มงานใน รพ. — docs/kpi-work-groups-plan.md) ─────────
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS work_groups (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        sort_order INT DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uk_wg_name (name)
+      ) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+    `)
+    const DEFAULT_WORK_GROUPS = [
+      'องค์กรแพทย์', 'แพทย์แผนไทย', 'เภสัชกรรม', 'เทคนิคการแพทย์', 'รังสีการแพทย์',
+      'OPD', 'IPD', 'ER', 'ปฐมภูมิ', 'ประกันสุขภาพ', 'ทันตกรรม', 'บริหารทั่วไป', 'สุขภาพดิจิทัล',
+    ]
+    for (let i = 0; i < DEFAULT_WORK_GROUPS.length; i++) {
+      await conn.execute(
+        'INSERT IGNORE INTO work_groups (name, sort_order) VALUES (?, ?)',
+        [DEFAULT_WORK_GROUPS[i], i + 1],
+      )
     }
 
     // ── users ──────────────────────────────────────────────────────────────
@@ -104,6 +139,21 @@ export async function POST(req: NextRequest) {
     for (const sql of alterCols) {
       await conn.execute(sql).catch(() => {})
     }
+
+    // ── kpi_work_groups (junction: 1 KPI ↔ หลายกลุ่มงาน) ─────────────────────
+    // ต้องสร้างหลัง kpi_reports + work_groups เพราะมี FK ผูกทั้งสองตาราง
+    // FK อ้าง work_groups.name (ไม่ใช่ id) + ON UPDATE CASCADE → เปลี่ยนชื่อกลุ่มงานแล้วข้อมูลตามเอง
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS kpi_work_groups (
+        kpi_id VARCHAR(50) NOT NULL,
+        work_group VARCHAR(100) NOT NULL,
+        PRIMARY KEY (kpi_id, work_group),
+        KEY idx_kwg_group (work_group),
+        CONSTRAINT fk_kwg_kpi FOREIGN KEY (kpi_id) REFERENCES kpi_reports(id) ON DELETE CASCADE,
+        CONSTRAINT fk_kwg_group FOREIGN KEY (work_group) REFERENCES work_groups(name)
+          ON DELETE CASCADE ON UPDATE CASCADE
+      ) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+    `)
 
     // ── monthly_data ────────────────────────────────────────────────────────
     await conn.execute(`

@@ -14,10 +14,11 @@ export interface CatalogEntry {
   description?: string
 }
 
+// department ต้องตรงชื่อใน work_groups เท่านั้น (FK ผูกตอน Phase E — docs/kpi-work-groups-plan.md §3.1)
 export const INITIAL_USERS: User[] = [
-  { id: 'u1', email: 'admin@hospital.go.th', password: 'admin123', name: 'ผู้ดูแลระบบ', role: 'admin', department: 'ฝ่ายสารสนเทศ' },
-  { id: 'u2', email: 'staff@hospital.go.th', password: 'staff123', name: 'สมชาย ใจดี', role: 'staff', department: 'งาน NCD' },
-  { id: 'u3', email: 'staff2@hospital.go.th', password: 'staff123', name: 'สมหญิง รักดี', role: 'staff', department: 'งานอนามัยแม่และเด็ก' },
+  { id: 'u1', email: 'admin@hospital.go.th', password: 'admin123', name: 'ผู้ดูแลระบบ', role: 'admin', department: 'สุขภาพดิจิทัล' },
+  { id: 'u2', email: 'staff@hospital.go.th', password: 'staff123', name: 'สมชาย ใจดี', role: 'staff', department: 'ทันตกรรม' },
+  { id: 'u3', email: 'staff2@hospital.go.th', password: 'staff123', name: 'สมหญิง รักดี', role: 'staff', department: 'IPD' },
 ]
 
 // KPI จริงทั้งหมดอยู่ใน DB (เพิ่มผ่านหน้า /admin) — seed ไม่ต้องมี KPI ตัวอย่าง
