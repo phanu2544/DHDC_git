@@ -3,15 +3,24 @@ import { PoolConnection } from 'mysql2/promise'
 import pool from '@/lib/db'
 import { isValidDirection, VALID_DIRECTIONS } from '@/lib/kpiStatus'
 
-/** เติม workGroups: string[] ให้แต่ละแถว KPI — 1 query รวด กัน N+1 (docs/kpi-work-groups-plan.md) */
+/**
+ * เติม workGroups: string[] ให้แต่ละแถว KPI — 1 query รวด กัน N+1 (docs/kpi-work-groups-plan.md)
+ * defensive: ถ้าตาราง kpi_work_groups ยังไม่มี (เช่น production ยังไม่ได้รัน /api/init รอบใหม่)
+ * ต้อง fallback เป็น workGroups: [] แทนที่จะโยน error ทำให้ GET /api/kpis ทั้งเส้นพัง
+ * (เคยเกิดจริง — verify ใน docs/kpi-work-groups-plan.md)
+ */
 async function attachWorkGroups(conn: PoolConnection, rows: Record<string, unknown>[]) {
-  const [wgRows] = await conn.execute('SELECT kpi_id, work_group FROM kpi_work_groups')
-  const map = new Map<string, string[]>()
-  for (const r of wgRows as { kpi_id: string; work_group: string }[]) {
-    if (!map.has(r.kpi_id)) map.set(r.kpi_id, [])
-    map.get(r.kpi_id)!.push(r.work_group)
+  try {
+    const [wgRows] = await conn.execute('SELECT kpi_id, work_group FROM kpi_work_groups')
+    const map = new Map<string, string[]>()
+    for (const r of wgRows as { kpi_id: string; work_group: string }[]) {
+      if (!map.has(r.kpi_id)) map.set(r.kpi_id, [])
+      map.get(r.kpi_id)!.push(r.work_group)
+    }
+    return rows.map((row) => ({ ...row, workGroups: map.get(row.id as string) ?? [] }))
+  } catch {
+    return rows.map((row) => ({ ...row, workGroups: [] }))
   }
-  return rows.map((row) => ({ ...row, workGroups: map.get(row.id as string) ?? [] }))
 }
 
 export async function GET() {

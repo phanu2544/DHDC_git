@@ -127,18 +127,26 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       )
     }
 
+    // defensive: sync กลุ่มงานแยก try ของตัวเอง — ถ้าพัง (ตาราง kpi_work_groups ยังไม่มี,
+    // หรือกลุ่มงานที่เลือกถูกลบไปแล้วระหว่างเปิดฟอร์ม) ต้อง "ไม่พัง" การบันทึกฟิลด์หลักของ KPI
+    // (เคยเกิดจริง — ไม่มี fallback แล้ว rollback ทั้งชื่อ/เจ้าของ/กำหนดเสร็จที่แก้ไปด้วย)
+    let workGroupsWarning: string | null = null
     if (hasWorkGroups) {
-      await conn.execute('DELETE FROM kpi_work_groups WHERE kpi_id=?', [params.id])
-      const groups = (workGroups as string[]).filter((g) => g && g.trim())
-      if (groups.length > 0) {
-        const placeholders = groups.map(() => '(?,?)').join(',')
-        const values = groups.flatMap((g) => [params.id, g])
-        await conn.execute(`INSERT INTO kpi_work_groups (kpi_id, work_group) VALUES ${placeholders}`, values)
+      try {
+        await conn.execute('DELETE FROM kpi_work_groups WHERE kpi_id=?', [params.id])
+        const groups = (workGroups as string[]).filter((g) => g && g.trim())
+        if (groups.length > 0) {
+          const placeholders = groups.map(() => '(?,?)').join(',')
+          const values = groups.flatMap((g) => [params.id, g])
+          await conn.execute(`INSERT INTO kpi_work_groups (kpi_id, work_group) VALUES ${placeholders}`, values)
+        }
+      } catch (wgErr) {
+        workGroupsWarning = `บันทึก KPI สำเร็จ แต่บันทึกกลุ่มงานไม่สำเร็จ: ${String(wgErr)}`
       }
     }
 
     await conn.commit()
-    return NextResponse.json({ message: 'แก้ไข KPI สำเร็จ' })
+    return NextResponse.json({ message: workGroupsWarning ?? 'แก้ไข KPI สำเร็จ' })
   } catch (err) {
     await conn.rollback()
     return NextResponse.json({ message: String(err) }, { status: 500 })
