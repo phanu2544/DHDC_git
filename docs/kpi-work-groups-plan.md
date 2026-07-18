@@ -373,6 +373,23 @@ Dev server หยุดเองกลางทดสอบ 2 รอบ (ตร�
 ### 📝 ข้อสังเกต (ไม่แก้ — ต้อง owner ตัดสินใจ)
 **พบตารางที่ไม่มีใครอ่านอีก 1 ตาราง: `moph_report_catalog`** (แยกจาก `moph_snapshot` ที่ตัดไปแล้ว 2 ก.ค.) — grep ทั้ง repo เจอแค่ `/api/init` (schema+seed) กับ `lib/types.ts` (type def) อ้างถึง ไม่มี route/หน้าไหนอ่านจริง เข้าข่าย dead code เดียวกับที่เคยเจอ (`moph_snapshot`) แต่**ยังไม่ตัด** เพราะเป็นการลบ table/schema (ไม่ใช่ bug fix ตรงๆ) ควรทำเป็นงานแยกถ้า owner ต้องการ
 
+## 13. ตรวจ Phase C ซ้ำตามคำขอ owner — ✅ เจอบั๊กร้ายแรง 1 ตัว แก้แล้ว (2026-07-16)
+
+owner ถามตรงๆ "Phase C มีบั๊กไหม มีจุดไหนทำให้ระบบพังไหม" — ไล่โค้ดทุกจุดที่ Phase C แตะ แล้วทดสอบจำลองสถานการณ์จริง (สร้าง DB `dhdc_bugtest`: รัน `/api/init` เต็มแล้ว DROP เฉพาะ `kpi_work_groups` ทิ้ง — จำลอง "production ก่อนรัน `/api/init` รอบใหม่" ซึ่งเป็นสถานการณ์จริงที่จะเกิดตอน go-live)
+
+### 🔴 บั๊กร้ายแรง — `GET`/`PUT /api/kpis` พังทั้งเส้นถ้ายังไม่มีตาราง `kpi_work_groups`
+- **`GET /api/kpis`:** `attachWorkGroups()` โยน error เมื่อตารางไม่มี แต่ error ถูก catch ผิดที่ (block ที่ตั้งใจไว้จับปัญหา column `evaluation_direction` เท่านั้น) → retry ซ้ำ → throw รอบสองไม่มีอะไรจับ → **500 ทั้งเส้น**
+- **ผลจริงในเบราว์เซอร์:** `/dashboard` ขึ้น **"⚠️ Error: โหลด KPI ไม่สำเร็จ"** รายการ KPI (0) ทั้ง Scorecard ว่างเปล่า — ยืนยัน **ทั้งแอปใช้ไม่ได้** (`/dashboard`, `/kpi`, `/admin` พึ่ง endpoint นี้เหมือนกันหมด)
+- **`PUT /api/kpis/[id]`:** sync `kpi_work_groups` อยู่ในทรานแซกชันเดียวกับ UPDATE หลัก → sync fail → **rollback ทั้งก้อน** → แก้ไข KPI (ชื่อ/เจ้าของ/กำหนดเสร็จ) ไม่ได้เลยแม้แต่ตัวเดียว เพราะฟอร์มส่ง `workGroups:[]` ติดมาด้วยเสมอแม้ไม่ได้ติ๊กอะไร — verify ด้วย curl พิสูจน์ว่าชื่อ KPI ไม่เปลี่ยนเลยตอนพัง
+- **เมื่อไหร่ถึงเจอจริง:** ถ้า production deploy โค้ดนี้ก่อนรัน `/api/init` รอบใหม่ (ลำดับผิดพลาดตอน go-live) — โอกาสเกิดจริงไม่ต่ำ เพราะเป็นขั้นตอนที่ต้องจำทำเอง
+
+**แก้:** ทั้ง `GET`/`PUT` แยก try เฉพาะส่วน work-groups ออกจากส่วนหลัก — `GET` fallback เป็น `workGroups:[]` ต่อแถวถ้า query ล้มเหลว, `PUT` แยก try ของ sync ออกจาก UPDATE (commit field หลักได้เสมอ พร้อมข้อความเตือนบอกสถานะจริงถ้ากลุ่มงาน sync ไม่สำเร็จ) — commit `d88193e`
+
+**Verify หลังแก้:** จำลอง DB เดิม (ไม่มี `kpi_work_groups`) → `GET` 200 (`workGroups:[]`) ✅ · `PUT` 200 + field หลักบันทึกจริง (ทดสอบด้วยชื่อ ASCII กัน encoding ปัญหาจาก shell) ✅ · dashboard โหลดปกติไม่มี error banner ✅ · regression check `dhdc_dev` (มีตารางครบ) ยังทำงาน 100% ไม่กระทบ ✅
+
+### จุดที่ตรวจแล้วไม่มีปัญหา (คู่ขนานกับจุดที่พัง)
+- `WorkGroupManager.tsx` / `WorkGroupPicker.tsx` — ถ้า `/api/work-groups` fail (เช่น ตาราง `work_groups` หาย) ฝั่ง frontend **ทนอยู่แล้ว** (`res.ok ? ... : []`) ไม่ทำให้หน้าอื่นพังตาม เพราะ fetch แยกอิสระในแต่ละ component ไม่ผูกกับ `loadData()` หลักของหน้า — ไม่ต้องแก้เพิ่ม
+
 ### สรุป bug sweep (สิ่งที่ตรวจแล้วไม่พบปัญหา)
 - Middleware role-guard: ครบทุก 23 API routes เทียบกับ 3 guard list (`PUBLIC_API`/`ADMIN_ALL`/`ADMIN_MUTATE`) — ไม่มีช่องโหว่
 - FK cascade (`kpi_work_groups`, `users.department`→Phase E): ทดสอบจริงแล้วใน §10
