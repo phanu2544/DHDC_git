@@ -1,6 +1,6 @@
 # DHDC KPI — Plan / Checklist
 
-> งานที่ค้าง + ลำดับที่จะทำต่อ · ทำ**ทีละ step → tick `[x]` → review → commit** · อัปเดต 2026-07-03
+> งานที่ค้าง + ลำดับที่จะทำต่อ · ทำ**ทีละ step → tick `[x]` → review → commit** · อัปเดต 2026-07-19
 > กฎ/สถาปัตยกรรม: ดู [`CLAUDE.md`](../CLAUDE.md) · **ทุก DB op:** backup → preview/gate → COMMIT → verify · scope `6611` · ห้าม commit เองจนกว่า user สั่ง
 
 ---
@@ -83,12 +83,19 @@
 - [ ] *(deferred, แนะนำข้าม)* **data_change_log viewer** — audit ลบ/ทับ manual KPI · ปัจจุบัน 1 แถว/8วัน · กู้คืนผ่าน `SELECT old_data ...` ตรงๆ พอ · รอ volume จริง/owner ร้องขอ
 - [ ] *(dead code, พบระหว่าง bug sweep 16 ก.ค.)* **ลบ `moph_report_catalog` + `kpi_reports.moph_report_id`** — คู่แฝด `moph_snapshot` ที่ตัดไปแล้ว 2 ก.ค. แต่ตัวนี้หลุดรอด: ไม่มี route/หน้าไหนอ่านจริง (`GET /api/init` query count แต่ไม่โชว์ผล), ไม่มี UI กรอก `mophReportId` เลย (KpiWizard ไม่ใช้ catalog-based flow) · ลบต้องแตะ `/api/init`, `lib/types.ts`, `app/api/kpis/[id]/route.ts` — ทำเป็น commit แยก มี backup/verify เอง ไม่ด่วน
 
+## G. 🏷️ หมวดหมู่ HDC + กลุ่มงาน (16-19 ก.ค.)
+> เริ่มจาก owner บอกว่าหน้าเว็บดูเหมือนหลังบ้าน + รพ. มีหลายกลุ่มงานอยากแบ่งตัวชี้วัด — งานนี้เป็น**คนละแกน**กับ redesign หน้าตา (ยังไม่เริ่ม) เป็นแค่จัดโครงข้อมูลให้ถูกก่อน
+- [x] **หมวดหมู่ HDC 2 ชั้น** — จัด 39 KPI ตามโครง HDC จริง (กลุ่มหลัก→หมวดย่อย) + self-service จัดการหมวดผ่าน `/admin` · รายละเอียด: [`kpi-category-mapping-2569.md`](kpi-category-mapping-2569.md)
+- [x] **กลุ่มงาน (work groups) Phase A-E** — schema (`work_groups`+junction) + จัดการเอง + ผูก KPI หลายกลุ่ม + pre-fill 39 KPI = ปฐมภูมิ + ผูก `users.department` ด้วย FK · เจอ+แก้บั๊กร้ายแรง 2 ตัว (`/api/kpis` พังทั้งเส้นถ้า DB ยังไม่ migrate) ระหว่างทำ · รายละเอียดเต็ม: [`kpi-work-groups-plan.md`](kpi-work-groups-plan.md)
+- [ ] **กลุ่มงาน Phase F** — ฟิลเตอร์ "KPI ของกลุ่มงานฉัน" ใน `/dashboard`+`/kpi` (ต้องรอสร้าง account จริงให้ 4 owner ก่อนถึงจะเห็นผลชัด — ดู `kpi-work-groups-plan.md` §8.0)
+- [ ] ⚠️ **go-live ต้องรู้:** `/api/init` ตอนนี้สร้างเพิ่มอีก 2 ตาราง (`work_groups`, `kpi_work_groups`) รวมของเดิม (`cron_log`, `data_change_log`) = **4 ตารางใหม่** + FK บน `users.department` จะไม่ติดอัตโนมัติจนกว่าจะ remap ค่า department บน production เอง (ดู `kpi-work-groups-plan.md` §16)
+
 ---
 
-## ลำดับที่แนะนำ (ปัจจุบัน 3 ก.ค.)
-**งานหลักที่เหลือ = D (production go-live)** — รอ owner sign-off (โลหิตจาง/NCD BP) + ตั้ง env production + `/api/init` + replay config + PM2/MariaDB auto-start (user รันเอง)
-· A = ติดตาม owner (target มะเร็งเต้านม 85% ยืนยัน, ติ๊ก ก.1/ก.2) · F = admin polish เลือกทำ (ไม่ด่วน) · trend รอ cron ≥2 เดือน
-· **B/C เสร็จหมดแล้ว** · E ครอบคลุมด้วย KpiWizard แล้ว (เหลือ drilldown builder ขั้นสูง)
+## ลำดับที่แนะนำ (ปัจจุบัน 19 ก.ค.)
+**งานหลักที่เหลือ = D (production go-live)** — รอ owner sign-off (โลหิตจาง/NCD BP) + ตั้ง env production + `/api/init` (ตอนนี้ต้องสร้าง 4 ตารางใหม่ + remap `users.department`) + replay config + PM2/MariaDB auto-start (user รันเอง)
+· A = ติดตาม owner (target มะเร็งเต้านม 85% ยืนยัน, ติ๊ก ก.1/ก.2) · F(admin polish)/G-F(กลุ่มงาน filter) = เลือกทำ ไม่ด่วน · trend รอ cron ≥2 เดือน
+· **B/C เสร็จหมดแล้ว** · E ครอบคลุมด้วย KpiWizard แล้ว (เหลือ drilldown builder ขั้นสูง) · **G (หมวดหมู่+กลุ่มงาน) เสร็จเกือบหมด เหลือแค่ Phase F**
 
 ## วิธีใช้ไฟล์นี้
 ทำทีละข้อ → `[ ]` เป็น `[x]` → review + commit · ข้อที่แตะ DB ทำตามกฎ backup→gate→verify เสมอ
