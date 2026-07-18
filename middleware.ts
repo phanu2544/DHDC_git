@@ -15,7 +15,7 @@ const PUBLIC_API = new Set(['/api/auth/login', '/api/auth/logout', '/api/dbinfo'
 
 // role-guard: เส้นที่ต้องเป็น admin
 const ADMIN_ALL = ['/api/users']                                       // admin ทุก method (จัดการผู้ใช้ — รวมการดูรายชื่อ)
-const ADMIN_MUTATE = ['/api/kpis', '/api/categories', '/api/monthly', '/api/moph'] // admin เฉพาะ mutation (GET เปิดให้ผู้ที่ login)
+const ADMIN_MUTATE = ['/api/kpis', '/api/categories', '/api/work-groups', '/api/monthly', '/api/moph'] // admin เฉพาะ mutation (GET เปิดให้ผู้ที่ login)
 
 const underAny = (path: string, prefixes: string[]) =>
   prefixes.some((p) => path === p || path.startsWith(p + '/'))

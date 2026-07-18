@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react'
 import Navbar from '@/components/Navbar'
 import FieldChipBuilder, { isBlockedFieldType } from '@/components/FieldChipBuilder'
 import KpiWizard from '@/components/KpiWizard'
+import WorkGroupManager from '@/components/WorkGroupManager'
+import WorkGroupPicker from '@/components/WorkGroupPicker'
 import { useAuth } from '@/lib/useAuth'
 import { formatThaiMonth } from '@/lib/formatMonth'
 import type { User, KPIReport, KPIStatus, KPICategory, MophMapping, CalcMode, EvalDirection } from '@/lib/types'
@@ -131,7 +133,7 @@ const PROVINCES = [
 ]
 
 function emptyForm(): Omit<KPIReport, 'id'> {
-  return { name: '', category: 'NCD', mophUrl: '', mophTable: '', mophValueField: '', mophTargetField: 'target', mophCalcMode: 'percent', direction: 'gte', manualEntry: false, owner: '', deadline: '', status: 'in_progress', target: 0, unit: '%', description: '' }
+  return { name: '', category: '', mophUrl: '', mophTable: '', mophValueField: '', mophTargetField: 'target', mophCalcMode: 'percent', direction: 'gte', manualEntry: false, workGroups: [], owner: '', deadline: '', status: 'in_progress', target: 0, unit: '%', description: '' }
 }
 
 interface MophPreview {
@@ -281,6 +283,7 @@ export default function AdminPage() {
       mophCalcMode: kpi.mophCalcMode ?? 'percent',
       direction: kpi.direction ?? 'gte',
       manualEntry: kpi.manualEntry ?? false,
+      workGroups: kpi.workGroups ?? [],
       owner: kpi.owner, deadline: kpi.deadline, status: kpi.status,
       target: kpi.target, unit: kpi.unit, description: kpi.description ?? '',
     })
@@ -705,6 +708,8 @@ export default function AdminPage() {
               <p className="text-xs text-gray-400 mt-1.5">ไม่ระบุกลุ่มหลัก = ปล่อยว่างได้ (จะไปอยู่ช่อง &quot;ยังไม่ระบุกลุ่มหลัก&quot;)</p>
             </div>
 
+            <WorkGroupManager onMessage={showMsg} />
+
             <div className="flex justify-end mb-4">
               <button onClick={() => setShowWizard(true)} className="bg-emerald-700 hover:bg-emerald-600 text-white text-sm px-4 py-2 rounded-lg font-medium">🧭 เพิ่มตัวชี้วัด (ครบ flow)</button>
             </div>
@@ -727,6 +732,13 @@ export default function AdminPage() {
                           <td className="px-4 py-3">
                             <p className="font-medium text-gray-900 text-xs line-clamp-2">{kpi.name}</p>
                             <p className="text-gray-400 text-xs">{kpi.category}</p>
+                            {kpi.workGroups && kpi.workGroups.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {kpi.workGroups.map((g) => (
+                                  <span key={g} className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded text-[10px] font-medium">{g}</span>
+                                ))}
+                              </div>
+                            )}
                           </td>
                           <td className="px-4 py-3 text-gray-600 text-xs hidden md:table-cell">{kpi.owner}</td>
                           <td className="px-4 py-3 text-center">
@@ -1528,6 +1540,10 @@ export default function AdminPage() {
               </Field>
 
               <Field label="กำหนดเสร็จ *"><input type="date" value={form.deadline} onChange={(e) => setForm({ ...form, deadline: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></Field>
+
+              <Field label="กลุ่มงาน (เลือกได้หลายกลุ่ม)">
+                <WorkGroupPicker value={form.workGroups ?? []} onChange={(g) => setForm({ ...form, workGroups: g })} />
+              </Field>
 
               <div className="border-t pt-4">
                 <label className="flex items-start gap-2 mb-3 cursor-pointer">

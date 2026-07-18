@@ -80,8 +80,12 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   const body = await req.json()
   const { name, category, mophUrl, mophTable, mophValueField, mophTargetField, mophCalcMode,
-          direction, owner, deadline, status, target, unit, description, manualEntry } = body
+          direction, owner, deadline, status, target, unit, description, manualEntry, workGroups } = body
   const manualVal = manualEntry ? 1 : 0
+
+  if (!name || !category || !owner || !deadline) {
+    return NextResponse.json({ message: 'กรุณากรอกข้อมูลที่จำเป็น' }, { status: 400 })
+  }
 
   // Phase 4: validate direction เฉพาะกรณี "ส่งมา" — ถ้าไม่ส่งมาให้คงค่าเดิมใน DB
   // (ห้าม default 'gte' เงียบๆ เพราะจะลบทับ direction ที่ admin เคยตั้งไว้)
@@ -93,8 +97,12 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     )
   }
 
+  // workGroups: ส่งมา = แทนที่ทั้งชุด (ไม่ส่งมา = คงเดิม เหมือน direction)
+  const hasWorkGroups = Array.isArray(workGroups)
+
   const conn = await pool.getConnection()
   try {
+    await conn.beginTransaction()
     if (hasDirection) {
       // ส่ง direction มา → update รวมด้วย
       await conn.execute(
@@ -118,8 +126,21 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
          manualVal, owner, deadline, status, target, unit, description ?? null, params.id],
       )
     }
+
+    if (hasWorkGroups) {
+      await conn.execute('DELETE FROM kpi_work_groups WHERE kpi_id=?', [params.id])
+      const groups = (workGroups as string[]).filter((g) => g && g.trim())
+      if (groups.length > 0) {
+        const placeholders = groups.map(() => '(?,?)').join(',')
+        const values = groups.flatMap((g) => [params.id, g])
+        await conn.execute(`INSERT INTO kpi_work_groups (kpi_id, work_group) VALUES ${placeholders}`, values)
+      }
+    }
+
+    await conn.commit()
     return NextResponse.json({ message: 'แก้ไข KPI สำเร็จ' })
   } catch (err) {
+    await conn.rollback()
     return NextResponse.json({ message: String(err) }, { status: 500 })
   } finally {
     conn.release()

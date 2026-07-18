@@ -65,7 +65,7 @@ export default function KpiWizard({
 
   // Step 1 — ข้อมูล KPI
   const [name, setName] = useState('')
-  const [category, setCategory] = useState(categories[0] ?? 'NCD')
+  const [category, setCategory] = useState(categories[0] ?? '')
   const [owner, setOwner] = useState('')
   const [target, setTarget] = useState(0)
   const [unit, setUnit] = useState('%')

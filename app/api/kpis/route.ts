@@ -1,6 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { PoolConnection } from 'mysql2/promise'
 import pool from '@/lib/db'
 import { isValidDirection, VALID_DIRECTIONS } from '@/lib/kpiStatus'
+
+/** เติม workGroups: string[] ให้แต่ละแถว KPI — 1 query รวด กัน N+1 (docs/kpi-work-groups-plan.md) */
+async function attachWorkGroups(conn: PoolConnection, rows: Record<string, unknown>[]) {
+  const [wgRows] = await conn.execute('SELECT kpi_id, work_group FROM kpi_work_groups')
+  const map = new Map<string, string[]>()
+  for (const r of wgRows as { kpi_id: string; work_group: string }[]) {
+    if (!map.has(r.kpi_id)) map.set(r.kpi_id, [])
+    map.get(r.kpi_id)!.push(r.work_group)
+  }
+  return rows.map((row) => ({ ...row, workGroups: map.get(row.id as string) ?? [] }))
+}
 
 export async function GET() {
   const conn = await pool.getConnection()
@@ -21,7 +33,7 @@ export async function GET() {
                 status, target, unit, description
          FROM kpi_reports ORDER BY category, name`,
       )
-      return NextResponse.json(rows)
+      return NextResponse.json(await attachWorkGroups(conn, rows as Record<string, unknown>[]))
     } catch {
       // column ยังไม่มี → query เดิม (direction = undefined ฝั่ง client จะ default 'gte')
       const [rows] = await conn.execute(
@@ -36,7 +48,7 @@ export async function GET() {
                 status, target, unit, description
          FROM kpi_reports ORDER BY category, name`,
       )
-      return NextResponse.json(rows)
+      return NextResponse.json(await attachWorkGroups(conn, rows as Record<string, unknown>[]))
     }
   } catch (err) {
     return NextResponse.json({ message: String(err) }, { status: 500 })
@@ -50,7 +62,7 @@ export async function POST(req: NextRequest) {
   const { name, category, mophUrl, mophTable, mophValueField, mophTargetField, mophCalcMode,
           direction, owner, deadline, status, target, unit, description, manualEntry } = body
 
-  if (!name || !owner || !deadline) {
+  if (!name || !category || !owner || !deadline) {
     return NextResponse.json({ message: 'กรุณากรอกข้อมูลที่จำเป็น' }, { status: 400 })
   }
 

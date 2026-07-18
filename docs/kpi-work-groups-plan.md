@@ -148,7 +148,7 @@ ALTER TABLE users ADD CONSTRAINT fk_users_wg
 | Phase | งาน | ติดอะไร | ประเมิน |
 |---|---|---|---|
 | ~~**A**~~ | ~~สร้าง 2 ตาราง + seed 13 กลุ่มงาน + เพิ่มใน `/api/init`~~ | ✅ **เสร็จ 2026-07-16** (ดูหัวข้อ 10) | เล็ก |
-| **B** | `/api/work-groups` (CRUD) + UI จัดการกลุ่มงานใน `/admin` (แบบเดียวกับ categories) | — | กลาง |
+| ~~**B**~~ | ~~`/api/work-groups` (CRUD) + UI จัดการกลุ่มงานใน `/admin`~~ | ✅ **เสร็จ 2026-07-16** (ดูหัวข้อ 11) | กลาง |
 | **C** | UI ติ๊กกลุ่มงานในฟอร์มแก้ไข KPI (เลือกได้หลายกลุ่ม) + แสดงในตาราง KPI | — | กลาง |
 | **D** | ใส่ข้อมูล mapping จริง 39 KPI | **§3.2** | ขึ้นกับวิธี A/B |
 | **E** | remap `users.department` + ใส่ FK + เปลี่ยนช่อง department เป็น dropdown | **§3.1** | เล็ก |
@@ -335,6 +335,50 @@ ALTER TABLE kpi_reports ADD COLUMN owner_id VARCHAR(50) NULL,
 - **แก้:** เปลี่ยน seed เป็นค่าที่ตัดสินไว้แล้วใน §3.1 — admin→`สุขภาพดิจิทัล`, สมชาย→`ทันตกรรม`, สมหญิง→`IPD`
 - **Verify:** สร้าง DB เปล่าที่ 2 (`dhdc_inittest2`) → รัน init จริง → seed users ออกมาตรง 3 ค่าใหม่ครบ ✅ · typecheck ผ่าน ✅ · ล้าง DB ทดสอบ + dev server หลัก (3002) ปกติ ✅
 - **หมายเหตุ:** นี่แก้แค่ **seed code** (`lib/initialData.ts`) — ตาราง `users` จริงใน `dhdc_dev` **ยังไม่ถูกแก้** (ยังเป็นค่าเดิม `ฝ่ายสารสนเทศ`/`งาน NCD`/`งานอนามัยแม่และเด็ก`) เพราะการ remap ค่าจริงคืองานของ **Phase E** ไม่ใช่ตอนนี้
+
+---
+
+## 11. Log การรัน Phase B — ✅ เสร็จ 2026-07-16
+
+### สิ่งที่ทำ
+1. ✅ ตรวจ `middleware.ts` ก่อนเขียน API — เจอว่า `/api/work-groups` ต้องเพิ่มเข้า `ADMIN_MUTATE` เอง (ไม่มี default ป้องกันให้) แก้ก่อนเขียน route
+2. ✅ `app/api/work-groups/route.ts` — GET (list, ทุกคนที่ login), POST (admin only, auto sort_order = MAX+1), DELETE (admin only, **guard 2 ชั้น**: บล็อกถ้ามี KPI หรือ user สังกัดอยู่ — แม้ FK จะ cascade ได้จริงก็ไม่ปล่อยให้ข้อมูลหายเงียบๆ)
+3. ✅ `components/WorkGroupManager.tsx` — component แยกไฟล์ใหม่ (ตาม pattern KpiWizard/FieldChipBuilder) ไม่ยัดเข้า `admin/page.tsx` โดยตรง — mount ในแท็บ KPI ต่อจาก Category Management
+4. ✅ Typecheck ผ่าน + verify ผ่าน browser จริงครบ:
+   - เพิ่ม/ลบกลุ่มงานปกติ ✅
+   - **guard เคส 1** (ลบกลุ่มที่มี KPI ผูกอยู่) → `409 "ลบไม่ได้ — มี 1 KPI สังกัดกลุ่มงานนี้อยู่"` ✅
+   - **guard เคส 2** (ลบกลุ่มที่มี user สังกัดอยู่) → `409 "ลบไม่ได้ — มี 1 ผู้ใช้ สังกัดกลุ่มงานนี้อยู่"` ✅
+   - **role-guard** (staff) → GET 200 (เห็นได้) / POST 403 "ต้องเป็นผู้ดูแลระบบ (admin)" ✅ ทดสอบผ่าน `fetch()` จริงในหน้าเว็บด้วย session staff
+   - ข้อมูลทดสอบ (junction row + department ชั่วคราว) cleanup ครบ คืนสภาพเดิม
+
+### 🔴 บั๊กที่เจอระหว่างทดสอบ (ไม่ใช่ตัวบล็อก แต่ทำให้ช้า)
+Dev server หยุดเองกลางทดสอบ 2 รอบ (ตรงกับที่ CLAUDE.md เตือนไว้ว่าเครื่องนี้หยุดบ่อย) + เจอว่า **`curl` จาก Bash tool เข้าไม่ถึง preview server ที่เปิดผ่าน Browser pane** (คนละ network context กัน) — ต้องเปลี่ยนวิธีทดสอบ role-guard จาก curl+cookie เป็น `javascript_tool` (`fetch()` ในหน้าเว็บจริง ให้ browser แนบ cookie ให้เอง) แทน — **บทเรียน: ทดสอบ API ที่รันผ่าน Browser pane preview ต้องใช้ `javascript_tool`/`computer` ไม่ใช่ `curl` จาก Bash**
+
+## 12. System-wide bug sweep — ✅ เสร็จ 2026-07-16 (หลัง Phase B)
+
+ตรวจทั้งระบบตามที่ owner ขอ ("ตรวจระบบอีกครั้ง มีบั๊กตรงไหนเสนอวิธีแก้เลย") — เจอ 2 บั๊กจริง แก้แล้วทั้งคู่ + 1 ข้อสังเกต (ไม่แก้ ต้องตัดสินใจ):
+
+### 🔴 บั๊กที่ 4 — ค่า category `'NCD'` ที่ถูกลบไปแล้ว (Phase 2) ยังฝังเป็น fallback ในโค้ด
+- **จุดที่เจอ:** `components/KpiWizard.tsx:68` `useState(categories[0] ?? 'NCD')` และ `app/admin/page.tsx` `emptyForm()`
+- **สถานการณ์ที่พัง:** ถ้า `categories` ว่าง (เช่น ลบหมวดหมู่ทั้งหมดผ่าน self-service ที่เพิ่งทำ) → wizard default เป็น `'NCD'` ซึ่งไม่มีอยู่ใน `categories` table แล้ว → **ไม่มี validation กันไว้** → สร้าง KPI ด้วยหมวดผีได้เงียบๆ → KPI ตัวนั้นหายจาก dropdown filter ทุกที่ (filter ดึงจาก `categories` table ไม่ใช่ distinct `kpi_reports.category`)
+- **แก้:** เปลี่ยน fallback เป็น `''` ทั้ง 2 จุด (fail แบบเห็นได้ชัดแทนที่จะ fail แบบดูสมเหตุสมผลแต่ผิด)
+- **Verify:** เปิด wizard จริงหลังแก้ → category select ได้ค่าจริง (`อนามัยแม่และเด็ก`) ไม่ใช่ `'NCD'` ✅
+
+### 🔴 บั๊กที่ 5 — `/api/kpis` POST + PUT ไม่เคย validate ว่า `category` ต้องไม่ว่าง
+- **จุดที่เจอ:** `app/api/kpis/route.ts` POST เช็คแค่ `name`/`owner`/`deadline`, `app/api/kpis/[id]/route.ts` PUT **ไม่เช็คอะไรเลย**
+- **ผลกระทบ:** เดิมเป็นช่องโหว่ที่ไม่มีใครสังเกตเพราะ category ไม่ได้สำคัญมาก — แต่ Phase 2 ทำให้ category ขับ grouped dashboard ทั้งระบบ ตอนนี้ KPI ที่ไม่มีหมวดจะ "หาย" จากมุมมองกลุ่มทันที
+- **แก้:** เพิ่ม `!category` เข้าเงื่อนไข required-field check ทั้ง 2 endpoint (ตรง pattern เดิมที่มีอยู่แล้วสำหรับ name/owner/deadline)
+- **Verify:** typecheck ผ่าน · wizard error path ที่มีอยู่แล้ว (`if (!createRes.ok) setResult({error: ...})`) โชว์ error นี้ให้ user เห็นได้ทันทีถ้าเกิดขึ้นจริง
+
+### 📝 ข้อสังเกต (ไม่แก้ — ต้อง owner ตัดสินใจ)
+**พบตารางที่ไม่มีใครอ่านอีก 1 ตาราง: `moph_report_catalog`** (แยกจาก `moph_snapshot` ที่ตัดไปแล้ว 2 ก.ค.) — grep ทั้ง repo เจอแค่ `/api/init` (schema+seed) กับ `lib/types.ts` (type def) อ้างถึง ไม่มี route/หน้าไหนอ่านจริง เข้าข่าย dead code เดียวกับที่เคยเจอ (`moph_snapshot`) แต่**ยังไม่ตัด** เพราะเป็นการลบ table/schema (ไม่ใช่ bug fix ตรงๆ) ควรทำเป็นงานแยกถ้า owner ต้องการ
+
+### สรุป bug sweep (สิ่งที่ตรวจแล้วไม่พบปัญหา)
+- Middleware role-guard: ครบทุก 23 API routes เทียบกับ 3 guard list (`PUBLIC_API`/`ADMIN_ALL`/`ADMIN_MUTATE`) — ไม่มีช่องโหว่
+- FK cascade (`kpi_work_groups`, `users.department`→Phase E): ทดสอบจริงแล้วใน §10
+- `/api/categories` DELETE guard: ยังทำงานถูกต้อง ไม่ถูกกระทบจาก Phase A/B
+- Drilldown/read-only API routes (anemia, aged9, screen-risk, vaccines, ageing, colon-fit, detail): ไม่ต้อง admin gate ถูกต้องตามดีไซน์ (อ่านอย่างเดียว)
+- `/api/targets`, `/api/monthly/detail`: ไม่อยู่ใน ADMIN_MUTATE ตามดีไซน์ตั้งใจ (self-service staff / manual entry admin-only ตามที่ CLAUDE.md ระบุ) — ไม่ใช่บั๊ก
 
 ### ❓ ตัดสินใจ
 - เอา schema ตามนี้ไหม?
