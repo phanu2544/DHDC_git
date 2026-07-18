@@ -36,6 +36,7 @@ export default function DashboardPage() {
   const [latestMonth, setLatestMonth] = useState('')
   const [selectedMonth, setSelectedMonth] = useState('')
   const [onlyAttention, setOnlyAttention] = useState(false)
+  const [onlyMyGroup, setOnlyMyGroup] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -77,11 +78,12 @@ export default function DashboardPage() {
   const visibleRows = useMemo(() => {
     return scorecard.rows
       .filter((r) => !onlyAttention || ATTENTION_STATUSES.includes(r.status))
+      .filter((r) => !onlyMyGroup || (user?.department && r.kpi.workGroups?.includes(user.department)))
       .slice()
       .sort((a, b) =>
         EXECUTIVE_SEVERITY_ORDER.indexOf(a.status) - EXECUTIVE_SEVERITY_ORDER.indexOf(b.status),
       )
-  }, [scorecard.rows, onlyAttention])
+  }, [scorecard.rows, onlyAttention, onlyMyGroup, user])
 
   if (!user) return null
 
@@ -151,6 +153,17 @@ export default function DashboardPage() {
                     />
                     เฉพาะที่ต้องติดตาม
                   </label>
+                  {user.department && (
+                    <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none" title={`กรองเฉพาะ KPI ของกลุ่มงาน "${user.department}"`}>
+                      <input
+                        type="checkbox"
+                        checked={onlyMyGroup}
+                        onChange={(e) => setOnlyMyGroup(e.target.checked)}
+                        className="rounded"
+                      />
+                      เฉพาะกลุ่มงานของฉัน
+                    </label>
+                  )}
                   <button
                     onClick={() => exportScorecardXlsx(scorecard.rows, scorecard.summary, selectedMonth)}
                     disabled={!selectedMonth || scorecard.rows.length === 0}

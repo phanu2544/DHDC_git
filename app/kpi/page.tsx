@@ -22,6 +22,7 @@ export default function KPIListPage() {
   const [search, setSearch] = useState('')
   const [catFilter, setCatFilter] = useState('ทุกหมวด')
   const [statusFilter, setStatusFilter] = useState('')
+  const [onlyMyGroup, setOnlyMyGroup] = useState(false)
   const [selected, setSelected] = useState<KPIReport | null>(null)
   const [chartData, setChartData] = useState<{ month: string; value: number; target: number }[]>([])
   const [chartLoading, setChartLoading] = useState(false)
@@ -58,7 +59,8 @@ export default function KPIListPage() {
     const matchSearch = k.name.toLowerCase().includes(search.toLowerCase()) || k.owner.toLowerCase().includes(search.toLowerCase())
     const matchCat = catFilter === 'ทุกหมวด' || k.category === catFilter
     const matchStatus = !statusFilter || k.status === statusFilter
-    return matchSearch && matchCat && matchStatus
+    const matchGroup = !onlyMyGroup || (user.department && k.workGroups?.includes(user.department))
+    return matchSearch && matchCat && matchStatus && matchGroup
   })
 
   return (
@@ -83,6 +85,12 @@ export default function KPIListPage() {
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
             {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
+          {user.department && (
+            <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none" title={`กรองเฉพาะ KPI ของกลุ่มงาน "${user.department}"`}>
+              <input type="checkbox" checked={onlyMyGroup} onChange={(e) => setOnlyMyGroup(e.target.checked)} className="rounded" />
+              เฉพาะกลุ่มงานของฉัน
+            </label>
+          )}
           <span className="self-center text-sm text-gray-500">พบ {filtered.length} รายการ</span>
         </div>
 
@@ -109,6 +117,13 @@ export default function KPIListPage() {
                       <td className="px-4 py-3"><span className="font-medium text-gray-900 line-clamp-2">{kpi.name}</span></td>
                       <td className="px-4 py-3 hidden md:table-cell">
                         <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-xs">{kpi.category}</span>
+                        {kpi.workGroups && kpi.workGroups.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {kpi.workGroups.map((g) => (
+                              <span key={g} className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded text-[10px] font-medium">{g}</span>
+                            ))}
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-gray-600 hidden lg:table-cell">{kpi.owner}</td>
                       <td className="px-4 py-3 text-gray-600 hidden lg:table-cell">

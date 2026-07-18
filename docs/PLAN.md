@@ -87,15 +87,15 @@
 > เริ่มจาก owner บอกว่าหน้าเว็บดูเหมือนหลังบ้าน + รพ. มีหลายกลุ่มงานอยากแบ่งตัวชี้วัด — งานนี้เป็น**คนละแกน**กับ redesign หน้าตา (ยังไม่เริ่ม) เป็นแค่จัดโครงข้อมูลให้ถูกก่อน
 - [x] **หมวดหมู่ HDC 2 ชั้น** — จัด 39 KPI ตามโครง HDC จริง (กลุ่มหลัก→หมวดย่อย) + self-service จัดการหมวดผ่าน `/admin` · รายละเอียด: [`kpi-category-mapping-2569.md`](kpi-category-mapping-2569.md)
 - [x] **กลุ่มงาน (work groups) Phase A-E** — schema (`work_groups`+junction) + จัดการเอง + ผูก KPI หลายกลุ่ม + pre-fill 39 KPI = ปฐมภูมิ + ผูก `users.department` ด้วย FK · เจอ+แก้บั๊กร้ายแรง 2 ตัว (`/api/kpis` พังทั้งเส้นถ้า DB ยังไม่ migrate) ระหว่างทำ · รายละเอียดเต็ม: [`kpi-work-groups-plan.md`](kpi-work-groups-plan.md)
-- [ ] **กลุ่มงาน Phase F** — ฟิลเตอร์ "KPI ของกลุ่มงานฉัน" ใน `/dashboard`+`/kpi` (ต้องรอสร้าง account จริงให้ 4 owner ก่อนถึงจะเห็นผลชัด — ดู `kpi-work-groups-plan.md` §8.0)
+- [x] **กลุ่มงาน Phase F** — ฟิลเตอร์ "เฉพาะกลุ่มงานของฉัน" ใน `/dashboard`+`/kpi` เสร็จ 19 ก.ค. (frontend ล้วน ไม่ต้องแก้ backend) · ทำงานถูกต้อง แต่ยังไม่มี account จริงสังกัดกลุ่มปฐมภูมิ (ที่ 39 KPI ทั้งหมดอยู่) เลยยังไม่เห็นผล "กรองแล้วเจอ KPI จริง" — รอสร้าง account ให้ 4 owner (ดู `kpi-work-groups-plan.md` §8.0)
 - [ ] ⚠️ **go-live ต้องรู้:** `/api/init` ตอนนี้สร้างเพิ่มอีก 2 ตาราง (`work_groups`, `kpi_work_groups`) รวมของเดิม (`cron_log`, `data_change_log`) = **4 ตารางใหม่** + FK บน `users.department` จะไม่ติดอัตโนมัติจนกว่าจะ remap ค่า department บน production เอง (ดู `kpi-work-groups-plan.md` §16)
 
 ---
 
 ## ลำดับที่แนะนำ (ปัจจุบัน 19 ก.ค.)
 **งานหลักที่เหลือ = D (production go-live)** — รอ owner sign-off (โลหิตจาง/NCD BP) + ตั้ง env production + `/api/init` (ตอนนี้ต้องสร้าง 4 ตารางใหม่ + remap `users.department`) + replay config + PM2/MariaDB auto-start (user รันเอง)
-· A = ติดตาม owner (target มะเร็งเต้านม 85% ยืนยัน, ติ๊ก ก.1/ก.2) · F(admin polish)/G-F(กลุ่มงาน filter) = เลือกทำ ไม่ด่วน · trend รอ cron ≥2 เดือน
-· **B/C เสร็จหมดแล้ว** · E ครอบคลุมด้วย KpiWizard แล้ว (เหลือ drilldown builder ขั้นสูง) · **G (หมวดหมู่+กลุ่มงาน) เสร็จเกือบหมด เหลือแค่ Phase F**
+· A = ติดตาม owner (target มะเร็งเต้านม 85% ยืนยัน, ติ๊ก ก.1/ก.2) · F(admin polish) = เลือกทำ ไม่ด่วน · trend รอ cron ≥2 เดือน
+· **B/C เสร็จหมดแล้ว** · E ครอบคลุมด้วย KpiWizard แล้ว (เหลือ drilldown builder ขั้นสูง) · **G (หมวดหมู่+กลุ่มงาน) เสร็จหมดทุก Phase (A-F)** 🎉
 
 ## วิธีใช้ไฟล์นี้
 ทำทีละข้อ → `[ ]` เป็น `[x]` → review + commit · ข้อที่แตะ DB ทำตามกฎ backup→gate→verify เสมอ
