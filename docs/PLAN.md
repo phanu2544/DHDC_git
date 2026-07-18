@@ -81,6 +81,7 @@
 - [ ] **แยก `app/admin/page.tsx` (~1550 บรรทัด)** เป็น component ต่อแท็บ (KpiTab/MophTab/UsersTab/DbTab) แบบที่แยก KpiWizard/FieldChipBuilder ไปแล้ว · maintainability ล้วน · มี regression risk · คุ้มเมื่อไฟล์โตต่อ
 - [ ] **cleanup เล็ก** (value ต่ำ) — Promise.all 6 queries ใน `/api/cron-status` (~10ms) · truncate `missingKpis` ใน native title tooltip ถ้ารายการยาว · hoist `fmt`/`rel` ในการ์ด cron เป็น helper (ลด nested IIFE)
 - [ ] *(deferred, แนะนำข้าม)* **data_change_log viewer** — audit ลบ/ทับ manual KPI · ปัจจุบัน 1 แถว/8วัน · กู้คืนผ่าน `SELECT old_data ...` ตรงๆ พอ · รอ volume จริง/owner ร้องขอ
+- [ ] *(dead code, พบระหว่าง bug sweep 16 ก.ค.)* **ลบ `moph_report_catalog` + `kpi_reports.moph_report_id`** — คู่แฝด `moph_snapshot` ที่ตัดไปแล้ว 2 ก.ค. แต่ตัวนี้หลุดรอด: ไม่มี route/หน้าไหนอ่านจริง (`GET /api/init` query count แต่ไม่โชว์ผล), ไม่มี UI กรอก `mophReportId` เลย (KpiWizard ไม่ใช้ catalog-based flow) · ลบต้องแตะ `/api/init`, `lib/types.ts`, `app/api/kpis/[id]/route.ts` — ทำเป็น commit แยก มี backup/verify เอง ไม่ด่วน
 
 ---
 
