@@ -150,7 +150,7 @@ ALTER TABLE users ADD CONSTRAINT fk_users_wg
 | ~~**A**~~ | ~~สร้าง 2 ตาราง + seed 13 กลุ่มงาน + เพิ่มใน `/api/init`~~ | ✅ **เสร็จ 2026-07-16** (ดูหัวข้อ 10) | เล็ก |
 | ~~**B**~~ | ~~`/api/work-groups` (CRUD) + UI จัดการกลุ่มงานใน `/admin`~~ | ✅ **เสร็จ 2026-07-16** (ดูหัวข้อ 11) | กลาง |
 | **C** | UI ติ๊กกลุ่มงานในฟอร์มแก้ไข KPI (เลือกได้หลายกลุ่ม) + แสดงในตาราง KPI | — | กลาง |
-| **D** | ใส่ข้อมูล mapping จริง 39 KPI | **§3.2** | ขึ้นกับวิธี A/B |
+| ~~**D**~~ | ~~ใส่ข้อมูล mapping จริง 39 KPI~~ | ✅ **เสร็จ 2026-07-18** (ดูหัวข้อ 14) | ขึ้นกับวิธี A/B |
 | **E** | remap `users.department` + ใส่ FK + เปลี่ยนช่อง department เป็น dropdown | **§3.1** | เล็ก |
 | **F** | ฟิลเตอร์ "KPI ของกลุ่มงานฉัน" ใน `/dashboard` + `/kpi` | หลัง D+E | เล็ก |
 
@@ -386,6 +386,16 @@ owner ถามตรงๆ "Phase C มีบั๊กไหม มีจุด
 **แก้:** ทั้ง `GET`/`PUT` แยก try เฉพาะส่วน work-groups ออกจากส่วนหลัก — `GET` fallback เป็น `workGroups:[]` ต่อแถวถ้า query ล้มเหลว, `PUT` แยก try ของ sync ออกจาก UPDATE (commit field หลักได้เสมอ พร้อมข้อความเตือนบอกสถานะจริงถ้ากลุ่มงาน sync ไม่สำเร็จ) — commit `d88193e`
 
 **Verify หลังแก้:** จำลอง DB เดิม (ไม่มี `kpi_work_groups`) → `GET` 200 (`workGroups:[]`) ✅ · `PUT` 200 + field หลักบันทึกจริง (ทดสอบด้วยชื่อ ASCII กัน encoding ปัญหาจาก shell) ✅ · dashboard โหลดปกติไม่มี error banner ✅ · regression check `dhdc_dev` (มีตารางครบ) ยังทำงาน 100% ไม่กระทบ ✅
+
+## 14. Log การรัน Phase D — ✅ เสร็จ 2026-07-18
+
+pre-fill ทุก KPI ให้อยู่กลุ่มงาน `ปฐมภูมิ` ตาม §3.2 (วิธี A) — ตาม backup→preview→gate→COMMIT→verify
+
+- ⚠️ **เจอสถานะไม่คาดคิดก่อนเริ่ม:** `kpi_work_groups` มี 1 แถวหลงเหลือ (`kpi-1780631069121 → ปฐมภูมิ`) ทั้งที่เคย DELETE ล้างจนเหลือ 0 แถวยืนยันแล้วตอน Phase C — สาเหตุที่แน่ชัดหาไม่ได้ (น่าจะพลาดจากการทดสอบรอบหลัง) แต่บังเอิญตรงกับเป้าหมาย Phase D พอดี ไม่ต้อง revert อะไร — ออกแบบ INSERT ให้ปลอดภัยต่อแถวนี้ด้วย (`INSERT IGNORE`)
+- ✅ Backup: `_resync_backup/work-groups-phase-d/backup-before.sql`
+- ✅ Preview ในทรานแซกชัน (39 คู่ kpi_id+ปฐมภูมิ, `INSERT IGNORE`) → verify 39/39/39 ตรงเป้า → ROLLBACK
+- ✅ COMMIT จริง — ผลตรงกับ preview เป๊ะ
+- ✅ Verify: `kpi_reports` 39 = `DISTINCT kpi_id` ใน `kpi_work_groups` 39 (ไม่มีตัวไหนตกหล่น) · ตาราง `/admin` แสดง badge "ปฐมภูมิ" ครบ 39/39 แถวจริงในเบราว์เซอร์ · spot-check เปิดฟอร์มแก้ไข KPI ที่ไม่เคยทดสอบมาก่อน ("อัตราการคัดกรองมะเร็งเต้านม...") checkbox ตรง · console สะอาด
 
 ### จุดที่ตรวจแล้วไม่มีปัญหา (คู่ขนานกับจุดที่พัง)
 - `WorkGroupManager.tsx` / `WorkGroupPicker.tsx` — ถ้า `/api/work-groups` fail (เช่น ตาราง `work_groups` หาย) ฝั่ง frontend **ทนอยู่แล้ว** (`res.ok ? ... : []`) ไม่ทำให้หน้าอื่นพังตาม เพราะ fetch แยกอิสระในแต่ละ component ไม่ผูกกับ `loadData()` หลักของหน้า — ไม่ต้องแก้เพิ่ม
