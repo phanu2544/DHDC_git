@@ -242,6 +242,8 @@ export default function AdminPage() {
   const [showUserForm, setShowUserForm] = useState(false)
   const [userForm, setUserForm] = useState({ email: '', name: '', password: '', role: 'staff' as 'admin' | 'staff', department: '' })
   const [changePwModal, setChangePwModal] = useState<{ user: User; newPw: string } | null>(null)
+  // กลุ่มงานสำหรับ dropdown "หน่วยงาน" — users.department ผูก FK → work_groups.name แล้ว (Phase E)
+  const [workGroupOptions, setWorkGroupOptions] = useState<string[]>([])
 
   useEffect(() => {
     if (!user) return
@@ -252,11 +254,14 @@ export default function AdminPage() {
 
   async function loadData() {
     setLoading(true)
-    const [kRes, uRes, catRes] = await Promise.all([fetch('/api/kpis'), fetch('/api/users'), fetch('/api/categories?detail=1')])
+    const [kRes, uRes, catRes, wgRes] = await Promise.all([
+      fetch('/api/kpis'), fetch('/api/users'), fetch('/api/categories?detail=1'), fetch('/api/work-groups'),
+    ])
     const kData = await kRes.json()
     setKpis(kData)
     setUsers(await uRes.json())
     if (catRes.ok) setCategories(await catRes.json())
+    if (wgRes.ok) setWorkGroupOptions((await wgRes.json()).map((g: { name: string }) => g.name))
     setLoading(false)
     // auto-fill moph fields from first KPI that has mophTable
     const withMoph = kData.find((k: KPIReport) => k.mophTable)
@@ -1453,10 +1458,12 @@ export default function AdminPage() {
                     <option value="admin">👑 Admin</option>
                   </select>
                 </Field>
-                <Field label="หน่วยงาน">
-                  <input value={userForm.department} onChange={(e) => setUserForm({ ...userForm, department: e.target.value })}
-                    placeholder="ฝ่าย / งาน"
-                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <Field label="กลุ่มงาน">
+                  <select value={userForm.department} onChange={(e) => setUserForm({ ...userForm, department: e.target.value })}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="">— ไม่ระบุ —</option>
+                    {workGroupOptions.map((g) => <option key={g} value={g}>{g}</option>)}
+                  </select>
                 </Field>
               </div>
               <div className="flex gap-3 pt-2">

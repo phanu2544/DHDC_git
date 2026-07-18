@@ -151,7 +151,7 @@ ALTER TABLE users ADD CONSTRAINT fk_users_wg
 | ~~**B**~~ | ~~`/api/work-groups` (CRUD) + UI จัดการกลุ่มงานใน `/admin`~~ | ✅ **เสร็จ 2026-07-16** (ดูหัวข้อ 11) | กลาง |
 | **C** | UI ติ๊กกลุ่มงานในฟอร์มแก้ไข KPI (เลือกได้หลายกลุ่ม) + แสดงในตาราง KPI | — | กลาง |
 | ~~**D**~~ | ~~ใส่ข้อมูล mapping จริง 39 KPI~~ | ✅ **เสร็จ 2026-07-18** (ดูหัวข้อ 14) | ขึ้นกับวิธี A/B |
-| **E** | remap `users.department` + ใส่ FK + เปลี่ยนช่อง department เป็น dropdown | **§3.1** | เล็ก |
+| ~~**E**~~ | ~~remap `users.department` + ใส่ FK + เปลี่ยนช่อง department เป็น dropdown~~ | ✅ **เสร็จ 2026-07-19** (ดูหัวข้อ 15) | เล็ก |
 | **F** | ฟิลเตอร์ "KPI ของกลุ่มงานฉัน" ใน `/dashboard` + `/kpi` | หลัง D+E | เล็ก |
 
 **A→C ทำได้เลยโดยไม่ต้องรอข้อมูลจากคุณ** · D/E คือจุดที่ติด
@@ -396,6 +396,29 @@ pre-fill ทุก KPI ให้อยู่กลุ่มงาน `ปฐม�
 - ✅ Preview ในทรานแซกชัน (39 คู่ kpi_id+ปฐมภูมิ, `INSERT IGNORE`) → verify 39/39/39 ตรงเป้า → ROLLBACK
 - ✅ COMMIT จริง — ผลตรงกับ preview เป๊ะ
 - ✅ Verify: `kpi_reports` 39 = `DISTINCT kpi_id` ใน `kpi_work_groups` 39 (ไม่มีตัวไหนตกหล่น) · ตาราง `/admin` แสดง badge "ปฐมภูมิ" ครบ 39/39 แถวจริงในเบราว์เซอร์ · spot-check เปิดฟอร์มแก้ไข KPI ที่ไม่เคยทดสอบมาก่อน ("อัตราการคัดกรองมะเร็งเต้านม...") checkbox ตรง · console สะอาด
+
+## 15. Log การรัน Phase E — ✅ เสร็จ 2026-07-19
+
+remap `users.department` จริง + ใส่ FK ไปยัง `work_groups(name)` + เปลี่ยนช่องกรอกในฟอร์มเพิ่มผู้ใช้เป็น dropdown
+
+### สิ่งที่ทำ
+1. ✅ Backup: `_resync_backup/work-groups-phase-e/users-backup.sql`
+2. ✅ Remap ค่าเดิม (backup→preview→gate→COMMIT): `ฝ่ายสารสนเทศ`→`สุขภาพดิจิทัล`, `งาน NCD`→`ทันตกรรม`, `งานอนามัยแม่และเด็ก`→`IPD` (ตาม §3.1)
+3. ✅ `ALTER TABLE users MODIFY department VARCHAR(100) NULL` + `ADD CONSTRAINT fk_users_wg FOREIGN KEY (department) REFERENCES work_groups(name) ON UPDATE CASCADE ON DELETE SET NULL`
+4. ✅ **ทดสอบ FK cascade จริง 3 เคส** (ทรานแซกชัน rollback เหมือน Phase A):
+   - `ON UPDATE CASCADE` — rename กลุ่มงานที่ user จริงสังกัดอยู่ (`ทันตกรรม`) → `department` ตามไปเองจริง ✅
+   - `ON DELETE SET NULL` — ลบกลุ่มงานที่ user สังกัดอยู่ → `department` เป็น `NULL` (**user ไม่ถูกลบ** แค่ไม่มีสังกัด) ✅
+   - FK ปฏิเสธค่ากลุ่มงานที่ไม่มีอยู่จริง → `ERROR 1452` ✅
+5. ✅ อัปเดต `/api/init`: CREATE TABLE users ใหม่มี FK ในตัว (DB สดใหม่) + `ALTER ... MODIFY` / `ALTER ... ADD CONSTRAINT` ห่อด้วย `.catch(() => {})` สำหรับ DB เดิม (idempotent + ไม่พังถ้า constraint มีอยู่แล้ว)
+6. ✅ **ทดสอบ 3 สถานการณ์บน DB เปล่า/จำลอง** (มาตรฐานเดียวกับ Phase A/C):
+   - DB เปล่า → init → FK ติดตั้งครบตั้งแต่แรก ✅
+   - รัน init ซ้ำ (idempotent) → ไม่พัง ✅
+   - **DB เก่าที่มี user + department ไม่ตรงกับ work_groups (จำลอง production จริงก่อน remap)** → init คืน 200 OK, user ไม่หาย, คอลัมน์ย่อขนาดสำเร็จ, **FK ถูกข้ามอย่างเงียบๆ** (ไม่ error ทั้ง endpoint) ✅ — ยืนยันด้วย SQL ตรงว่า `ADD CONSTRAINT` จะ error จริงถ้าไม่มี `.catch()` (บั๊กคลาสเดียวกับที่เจอใน Phase C)
+7. ✅ Dropdown "กลุ่มงาน" ในฟอร์มเพิ่มผู้ใช้ — ดึงจาก `/api/work-groups` ผ่าน `loadData()` (state กลางเดียวกับ `categories`) แสดงครบ 13 กลุ่ม + ตัวเลือก "ไม่ระบุ"
+8. ✅ Typecheck ผ่าน + verify ผ่าน browser จริง: สร้าง user ใหม่เลือก "เภสัชกรรม" จาก dropdown → บันทึกจริงตรง DB → ลบทดสอบคืนสภาพ · ตาราง users แสดงหน่วยงานถูกต้องครบ 3 คน · console สะอาด
+
+### ⚠️ ข้อจำกัดที่ต้องรู้ก่อน go-live
+FK จะ **ไม่ถูกเพิ่มอัตโนมัติ** บน production ถ้า `users.department` ที่มีอยู่ตอนนั้นมีค่าที่ไม่ตรงกับ `work_groups.name` สักตัว (`.catch(() => {})` จะข้ามเงียบๆ ตามที่ออกแบบ) — **หลัง go-live ต้อง remap `users.department` จริงบน production ด้วยมือ** (backup→gate→verify แบบเดียวกับที่ทำใน dev ข้อ 1-2) แล้วรัน `/api/init` อีกครั้งเพื่อให้ FK ติดตั้งสำเร็จ
 
 ### จุดที่ตรวจแล้วไม่มีปัญหา (คู่ขนานกับจุดที่พัง)
 - `WorkGroupManager.tsx` / `WorkGroupPicker.tsx` — ถ้า `/api/work-groups` fail (เช่น ตาราง `work_groups` หาย) ฝั่ง frontend **ทนอยู่แล้ว** (`res.ok ? ... : []`) ไม่ทำให้หน้าอื่นพังตาม เพราะ fetch แยกอิสระในแต่ละ component ไม่ผูกกับ `loadData()` หลักของหน้า — ไม่ต้องแก้เพิ่ม

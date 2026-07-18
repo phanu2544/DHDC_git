@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // ── users ──────────────────────────────────────────────────────────────
+    // ── users (department ผูก FK → work_groups.name — docs/kpi-work-groups-plan.md Phase E) ──
     await conn.execute(`
       CREATE TABLE IF NOT EXISTS users (
         id VARCHAR(50) PRIMARY KEY,
@@ -93,10 +93,19 @@ export async function POST(req: NextRequest) {
         password VARCHAR(255) NOT NULL,
         name VARCHAR(255) NOT NULL,
         role ENUM('admin','staff') DEFAULT 'staff',
-        department VARCHAR(255),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        department VARCHAR(100),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT fk_users_wg FOREIGN KEY (department) REFERENCES work_groups(name)
+          ON UPDATE CASCADE ON DELETE SET NULL
       ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
     `)
+    // migrate DB เดิมที่สร้าง users ก่อนมี FK นี้ (idempotent — เงียบถ้ามี constraint แล้ว
+    // หรือค่า department เดิมไม่ตรงกับ work_groups.name สักตัว ต้อง remap มือก่อนค่อยรันซ้ำ)
+    await conn.execute('ALTER TABLE users MODIFY COLUMN department VARCHAR(100) NULL').catch(() => {})
+    await conn.execute(
+      `ALTER TABLE users ADD CONSTRAINT fk_users_wg FOREIGN KEY (department) REFERENCES work_groups(name)
+         ON UPDATE CASCADE ON DELETE SET NULL`,
+    ).catch(() => {})
 
     // ── kpi_reports ─────────────────────────────────────────────────────────
     await conn.execute(`
