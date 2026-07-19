@@ -87,8 +87,15 @@
 > เริ่มจาก owner บอกว่าหน้าเว็บดูเหมือนหลังบ้าน + รพ. มีหลายกลุ่มงานอยากแบ่งตัวชี้วัด — งานนี้เป็น**คนละแกน**กับ redesign หน้าตา (ยังไม่เริ่ม) เป็นแค่จัดโครงข้อมูลให้ถูกก่อน
 - [x] **หมวดหมู่ HDC 2 ชั้น** — จัด 39 KPI ตามโครง HDC จริง (กลุ่มหลัก→หมวดย่อย) + self-service จัดการหมวดผ่าน `/admin` · รายละเอียด: [`kpi-category-mapping-2569.md`](kpi-category-mapping-2569.md)
 - [x] **กลุ่มงาน (work groups) Phase A-E** — schema (`work_groups`+junction) + จัดการเอง + ผูก KPI หลายกลุ่ม + pre-fill 39 KPI = ปฐมภูมิ + ผูก `users.department` ด้วย FK · เจอ+แก้บั๊กร้ายแรง 2 ตัว (`/api/kpis` พังทั้งเส้นถ้า DB ยังไม่ migrate) ระหว่างทำ · รายละเอียดเต็ม: [`kpi-work-groups-plan.md`](kpi-work-groups-plan.md)
-- [x] **กลุ่มงาน Phase F** — ฟิลเตอร์ "เฉพาะกลุ่มงานของฉัน" ใน `/dashboard`+`/kpi` เสร็จ 19 ก.ค. (frontend ล้วน ไม่ต้องแก้ backend) · ทำงานถูกต้อง แต่ยังไม่มี account จริงสังกัดกลุ่มปฐมภูมิ (ที่ 39 KPI ทั้งหมดอยู่) เลยยังไม่เห็นผล "กรองแล้วเจอ KPI จริง" — รอสร้าง account ให้ 4 owner (ดู `kpi-work-groups-plan.md` §8.0)
+- [x] **กลุ่มงาน Phase F** — ฟิลเตอร์ "เฉพาะกลุ่มงานของฉัน" ใน `/dashboard`+`/kpi` เสร็จ 19 ก.ค. (frontend ล้วน ไม่ต้องแก้ backend) · verify ผ่าน account จริง (นุชสรา → เห็น 39/39) ✅
+- [x] **สร้าง 4 account จริงให้ owner + คำนำหน้าชื่อ (title)** **(เสร็จ 19 ก.ค.)** — นุชสรา/สุพัตรา/อัมพวัน/ดลยา เป็น staff กลุ่มปฐมภูมิ + เพิ่ม `users.title` (นาย/นาง/นางสาว) · รายละเอียด: `kpi-work-groups-plan.md` §8.0
 - [ ] ⚠️ **go-live ต้องรู้:** `/api/init` ตอนนี้สร้างเพิ่มอีก 2 ตาราง (`work_groups`, `kpi_work_groups`) รวมของเดิม (`cron_log`, `data_change_log`) = **4 ตารางใหม่** + FK บน `users.department` จะไม่ติดอัตโนมัติจนกว่าจะ remap ค่า department บน production เอง (ดู `kpi-work-groups-plan.md` §16)
+
+## H. 📝 Key-in ผลงานโดย staff เจ้าของ KPI (งานถัดไป — **ทำในแชทใหม่**)
+> owner ขอโหมด key-in ก่อน go-live (19 ก.ค.) — ให้ staff กรอก "ผลงาน" ของ KPI กลุ่มตัวเองได้ (ตอนนี้ manual entry เปิดแค่ admin) · ต่อยอด work groups (G) ที่เพิ่งเสร็จ · **มี starter doc พร้อมแล้ว → [`kpi-keyin-plan.md`](kpi-keyin-plan.md)**
+- [ ] เคาะความละเอียด (ตัวเลขเดียว/เดือน vs ราย รพ.สต. 7 หน่วย vs ทั้งสอง) — owner ยังไม่ตอบ
+- [ ] ปลดล็อก authorization: `/api/monthly` mutation ให้ staff กรอกได้เฉพาะ KPI ในกลุ่มงานตัวเอง (เช็คฝั่ง server) + แก้ gate `role==='admin'` ในฟอร์ม `/kpi/[id]`
+- [ ] reuse `/api/monthly/detail` เดิม (audit/transaction/data_change_log ครบแล้ว) · อาจทำหน้า "KPI ของกลุ่มฉันที่ต้องกรอก" ต่อยอด Phase F
 
 ---
 
