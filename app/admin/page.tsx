@@ -8,7 +8,7 @@ import WorkGroupManager from '@/components/WorkGroupManager'
 import WorkGroupPicker from '@/components/WorkGroupPicker'
 import { useAuth } from '@/lib/useAuth'
 import { formatThaiMonth } from '@/lib/formatMonth'
-import type { User, KPIReport, KPIStatus, KPICategory, MophMapping, CalcMode, EvalDirection } from '@/lib/types'
+import type { User, UserTitle, KPIReport, KPIStatus, KPICategory, MophMapping, CalcMode, EvalDirection } from '@/lib/types'
 
 // หมวดหมู่จะถูกโหลดจาก DB ผ่าน /api/categories (ดูใน state)
 const STATUSES: KPIStatus[] = ['in_progress', 'completed', 'overdue']
@@ -240,7 +240,7 @@ export default function AdminPage() {
 
   // User management state
   const [showUserForm, setShowUserForm] = useState(false)
-  const [userForm, setUserForm] = useState({ email: '', name: '', password: '', role: 'staff' as 'admin' | 'staff', department: '' })
+  const [userForm, setUserForm] = useState({ email: '', name: '', password: '', role: 'staff' as 'admin' | 'staff', title: '' as '' | UserTitle, department: '' })
   const [changePwModal, setChangePwModal] = useState<{ user: User; newPw: string } | null>(null)
   // กลุ่มงานสำหรับ dropdown "หน่วยงาน" — users.department ผูก FK → work_groups.name แล้ว (Phase E)
   const [workGroupOptions, setWorkGroupOptions] = useState<string[]>([])
@@ -259,7 +259,7 @@ export default function AdminPage() {
     ])
     const kData = await kRes.json()
     setKpis(kData)
-    setUsers(await uRes.json())
+    if (uRes.ok) setUsers(await uRes.json())
     if (catRes.ok) setCategories(await catRes.json())
     if (wgRes.ok) setWorkGroupOptions((await wgRes.json()).map((g: { name: string }) => g.name))
     setLoading(false)
@@ -314,7 +314,7 @@ export default function AdminPage() {
 
   // ─── User management ────────────────────────────────────────────────────
   function openAddUser() {
-    setUserForm({ email: '', name: '', password: '', role: 'staff', department: '' })
+    setUserForm({ email: '', name: '', password: '', role: 'staff', title: '', department: '' })
     setShowUserForm(true)
   }
 
@@ -1287,7 +1287,7 @@ export default function AdminPage() {
                   <tbody className="divide-y">
                     {users.map((u) => (
                       <tr key={u.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 font-medium text-gray-900">{u.name}</td>
+                        <td className="px-4 py-3 font-medium text-gray-900">{u.title ? `${u.title}` : ''}{u.name}</td>
                         <td className="px-4 py-3 text-gray-600 text-xs">{u.email}</td>
                         <td className="px-4 py-3 text-gray-600 text-xs hidden md:table-cell">{u.department}</td>
                         <td className="px-4 py-3 text-center">
@@ -1440,11 +1440,22 @@ export default function AdminPage() {
                   placeholder="user@hospital.go.th"
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </Field>
-              <Field label="ชื่อ-สกุล *">
-                <input value={userForm.name} onChange={(e) => setUserForm({ ...userForm, name: e.target.value })}
-                  placeholder="ชื่อผู้ใช้งาน"
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </Field>
+              <div className="grid grid-cols-[110px_1fr] gap-3">
+                <Field label="คำนำหน้า">
+                  <select value={userForm.title} onChange={(e) => setUserForm({ ...userForm, title: e.target.value as '' | UserTitle })}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="">—</option>
+                    <option value="นาย">นาย</option>
+                    <option value="นาง">นาง</option>
+                    <option value="นางสาว">นางสาว</option>
+                  </select>
+                </Field>
+                <Field label="ชื่อ-สกุล *">
+                  <input value={userForm.name} onChange={(e) => setUserForm({ ...userForm, name: e.target.value })}
+                    placeholder="ชื่อผู้ใช้งาน"
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </Field>
+              </div>
               <Field label="รหัสผ่าน *">
                 <input type="password" value={userForm.password} onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
                   placeholder="รหัสผ่าน"

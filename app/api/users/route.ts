@@ -6,7 +6,7 @@ export async function GET() {
   const conn = await pool.getConnection()
   try {
     const [rows] = await conn.execute(
-      'SELECT id, email, name, role, department FROM users ORDER BY role DESC, name',
+      'SELECT id, email, name, role, title, department FROM users ORDER BY role DESC, name',
     )
     return NextResponse.json(rows)
   } catch (err) {
@@ -18,7 +18,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const { email, name, password, role, department } = await req.json()
+  const { email, name, password, role, title, department } = await req.json()
   if (!email || !name || !password) {
     return NextResponse.json({ message: 'กรุณากรอก email, ชื่อ และรหัสผ่าน' }, { status: 400 })
   }
@@ -27,8 +27,8 @@ export async function POST(req: NextRequest) {
   const conn = await pool.getConnection()
   try {
     await conn.execute(
-      'INSERT INTO users (id, email, password, name, role, department) VALUES (?,?,?,?,?,?)',
-      [id, email, await hashPassword(password), name, role ?? 'staff', department ?? ''],
+      'INSERT INTO users (id, email, password, name, role, title, department) VALUES (?,?,?,?,?,?,?)',
+      [id, email, await hashPassword(password), name, role ?? 'staff', title ?? null, department ?? ''],
     )
     return NextResponse.json({ ok: true, id, message: 'เพิ่มผู้ใช้สำเร็จ' })
   } catch (err: unknown) {

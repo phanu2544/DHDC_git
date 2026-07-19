@@ -93,6 +93,7 @@ export async function POST(req: NextRequest) {
         password VARCHAR(255) NOT NULL,
         name VARCHAR(255) NOT NULL,
         role ENUM('admin','staff') DEFAULT 'staff',
+        title ENUM('นาย','นาง','นางสาว') NULL,
         department VARCHAR(100),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         CONSTRAINT fk_users_wg FOREIGN KEY (department) REFERENCES work_groups(name)
@@ -105,6 +106,10 @@ export async function POST(req: NextRequest) {
     await conn.execute(
       `ALTER TABLE users ADD CONSTRAINT fk_users_wg FOREIGN KEY (department) REFERENCES work_groups(name)
          ON UPDATE CASCADE ON DELETE SET NULL`,
+    ).catch(() => {})
+    // migrate DB เดิมที่สร้าง users ก่อนมีคอลัมน์ title (idempotent)
+    await conn.execute(
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS title ENUM('นาย','นาง','นางสาว') NULL AFTER role`,
     ).catch(() => {})
 
     // ── kpi_reports ─────────────────────────────────────────────────────────

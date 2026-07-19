@@ -2,12 +2,15 @@ export type UserRole = 'admin' | 'staff'
 export type KPIStatus = 'completed' | 'in_progress' | 'overdue'
 export type KPICategory = string
 
+export type UserTitle = 'นาย' | 'นาง' | 'นางสาว'
+
 export interface User {
   id: string
   email: string
   password: string
   name: string
   role: UserRole
+  title?: UserTitle
   department: string
 }
 
