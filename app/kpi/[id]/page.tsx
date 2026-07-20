@@ -32,6 +32,9 @@ const BAR_COLOR: Record<string, string> = {
 const hospcodeEntries = () =>
   Object.entries(HOSPCODE_NAMES).sort(([a], [b]) => a.localeCompare(b))
 
+// ป้ายแถวเดียวสำหรับ manualScope='single' (ค่าเดียว ไม่แยกราย รพ.สต. — เช่น ตัวชี้วัดเฉพาะโรงพยาบาล)
+const SINGLE_MODE_UNIT_NAME = 'โรงพยาบาลดงเจริญ'
+
 interface GroupRow {
   code: string
   name: string
@@ -350,32 +353,66 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                 )}
 
                 <div className="mb-6 bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-lg text-sm leading-relaxed">
-                  ℹ️ KPI นี้ <b>กรอกค่าเอง แบบค่าเดียว</b> (ไม่แยกราย รพ.สต.) — กรอก <b>ฐาน (B)</b> และ <b>ผลงาน (A)</b> รวม · ระบบคำนวณ % = A/B ให้อัตโนมัติ
+                  ℹ️ KPI นี้ <b>กรอกค่าเอง แบบค่าเดียว</b> (ไม่แยกราย รพ.สต.) — กรอก <b>กลุ่มเป้าหมาย</b> และ <b>ผลงาน (A)</b> รวม · ระบบคำนวณ % = A/B ให้อัตโนมัติ
                 </div>
 
-                {/* ฟอร์มกรอกค่าเดียว */}
+                {/* กราฟแท่ง — ค่าเดียว (โรงพยาบาลดงเจริญ) */}
+                <div className="bg-white rounded-xl shadow-sm border p-5 mb-6">
+                  <h2 className="font-semibold text-gray-800 mb-3 text-sm">แผนภูมิ — เดือน{formatThaiMonth(entryMonth)}</h2>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={[{ name: SINGLE_MODE_UNIT_NAME, value: sTargetNum > 0 ? sPct : 0, status: sStatus }]}
+                      margin={{ top: 16, right: 16, bottom: 4, left: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                      <YAxis domain={[0, 100]} tick={{ fontSize: 12 }} />
+                      <Tooltip formatter={(v) => [`${v} ${data.kpi.unit}`]} />
+                      {target > 0 && direction !== 'none' && (
+                        <ReferenceLine y={target} stroke="#dc2626" strokeDasharray="6 4"
+                          label={{ value: `เป้าหมาย ${target}`, fill: '#dc2626', fontSize: 12, position: 'insideTopRight' }} />
+                      )}
+                      <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={80}>
+                        <Cell fill={sTargetNum > 0 && sStatus ? (BAR_COLOR[sStatus] ?? '#3b82f6') : '#9ca3af'} />
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* ตารางกรอกค่าเดียว */}
                 <div className="bg-white rounded-xl shadow-sm border overflow-hidden mb-3">
                   <div className="px-5 py-3 border-b flex items-center justify-between">
-                    <h2 className="font-semibold text-gray-800 text-sm">กรอกค่า — เดือน{formatThaiMonth(entryMonth)} {canEdit && (editing
+                    <h2 className="font-semibold text-gray-800 text-sm">ตาราง — เดือน{formatThaiMonth(entryMonth)} {canEdit && (editing
                       ? <span className="text-xs font-normal text-blue-600">(กำลังแก้ไข)</span>
                       : <span className="text-xs font-normal text-gray-400">🔒 ล็อก</span>)}</h2>
                   </div>
-                  <div className="p-5 flex flex-wrap items-end gap-6">
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">ฐาน (B)</label>
-                      {canEdit && editing
-                        ? <input type="number" min="0" value={sTarget} onChange={(e) => setSTarget(e.target.value)}
-                            className="border rounded px-3 py-2 text-sm w-32 text-right" />
-                        : <div className="px-3 py-2 text-sm tabular-nums text-gray-700 w-32 text-right">{sTargetNum.toLocaleString()}</div>}
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">ผลงาน (A)</label>
-                      {canEdit && editing
-                        ? <input type="number" min="0" value={sResult} onChange={(e) => setSResult(e.target.value)}
-                            className="border rounded px-3 py-2 text-sm w-32 text-right" />
-                        : <div className="px-3 py-2 text-sm tabular-nums text-gray-700 w-32 text-right">{sResultNum.toLocaleString()}</div>}
-                    </div>
-                    <div className="text-sm text-gray-600 pb-2.5">% = <b className="tabular-nums">{sTargetNum > 0 ? sPct : '—'}</b></div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 text-gray-500 text-xs">
+                        <tr>
+                          <th className="text-left px-4 py-2 font-medium">หน่วยบริการ</th>
+                          <th className="text-right px-3 py-2 font-medium">กลุ่มเป้าหมาย</th>
+                          <th className="text-right px-3 py-2 font-medium">ผลงาน (A)</th>
+                          <th className="text-right px-4 py-2 font-medium">% (A/B)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        <tr className="hover:bg-gray-50">
+                          <td className="px-4 py-2 font-medium text-gray-900">{SINGLE_MODE_UNIT_NAME}</td>
+                          <td className="px-3 py-2 text-right">
+                            {canEdit && editing
+                              ? <input type="number" min="0" value={sTarget} onChange={(e) => setSTarget(e.target.value)}
+                                  className="border rounded px-2 py-1 text-sm w-24 text-right" />
+                              : <span className="tabular-nums text-gray-700">{sTargetNum.toLocaleString()}</span>}
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            {canEdit && editing
+                              ? <input type="number" min="0" value={sResult} onChange={(e) => setSResult(e.target.value)}
+                                  className="border rounded px-2 py-1 text-sm w-24 text-right" />
+                              : <span className="tabular-nums text-gray-700">{sResultNum.toLocaleString()}</span>}
+                          </td>
+                          <td className="px-4 py-2 text-right tabular-nums font-semibold">{sTargetNum > 0 ? sPct : '—'}</td>
+                        </tr>
+                      </tbody>
+                    </table>
                   </div>
                   {canEdit && (
                     <div className="px-5 py-4 border-t flex flex-wrap items-center gap-3">
@@ -446,7 +483,7 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                 )}
 
                 <div className="mb-6 bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-lg text-sm leading-relaxed">
-                  ℹ️ KPI นี้ <b>กรอกค่าเอง รายหน่วยบริการ</b> — เปิด HDC (มุมมองรายหน่วยบริการ) แล้วกรอก <b>ฐาน (B)</b> และ <b>ผลงาน (A)</b> ของแต่ละหน่วย · ระบบคำนวณ % = A/B ให้อัตโนมัติ · ไม่ดึง/ทับค่าจาก MOPH
+                  ℹ️ KPI นี้ <b>กรอกค่าเอง รายหน่วยบริการ</b> — เปิด HDC (มุมมองรายหน่วยบริการ) แล้วกรอก <b>กลุ่มเป้าหมาย</b> และ <b>ผลงาน (A)</b> ของแต่ละหน่วย · ระบบคำนวณ % = A/B ให้อัตโนมัติ · ไม่ดึง/ทับค่าจาก MOPH
                 </div>
 
                 {/* กราฟแท่ง %รายหน่วยบริการ (สด) */}
@@ -481,7 +518,7 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                       <thead className="bg-gray-50 text-gray-500 text-xs">
                         <tr>
                           <th className="text-left px-4 py-2 font-medium">หน่วยบริการ</th>
-                          <th className="text-right px-3 py-2 font-medium">ฐาน (B)</th>
+                          <th className="text-right px-3 py-2 font-medium">กลุ่มเป้าหมาย</th>
                           <th className="text-right px-3 py-2 font-medium">ผลงาน (A)</th>
                           <th className="text-right px-4 py-2 font-medium">% (A/B)</th>
                         </tr>
