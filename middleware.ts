@@ -16,6 +16,10 @@ const PUBLIC_API = new Set(['/api/auth/login', '/api/auth/logout', '/api/dbinfo'
 // role-guard: เส้นที่ต้องเป็น admin
 const ADMIN_ALL = ['/api/users']                                       // admin ทุก method (จัดการผู้ใช้ — รวมการดูรายชื่อ)
 const ADMIN_MUTATE = ['/api/kpis', '/api/categories', '/api/work-groups', '/api/monthly', '/api/moph'] // admin เฉพาะ mutation (GET เปิดให้ผู้ที่ login)
+// เส้นที่ staff เจ้าของกลุ่มงาน KPI เขียนได้ด้วย (ยกเว้นจาก ADMIN_MUTATE) — route เช็ก ownership เอง (lib/kpiOwnership.ts)
+// หมายเหตุ: /api/monthly (root, ไม่ใช่ /detail หรือ /single) ยัง admin-only ตามเดิม — ยกเว้นเฉพาะ 2 path นี้
+// /detail = manual_scope='unit' (ราย รพ.สต. 7 หน่วย) · /single = manual_scope='single' (ค่าเดียว)
+const STAFF_OWNED_WRITE = ['/api/monthly/detail', '/api/monthly/single']
 
 const underAny = (path: string, prefixes: string[]) =>
   prefixes.some((p) => path === p || path.startsWith(p + '/'))
@@ -33,7 +37,7 @@ export async function middleware(req: NextRequest) {
   // ต้องเป็น admin ถ้า: เส้น admin-only ทุก method · หรือ เป็น mutation บนเส้น admin-mutate
   const needAdmin =
     underAny(pathname, ADMIN_ALL) ||
-    (req.method !== 'GET' && underAny(pathname, ADMIN_MUTATE))
+    (req.method !== 'GET' && underAny(pathname, ADMIN_MUTATE) && !underAny(pathname, STAFF_OWNED_WRITE))
   if (needAdmin && session.role !== 'admin') {
     return NextResponse.json({ ok: false, message: 'ต้องเป็นผู้ดูแลระบบ (admin)' }, { status: 403 })
   }

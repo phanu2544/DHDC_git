@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import FieldChipBuilder from '@/components/FieldChipBuilder'
+import ThaiMonthInput from '@/components/ThaiMonthInput'
 import type { CalcMode, EvalDirection, MophMapping } from '@/lib/types'
 
 /**
@@ -511,8 +512,7 @@ export default function KpiWizard({
             </div>
             {!manual && (
               <Field label="เดือนที่บันทึก">
-                <input type="month" value={month} onChange={(e) => setMonth(e.target.value)}
-                  className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <ThaiMonthInput value={month} onChange={setMonth} />
               </Field>
             )}
             <button onClick={submit} disabled={submitting}

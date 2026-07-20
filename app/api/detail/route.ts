@@ -4,7 +4,9 @@ import { buildMappingFromLegacy, computeMoph } from '@/lib/mophEngine'
 import { evaluateKpiStatus } from '@/lib/kpiStatus'
 import { tambonCodeOf, tambonNameOf, hospcodeNameOf, HOSPCODE_NAMES } from '@/lib/areaRef'
 import { fieldLabelsFor, legendFor } from '@/lib/detailLabels'
-import { isManualEntry } from '@/lib/manualKpi'
+import { isManualEntry, manualScopeOf } from '@/lib/manualKpi'
+import { COOKIE_NAME, verifySession } from '@/lib/auth'
+import { canEditManualKpi } from '@/lib/kpiOwnership'
 import { fetchMOPH, currentMophFiscalYear } from '@/lib/mophBatch'
 import { filterSummaryFields } from '@/lib/mophDetail'
 import type { MophMapping, EvalDirection, KpiEvalStatus } from '@/lib/types'
@@ -36,17 +38,62 @@ export async function GET(req: NextRequest) {
   const viewParam = searchParams.get('view') === 'unit' ? 'unit' : 'area' // มุมมอง: รายตำบล (area) / รายหน่วยบริการ (unit)
   if (!kpiId) return NextResponse.json({ ok: false, message: 'ต้องระบุ kpiId' }, { status: 400 })
 
+  // สิทธิ์แก้ไข (manual KPI เท่านั้น) — reuse กฎเดียวกับ /api/monthly/detail (lib/kpiOwnership.ts)
+  const token = req.cookies.get(COOKIE_NAME)?.value
+  const session = token ? await verifySession(token) : null
+
   const conn = await pool.getConnection()
   try {
+    const now = new Date()
+    const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+
     // ── KPI meta + mapping (ชุดเดียวกับ batch/scorecard) ──────────────────
     const [kpiRows] = await conn.execute(
-      `SELECT id, name, category, owner, unit, target, description, moph_table, manual_entry,
+      `SELECT id, name, category, owner, unit, target, description, moph_table, manual_entry, manual_scope,
               COALESCE(evaluation_direction,'gte') AS direction,
               moph_value_field, moph_target_field, moph_calc_mode, moph_config
        FROM kpi_reports WHERE id = ?`, [kpiId])
     const kpi = (kpiRows as Record<string, unknown>[])[0]
     if (!kpi) return NextResponse.json({ ok: false, message: 'ไม่พบ KPI' }, { status: 404 })
     const manual = isManualEntry(kpi.manual_entry) // KPI กรอกมือ → หน้า drilldown ทำตารางให้แก้ไขได้
+    const manualScope = manualScopeOf(kpi.manual_scope)
+    // canEdit = สิทธิ์เจ้าของ KPI เท่านั้น (ไม่ผูกกับเดือนที่กำลังดู) — เช็กครั้งเดียว reuse ทุก branch
+    // เดือนแก้ได้ไหม (staff เฉพาะเดือนปัจจุบัน) ให้ frontend เช็กเองจาก entryMonth (isEditableMonth ฝั่ง client)
+    // เพราะ entryMonth อาจเปลี่ยนหลังโหลด (auto-jump ไปเดือนปัจจุบัน) โดยไม่ได้ re-fetch — ส่วนการเขียนจริง
+    // ฝั่ง POST /api/monthly/detail และ /single ยัง enforce isEditableMonth เข้มงวดเสมอ ไม่ว่า UI จะโชว์ยังไง
+    const canEdit = manual && session ? await canEditManualKpi(conn, session, kpiId) : false
+
+    // ── manual scope='single' — ค่าเดียว ไม่มี moph_monthly_detail ให้ดู แยก branch อ่านจาก monthly_data ล้วน ──
+    if (manual && manualScope === 'single') {
+      const [monthRows] = await conn.execute(
+        'SELECT DISTINCT month FROM monthly_data WHERE kpi_id = ? ORDER BY month', [kpiId])
+      const singleMonths = (monthRows as { month: string }[]).map((r) => r.month)
+      const singleMonth = monthParam && singleMonths.includes(monthParam) ? monthParam : (singleMonths[singleMonths.length - 1] ?? null)
+
+      const [mdRows] = await conn.execute(
+        'SELECT value, target, source, entered_by, entered_at FROM monthly_data WHERE kpi_id = ? AND month = ?',
+        [kpiId, singleMonth ?? ''])
+      const md = (mdRows as { value: number; target: number; source: string | null; entered_by: string | null; entered_at: string | null }[])[0] ?? null
+
+      const [allMd] = await conn.execute(
+        'SELECT MAX(month) AS lastMonth, MAX(CASE WHEN month=? THEN 1 ELSE 0 END) AS hasCur FROM monthly_data WHERE kpi_id = ?',
+        [thisMonth, kpiId])
+      const mdAgg = (allMd as { lastMonth: string | null; hasCur: number }[])[0]
+
+      return NextResponse.json({
+        ok: true, kpiId, month: singleMonth, months: singleMonths, manual, manualScope, canEdit,
+        kpi: { name: kpi.name, category: kpi.category, owner: kpi.owner, unit: kpi.unit,
+               direction: kpi.direction, description: kpi.description, target: Number(kpi.target ?? 0) },
+        savedMonthly: md
+          ? { value: Number(md.value), target: Number(md.target), enteredBy: md.entered_by, enteredAt: md.entered_at }
+          : null,
+        stale: !mdAgg?.hasCur,
+        lastMonth: mdAgg?.lastMonth ?? null,
+        live: false,
+        message: singleMonths.length === 0 ? 'KPI นี้กรอกค่าเอง (ค่าเดียว) — ยังไม่มีข้อมูล (กรอกได้ด้านล่าง)' : undefined,
+      })
+    }
+
     const isLive = monthParam === 'live' && !manual && !!(kpi.moph_table as string)
 
     let mapping: MophMapping
@@ -73,17 +120,15 @@ export async function GET(req: NextRequest) {
     const months = (mRows as { month: string }[]).map((r) => r.month)
     if (months.length === 0 && !isLive) {
       return NextResponse.json({
-        ok: true, kpiId, months: [], manual,
+        ok: true, kpiId, months: [], manual, manualScope, canEdit,
         kpi: { name: kpi.name, category: kpi.category, owner: kpi.owner, unit: kpi.unit,
                direction: kpi.direction, description: kpi.description, target: Number(kpi.target ?? 0) },
         savedMonthly: null, stale: manual, lastMonth: null,
         message: manual
-          ? 'KPI นี้กรอกค่าเอง — ยังไม่มีข้อมูล (admin กรอกรายหน่วยบริการได้ด้านล่าง)'
+          ? 'KPI นี้กรอกค่าเอง — ยังไม่มีข้อมูล (กรอกรายหน่วยบริการได้ด้านล่าง)'
           : 'ยังไม่มีข้อมูล detail (ระบบเริ่มเก็บอัตโนมัติ มิ.ย. 2569)',
       })
     }
-    const now = new Date()
-    const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
     const month = isLive ? thisMonth : (monthParam && months.includes(monthParam) ? monthParam : months[months.length - 1])
 
     // ── target ของเดือนนั้นจาก monthly_data (เกณฑ์เดียวกับ Scorecard) + audit ──────
@@ -205,7 +250,7 @@ export async function GET(req: NextRequest) {
       savedMonthly: md
         ? { value: Number(md.value), target: Number(md.target), enteredBy: md.entered_by, enteredAt: md.entered_at }
         : null,
-      manual, view: grpView,
+      manual, manualScope, canEdit, view: grpView,
       stale: manual && !mdAgg?.hasCur, // manual + ยังไม่กรอกเดือนปัจจุบัน
       lastMonth: mdAgg?.lastMonth ?? null,
       live: isLive,

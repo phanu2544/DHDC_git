@@ -6,6 +6,7 @@ import FieldChipBuilder, { isBlockedFieldType } from '@/components/FieldChipBuil
 import KpiWizard from '@/components/KpiWizard'
 import WorkGroupManager from '@/components/WorkGroupManager'
 import WorkGroupPicker from '@/components/WorkGroupPicker'
+import ThaiMonthInput from '@/components/ThaiMonthInput'
 import { useAuth } from '@/lib/useAuth'
 import { formatThaiMonth } from '@/lib/formatMonth'
 import type { User, UserTitle, KPIReport, KPIStatus, KPICategory, MophMapping, CalcMode, EvalDirection } from '@/lib/types'
@@ -133,7 +134,7 @@ const PROVINCES = [
 ]
 
 function emptyForm(): Omit<KPIReport, 'id'> {
-  return { name: '', category: '', mophUrl: '', mophTable: '', mophValueField: '', mophTargetField: 'target', mophCalcMode: 'percent', direction: 'gte', manualEntry: false, workGroups: [], owner: '', deadline: '', status: 'in_progress', target: 0, unit: '%', description: '' }
+  return { name: '', category: '', mophUrl: '', mophTable: '', mophValueField: '', mophTargetField: 'target', mophCalcMode: 'percent', direction: 'gte', manualEntry: false, manualScope: 'unit', dataSource: 'HDC', workGroups: [], owner: '', deadline: '', status: 'in_progress', target: 0, unit: '%', description: '' }
 }
 
 interface MophPreview {
@@ -288,6 +289,8 @@ export default function AdminPage() {
       mophCalcMode: kpi.mophCalcMode ?? 'percent',
       direction: kpi.direction ?? 'gte',
       manualEntry: kpi.manualEntry ?? false,
+      manualScope: kpi.manualScope ?? 'unit',
+      dataSource: kpi.dataSource ?? 'HDC',
       workGroups: kpi.workGroups ?? [],
       owner: kpi.owner, deadline: kpi.deadline, status: kpi.status,
       target: kpi.target, unit: kpi.unit, description: kpi.description ?? '',
@@ -726,7 +729,7 @@ export default function AdminPage() {
                       <tr>
                         <th className="text-left px-4 py-3 font-medium text-gray-600">ชื่อ KPI</th>
                         <th className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell">ผู้รับผิดชอบ</th>
-                        <th className="text-center px-4 py-3 font-medium text-gray-600">MOPH Table</th>
+                        <th className="text-center px-4 py-3 font-medium text-gray-600">MOPH Table / แหล่งข้อมูล</th>
                         <th className="text-left px-4 py-3 font-medium text-gray-600">สถานะ</th>
                         <th className="px-4 py-3 text-right font-medium text-gray-600">การดำเนินการ</th>
                       </tr>
@@ -750,6 +753,11 @@ export default function AdminPage() {
                             {kpi.mophTable
                               ? <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs font-mono">{kpi.mophTable}</span>
                               : <span className="text-gray-300 text-xs">ไม่ได้ตั้ง</span>}
+                            <div className="mt-1">
+                              <span className="bg-purple-50 text-purple-700 border border-purple-200 px-1.5 py-0.5 rounded text-[10px] font-medium" title="แหล่งที่มาข้อมูล">
+                                📊 {kpi.dataSource ?? 'HDC'}
+                              </span>
+                            </div>
                           </td>
                           <td className="px-4 py-3">
                             <select value={kpi.status} onChange={(e) => changeStatus(kpi, e.target.value as KPIStatus)}
@@ -1151,8 +1159,7 @@ export default function AdminPage() {
                         </div>
                         <div>
                           <label className="text-xs font-medium text-gray-600 mb-1 block">เดือนที่บันทึก</label>
-                          <input type="month" value={mophMonth} onChange={(e) => setMophMonth(e.target.value)}
-                            className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                          <ThaiMonthInput value={mophMonth} onChange={setMophMonth} />
                         </div>
                         <button onClick={mophSave} disabled={mophLoading}
                           className="bg-green-700 hover:bg-green-600 disabled:bg-green-400 text-white text-sm px-5 py-2 rounded-lg font-medium">
@@ -1563,6 +1570,14 @@ export default function AdminPage() {
                 <WorkGroupPicker value={form.workGroups ?? []} onChange={(g) => setForm({ ...form, workGroups: g })} />
               </Field>
 
+              <Field label="แหล่งข้อมูล">
+                <input value={form.dataSource ?? 'HDC'} onChange={(e) => setForm({ ...form, dataSource: e.target.value })}
+                  list="data-source-suggestions" placeholder="HDC"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <datalist id="data-source-suggestions"><option value="HDC" /></datalist>
+                <p className="mt-1 text-xs text-gray-400">ที่มาของข้อมูลตัวชี้วัด (ตอนนี้ทุกตัวมาจาก HDC) — อนาคตถ้ามาจากแหล่งอื่นแก้ตรงนี้ได้</p>
+              </Field>
+
               <div className="border-t pt-4">
                 <label className="flex items-start gap-2 mb-3 cursor-pointer">
                   <input type="checkbox" checked={form.manualEntry ?? false}
@@ -1573,6 +1588,17 @@ export default function AdminPage() {
                     <span className="block text-xs text-gray-500">ติ๊กเมื่อ HDC ไม่เปิด API ให้ดึง (เช่น fully immunized) — ระบบจะไม่ดึง/ทับค่าอัตโนมัติ ผู้ดูแลกรอกในหน้า KPI เอง</span>
                   </span>
                 </label>
+                {form.manualEntry && (
+                  <div className="mb-4 pl-6">
+                    <label className="block text-xs text-gray-600 mb-1">รูปแบบการกรอก</label>
+                    <select value={form.manualScope ?? 'unit'}
+                      onChange={(e) => setForm({ ...form, manualScope: e.target.value === 'single' ? 'single' : 'unit' })}
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      <option value="unit">ราย รพ.สต. 7 หน่วย (B/A ต่อหน่วย)</option>
+                      <option value="single">ค่าเดียว (เป้าหมาย+ผลงาน รวม — เช่น เฉพาะโรงพยาบาลดงเจริญ ไม่มีข้อมูลราย รพ.สต.)</option>
+                    </select>
+                  </div>
+                )}
                 <p className="text-xs font-semibold text-blue-700 mb-1">🌐 MOPH API Config</p>
                 <p className="text-xs text-gray-400 mb-3">ℹ️ ถ้า KPI นี้เคยตั้ง Mapping ไว้แล้ว (แท็บ 🌐 ดึงข้อมูล MOPH) ระบบจะใช้ Mapping นั้นเป็นหลัก — ช่อง Value/Target Field ด้านล่างจะไม่มีผลจนกว่าจะล้าง Mapping</p>
                 <div className="grid grid-cols-2 gap-3">

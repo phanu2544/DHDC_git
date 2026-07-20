@@ -27,6 +27,8 @@ export interface KPIReport {
   mophConfig?: MophMapping // Phase 2: JSON mapping เก็บใน moph_config column
   direction?: EvalDirection // Phase 4: ทิศทางประเมิน (default 'gte') — column evaluation_direction
   manualEntry?: boolean     // true = กรอกค่าเอง (ไม่ดึง MOPH อัตโนมัติ) — column manual_entry
+  manualScope?: 'unit' | 'single' // เฉพาะเมื่อ manualEntry=true: 'unit'=ราย รพ.สต. 7 หน่วย (default) · 'single'=ค่าเดียว — column manual_scope
+  dataSource?: string       // แหล่งที่มาข้อมูล (provenance) เช่น 'HDC' — column data_source · ต่างจาก manualEntry (กลไกดึง)
   workGroups?: string[]     // กลุ่มงานที่ผูกไว้ (many-to-many ผ่าน kpi_work_groups) — docs/kpi-work-groups-plan.md
   owner: string
   deadline: string

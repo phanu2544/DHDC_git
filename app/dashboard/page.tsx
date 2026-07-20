@@ -85,6 +85,14 @@ export default function DashboardPage() {
       )
   }, [scorecard.rows, onlyAttention, onlyMyGroup, user])
 
+  // H3: KPI กรอกมือของกลุ่มงานตัวเองที่ยังไม่ได้กรอกเดือนนี้ (ไม่ผูกกับ toggle ด้านบน — เตือนเสมอ)
+  const myPendingManual = useMemo(
+    () => scorecard.rows.filter(
+      (r) => user?.department && r.kpi.manualEntry && r.kpi.workGroups?.includes(user.department) && r.value === null,
+    ),
+    [scorecard.rows, user],
+  )
+
   if (!user) return null
 
   const completed = kpis.filter((k) => k.status === 'completed').length
@@ -174,6 +182,20 @@ export default function DashboardPage() {
                   </button>
                 </div>
               </div>
+
+              {myPendingManual.length > 0 && (
+                <div className="mb-4 px-4 py-3 rounded-lg bg-blue-50 border border-blue-200 text-blue-800 text-sm">
+                  <p className="mb-2">✍️ มี <b>{myPendingManual.length}</b> ตัวชี้วัดกลุ่ม &quot;{user.department}&quot; ที่ยังไม่ได้กรอกผลงานเดือนนี้</p>
+                  <div className="flex flex-wrap gap-2">
+                    {myPendingManual.map((r) => (
+                      <Link key={r.kpi.id} href={detailViewHref(r.kpi)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white border border-blue-300 hover:bg-blue-100 text-xs font-medium text-blue-800">
+                        {r.kpi.name} →
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {scorecard.summary.needs_review > 0 && (
                 <Link href="/admin/targets"
