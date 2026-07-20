@@ -91,7 +91,7 @@
 - [x] **สร้าง 4 account จริงให้ owner + คำนำหน้าชื่อ (title)** **(เสร็จ 19 ก.ค.)** — นุชสรา/สุพัตรา/อัมพวัน/ดลยา เป็น staff กลุ่มปฐมภูมิ + เพิ่ม `users.title` (นาย/นาง/นางสาว) · รายละเอียด: `kpi-work-groups-plan.md` §8.0
 - [ ] ⚠️ **go-live ต้องรู้:** `/api/init` ตอนนี้สร้างเพิ่มอีก 2 ตาราง (`work_groups`, `kpi_work_groups`) รวมของเดิม (`cron_log`, `data_change_log`) = **4 ตารางใหม่** + FK บน `users.department` จะไม่ติดอัตโนมัติจนกว่าจะ remap ค่า department บน production เอง (ดู `kpi-work-groups-plan.md` §16)
 
-## H. 📝 Key-in ผลงานโดย staff เจ้าของ KPI (กำลังทำ — เริ่ม 19 ก.ค.)
+## H. 📝 Key-in ผลงานโดย staff เจ้าของ KPI (✅ เสร็จหมดทุก Phase — 19-20 ก.ค.)
 > owner ขอโหมด key-in ก่อน go-live (19 ก.ค.) — ให้ staff กรอก "ผลงาน" ของ KPI กลุ่มตัวเองได้ (ตอนนี้ manual entry เปิดแค่ admin) · ต่อยอด work groups (G) ที่เพิ่งเสร็จ · รายละเอียด: [`kpi-keyin-plan.md`](kpi-keyin-plan.md)
 - [x] เคาะความละเอียด — **owner เลือกราย รพ.สต. 7 หน่วย** (เหมือน manual เดิม) = ใช้ write path เดิม ไม่ต้องสร้างใหม่ (19 ก.ค.)
 - [x] **Phase H1** ปลดล็อก authorization ฝั่ง server — เสร็จ 19 ก.ค. (`lib/kpiOwnership.ts` ใหม่ + `middleware.ts` + `/api/monthly/detail`) · verify ผ่าน browser จริง: staff เจ้าของกลุ่ม 200 / staff กลุ่มอื่น 403 / admin regression ผ่าน · รายละเอียด: `kpi-keyin-plan.md` §Log Phase H1
@@ -100,13 +100,15 @@
 - [x] **Phase I** โหมด "ค่าเดียว" (ไม่แยกราย รพ.สต.) — owner ขอเพิ่ม 19 ก.ค. · schema เพิ่ม `kpi_reports.manual_scope` ('unit' default / 'single') + endpoint ใหม่ `POST /api/monthly/single` + branch อ่านใน `/api/detail` + ฟอร์มโหมดที่ 3 ใน `/kpi/[id]` + dropdown เลือกโหมดใน `/admin` · ทดสอบ init บน DB เปล่าผ่าน + verify ผ่าน UI จริงครบ (สร้าง KPI ทดสอบผ่าน wizard → ตั้ง scope=single ผ่านฟอร์มแก้ไข → นุชสรากรอก 108/120=90% ผ่านหน้าเว็บสำเร็จ → สมชาย read-only 403 → admin regression → ลบ KPI ทดสอบ cascade สะอาด) · รายละเอียด: `kpi-keyin-plan.md` §Log Phase I
 - [x] **Phase J** ล็อก staff ให้แก้ได้เฉพาะเดือนปัจจุบัน (admin ยกเว้น) — owner ขอ 20 ก.ค. · `lib/kpiOwnership.ts::isEditableMonth()` + บังคับจริงใน `/api/monthly/detail` + `/single` (403 ถ้า staff แก้ย้อนหลัง) + picker ล็อก min=max=เดือนนี้เฉพาะ staff + auto-jump ไปเดือนปัจจุบันถ้ายังไม่มีข้อมูล · verify ผ่าน UI จริงครบทั้ง unit/single mode + admin regression · รายละเอียด: `kpi-keyin-plan.md` §Log Phase J
 - [x] **เดือนไทย พ.ศ.** — owner ขอ 20 ก.ค. · `components/ThaiMonthInput.tsx` ใหม่ (dropdown เดือนไทย + ปี พ.ศ.) แทน `<input type="month">` 3 จุด (`/kpi/[id]` กรอก manual, `/admin` แท็บ MOPH, `KpiWizard`) · ยังส่ง `YYYY-MM` เหมือนเดิม + คง min/max ล็อกเดือน staff · ช่อง "กำหนดเสร็จ" (type=date) ปล่อยไว้ก่อน (owner ตัดสิน) · verify ผ่าน browser จริงที่ `/kpi/[id]`
-- [x] **คอลัมน์แหล่งข้อมูล (data_source)** — owner ขอ 20 ก.ค. · schema เพิ่ม `kpi_reports.data_source VARCHAR(50) NOT NULL DEFAULT 'HDC'` (ระบุ provenance ต่างจาก manual_entry/monthly_data.source) · KPI เดิม 39 → 'HDC' · wire types + `/api/kpis` GET/POST + `[id]` GET/PUT + ฟอร์ม `/admin` (ช่องแก้ไข + datalist 'HDC') + badge "📊 <source>" ในตาราง · ทดสอบ init บน DB เปล่าผ่าน + verify ผ่าน browser (แก้เป็น "API สปสช." → persist ถูก charset ไทยไม่เพี้ยน → badge อัปเดต → restore กลับ HDC · POST ใหม่ default HDC · 39 ตัวคงเดิม) · ปิดช่องว่างที่ `kpi-work-groups-plan.md` เคยเขียนเผื่อไว้ (YAGNI เดิม)
+- [x] **คอลัมน์แหล่งข้อมูล (data_source)** — owner ขอ 20 ก.ค. · schema เพิ่ม `kpi_reports.data_source VARCHAR(50) NOT NULL DEFAULT 'HDC'` (ระบุ provenance ต่างจาก manual_entry/monthly_data.source) · KPI เดิม 39 → 'HDC' · wire types + `/api/kpis` GET/POST + `[id]` GET/PUT + ฟอร์ม `/admin` (ช่องแก้ไข + datalist 'HDC') + badge "📊 <source>" ในตาราง · ทดสอบ init บน DB เปล่าผ่าน · **owner ตัดสิน 20 ก.ค.: คงทุกตัวเป็น HDC หมด** (ทั้ง auto + manual — ที่มาตัวเลขคือ HDC เหมือนกัน) · ปิดช่องว่างที่ `kpi-work-groups-plan.md` เคยเขียนเผื่อไว้ (YAGNI เดิม)
+- [x] **UI โหมดค่าเดียว + ป้าย "กลุ่มเป้าหมาย"** — owner ขอ 20 ก.ค. (commit `b79049e`) · โหมด `single` เปลี่ยนจากฟอร์ม 2 ช่อง → กราฟแท่ง + ตารางแถวเดียว "โรงพยาบาลดงเจริญ" (เหมือนโหมดรายหน่วยบริการ) · เปลี่ยนป้าย "ฐาน (B)" → "กลุ่มเป้าหมาย" **ทั้ง 2 โหมด** · verify ผ่าน browser จริงกับ KPI "test1" ของ owner (แก้ตัวเลข→%+กราฟ+สถานะ อัปเดตสด→ยกเลิกคืนค่าเดิม) · รายละเอียด: `kpi-keyin-plan.md` §Log งานเสริม 20 ก.ค.
 
 ---
 
 ## ลำดับที่แนะนำ (ปัจจุบัน 20 ก.ค.)
-**งานหลักตอนนี้ = H (key-in โดย staff)** — owner ขอทำก่อน go-live · **H1+H2+H3+I+J เสร็จหมดแล้ว** 🎉
-· D (production go-live) รอทีหลัง — รอ owner sign-off (โลหิตจาง/NCD BP) + ตั้ง env production + `/api/init` (ตอนนี้ต้องสร้าง 4 ตารางใหม่ + remap `users.department`) + replay config + PM2/MariaDB auto-start (user รันเอง)
+**H (key-in โดย staff) เสร็จหมดแล้วทุก Phase** 🎉 (H1-J + เดือนไทย พ.ศ. + data_source + UI โหมดค่าเดียว, commit ถึง `b79049e` push แล้ว) — ดู `kpi-keyin-plan.md`
+**งานหลักที่เหลือ = D (production go-live)** รอ owner sign-off (โลหิตจาง/NCD BP) + ตั้ง env production + `/api/init` (ตอนนี้ต้องสร้าง **4 ตารางใหม่ + 2 คอลัมน์ใหม่ `manual_scope`/`data_source`** + remap `users.department`) + replay config + PM2/MariaDB auto-start (user รันเอง)
+· **redesign หน้าตาเว็บยังไม่แตะ** (จุดเริ่มต้นเดิม "หน้าเว็บเหมือนหลังบ้าน" — งานที่ผ่านมาเป็นแค่จัดโครงข้อมูล)
 · A = ติดตาม owner (target มะเร็งเต้านม 85% ยืนยัน, ติ๊ก ก.1/ก.2) · F(admin polish) = เลือกทำ ไม่ด่วน · trend รอ cron ≥2 เดือน
 · **B/C เสร็จหมดแล้ว** · E ครอบคลุมด้วย KpiWizard แล้ว (เหลือ drilldown builder ขั้นสูง) · **G (หมวดหมู่+กลุ่มงาน) เสร็จหมดทุก Phase (A-F)** 🎉
 
