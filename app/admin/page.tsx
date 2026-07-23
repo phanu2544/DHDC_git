@@ -5,7 +5,9 @@ import Navbar from '@/components/Navbar'
 import FieldChipBuilder, { isBlockedFieldType } from '@/components/FieldChipBuilder'
 import KpiWizard from '@/components/KpiWizard'
 import WorkGroupManager from '@/components/WorkGroupManager'
+import KpiSetManager from '@/components/KpiSetManager'
 import WorkGroupPicker from '@/components/WorkGroupPicker'
+import KpiSetPicker from '@/components/KpiSetPicker'
 import ThaiMonthInput from '@/components/ThaiMonthInput'
 import { useAuth } from '@/lib/useAuth'
 import { formatThaiMonth } from '@/lib/formatMonth'
@@ -133,8 +135,12 @@ const PROVINCES = [
   { code: '96', name: 'นราธิวาส' },
 ]
 
-function emptyForm(): Omit<KPIReport, 'id'> {
-  return { name: '', category: '', mophUrl: '', mophTable: '', mophValueField: '', mophTargetField: 'target', mophCalcMode: 'percent', direction: 'gte', manualEntry: false, manualScope: 'unit', dataSource: 'HDC', workGroups: [], owner: '', deadline: '', status: 'in_progress', target: 0, unit: '%', description: '' }
+// ฟอร์มเก็บ sets เป็น write-shape { setId, setCode } (ต่างจาก KPIReport.sets ที่เป็น read-shape KpiSetTag[])
+// เพราะ picker/PUT ใช้ setId+setCode ส่วนตาราง/GET ใช้ id/name/slug
+type KpiFormState = Omit<KPIReport, 'id' | 'sets'> & { sets: { setId: number; setCode: string }[] }
+
+function emptyForm(): KpiFormState {
+  return { name: '', category: '', mophUrl: '', mophTable: '', mophValueField: '', mophTargetField: 'target', mophCalcMode: 'percent', direction: 'gte', manualEntry: false, manualScope: 'unit', dataSource: 'HDC', workGroups: [], sets: [], owner: '', deadline: '', status: 'in_progress', target: 0, unit: '%', description: '' }
 }
 
 interface MophPreview {
@@ -292,6 +298,7 @@ export default function AdminPage() {
       manualScope: kpi.manualScope ?? 'unit',
       dataSource: kpi.dataSource ?? 'HDC',
       workGroups: kpi.workGroups ?? [],
+      sets: (kpi.sets ?? []).map((s) => ({ setId: s.id, setCode: s.setCode ?? '' })),
       owner: kpi.owner, deadline: kpi.deadline, status: kpi.status,
       target: kpi.target, unit: kpi.unit, description: kpi.description ?? '',
     })
@@ -718,6 +725,8 @@ export default function AdminPage() {
 
             <WorkGroupManager onMessage={showMsg} />
 
+            <KpiSetManager onMessage={showMsg} />
+
             <div className="flex justify-end mb-4">
               <button onClick={() => setShowWizard(true)} className="bg-emerald-700 hover:bg-emerald-600 text-white text-sm px-4 py-2 rounded-lg font-medium">🧭 เพิ่มตัวชี้วัด (ครบ flow)</button>
             </div>
@@ -744,6 +753,15 @@ export default function AdminPage() {
                               <div className="flex flex-wrap gap-1 mt-1">
                                 {kpi.workGroups.map((g) => (
                                   <span key={g} className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded text-[10px] font-medium">{g}</span>
+                                ))}
+                              </div>
+                            )}
+                            {kpi.sets && kpi.sets.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {kpi.sets.map((s) => (
+                                  <span key={s.id} className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded text-[10px] font-medium">
+                                    🎯 {s.name}{s.setCode ? ` (${s.setCode})` : ''}
+                                  </span>
                                 ))}
                               </div>
                             )}
@@ -1568,6 +1586,10 @@ export default function AdminPage() {
 
               <Field label="กลุ่มงาน (เลือกได้หลายกลุ่ม)">
                 <WorkGroupPicker value={form.workGroups ?? []} onChange={(g) => setForm({ ...form, workGroups: g })} />
+              </Field>
+
+              <Field label="ชุด/ประเภทตัวชี้วัด (เลือกได้หลายชุด)">
+                <KpiSetPicker value={form.sets} onChange={(s) => setForm({ ...form, sets: s })} />
               </Field>
 
               <Field label="แหล่งข้อมูล">

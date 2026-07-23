@@ -15,7 +15,7 @@ const PUBLIC_API = new Set(['/api/auth/login', '/api/auth/logout', '/api/dbinfo'
 
 // role-guard: เส้นที่ต้องเป็น admin
 const ADMIN_ALL = ['/api/users']                                       // admin ทุก method (จัดการผู้ใช้ — รวมการดูรายชื่อ)
-const ADMIN_MUTATE = ['/api/kpis', '/api/categories', '/api/work-groups', '/api/monthly', '/api/moph'] // admin เฉพาะ mutation (GET เปิดให้ผู้ที่ login)
+const ADMIN_MUTATE = ['/api/kpis', '/api/categories', '/api/work-groups', '/api/kpi-sets', '/api/monthly', '/api/moph'] // admin เฉพาะ mutation (GET เปิดให้ผู้ที่ login)
 // เส้นที่ staff เจ้าของกลุ่มงาน KPI เขียนได้ด้วย (ยกเว้นจาก ADMIN_MUTATE) — route เช็ก ownership เอง (lib/kpiOwnership.ts)
 // หมายเหตุ: /api/monthly (root, ไม่ใช่ /detail หรือ /single) ยัง admin-only ตามเดิม — ยกเว้นเฉพาะ 2 path นี้
 // /detail = manual_scope='unit' (ราย รพ.สต. 7 หน่วย) · /single = manual_scope='single' (ค่าเดียว)

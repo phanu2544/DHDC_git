@@ -14,6 +14,14 @@ export interface User {
   department: string
 }
 
+/** แท็กชุด/ประเภทที่ผูกกับ KPI (จาก kpi_set_items JOIN kpi_sets) — set_code = เลขข้อในชุดนั้น */
+export interface KpiSetTag {
+  id: number          // kpi_sets.id
+  name: string        // ชื่อชุด
+  slug: string        // สำหรับลิงก์ /sets/<slug>
+  setCode: string | null  // เลขข้อในชุด เช่น '1.5' (nullable)
+}
+
 export interface KPIReport {
   id: string
   name: string
@@ -30,6 +38,7 @@ export interface KPIReport {
   manualScope?: 'unit' | 'single' // เฉพาะเมื่อ manualEntry=true: 'unit'=ราย รพ.สต. 7 หน่วย (default) · 'single'=ค่าเดียว — column manual_scope
   dataSource?: string       // แหล่งที่มาข้อมูล (provenance) เช่น 'HDC' — column data_source · ต่างจาก manualEntry (กลไกดึง)
   workGroups?: string[]     // กลุ่มงานที่ผูกไว้ (many-to-many ผ่าน kpi_work_groups) — docs/kpi-work-groups-plan.md
+  sets?: KpiSetTag[]        // ชุด/ประเภทที่ผูกไว้ (many-to-many ผ่าน kpi_set_items) — docs/kpi-sets-plan.md K3
   owner: string
   deadline: string
   status: KPIStatus

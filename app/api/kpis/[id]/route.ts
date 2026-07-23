@@ -82,7 +82,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   const body = await req.json()
   const { name, category, mophUrl, mophTable, mophValueField, mophTargetField, mophCalcMode,
-          direction, owner, deadline, status, target, unit, description, manualEntry, manualScope, dataSource, workGroups } = body
+          direction, owner, deadline, status, target, unit, description, manualEntry, manualScope, dataSource, workGroups, sets } = body
   const manualVal = manualEntry ? 1 : 0
   const scopeVal = manualScope === 'single' ? 'single' : 'unit'
   const sourceVal = (typeof dataSource === 'string' && dataSource.trim()) ? dataSource.trim() : 'HDC'
@@ -103,6 +103,8 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
   // workGroups: ส่งมา = แทนที่ทั้งชุด (ไม่ส่งมา = คงเดิม เหมือน direction)
   const hasWorkGroups = Array.isArray(workGroups)
+  // sets: ส่งมา = แทนที่ทั้งชุด · แต่ละตัว { setId:number, setCode?:string } (docs/kpi-sets-plan.md K3)
+  const hasSets = Array.isArray(sets)
 
   const conn = await pool.getConnection()
   try {
@@ -149,8 +151,29 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       }
     }
 
+    // sync ชุด/ประเภท (kpi_set_items) — defensive แยก try เหมือน workGroups
+    // แต่ละตัว { setId, setCode? } · กรอง setId ที่ไม่ใช่ number ทิ้ง · set_code ว่าง → NULL
+    let setsWarning: string | null = null
+    if (hasSets) {
+      try {
+        await conn.execute('DELETE FROM kpi_set_items WHERE kpi_id=?', [params.id])
+        const items = (sets as { setId: number; setCode?: string }[])
+          .filter((s) => s && Number.isInteger(Number(s.setId)))
+          // กัน setId ซ้ำ (PK = kpi_id+set_id) — เก็บตัวสุดท้าย
+          .reduce((acc, s) => { acc.set(Number(s.setId), s.setCode?.toString().trim() || null); return acc }, new Map<number, string | null>())
+        if (items.size > 0) {
+          const entries = [...items.entries()]
+          const placeholders = entries.map(() => '(?,?,?)').join(',')
+          const values = entries.flatMap(([setId, code]) => [params.id, setId, code])
+          await conn.execute(`INSERT INTO kpi_set_items (kpi_id, set_id, set_code) VALUES ${placeholders}`, values)
+        }
+      } catch (sErr) {
+        setsWarning = `บันทึก KPI สำเร็จ แต่บันทึกชุดตัวชี้วัดไม่สำเร็จ: ${String(sErr)}`
+      }
+    }
+
     await conn.commit()
-    return NextResponse.json({ message: workGroupsWarning ?? 'แก้ไข KPI สำเร็จ' })
+    return NextResponse.json({ message: workGroupsWarning ?? setsWarning ?? 'แก้ไข KPI สำเร็จ' })
   } catch (err) {
     await conn.rollback()
     return NextResponse.json({ message: String(err) }, { status: 500 })

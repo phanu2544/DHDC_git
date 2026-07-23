@@ -77,6 +77,7 @@ export async function POST(req: NextRequest) {
     const DEFAULT_WORK_GROUPS = [
       'องค์กรแพทย์', 'แพทย์แผนไทย', 'เภสัชกรรม', 'เทคนิคการแพทย์', 'รังสีการแพทย์',
       'OPD', 'IPD', 'ER', 'ปฐมภูมิ', 'ประกันสุขภาพ', 'ทันตกรรม', 'บริหารทั่วไป', 'สุขภาพดิจิทัล',
+      'กายภาพบำบัด', // กลุ่มที่ 14 — เพิ่ม 2026-07-23 (ตัวชี้วัดตรวจราชการ: น.ส.โสรญา น้อยเจริญ) docs/kpi-sets-plan.md §10.5
     ]
     for (let i = 0; i < DEFAULT_WORK_GROUPS.length; i++) {
       await conn.execute(
@@ -172,6 +173,52 @@ export async function POST(req: NextRequest) {
           ON DELETE CASCADE ON UPDATE CASCADE
       ) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
     `)
+
+    // ── kpi_sets + kpi_set_items (แกน "ชุด/ประเภทตัวชี้วัด" — docs/kpi-sets-plan.md K1) ──
+    // แกนที่ 3 (ต่างจากหมวดหมู่ HDC=เรื่องอะไร / กลุ่มงาน=ใครทำ) — ชุด = "ส่งใคร/พันธะไหน"
+    // FK อ้าง id (ไม่ใช่ name เหมือน kpi_work_groups) เพราะไม่มี auth ผูก + ต้องมี slug สำหรับ URL อยู่แล้ว
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS kpi_sets (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(150) NOT NULL,
+        slug VARCHAR(50) NOT NULL,
+        fiscal_year VARCHAR(10) NULL,
+        description TEXT NULL,
+        sort_order INT DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uk_set_name (name),
+        UNIQUE KEY uk_set_slug (slug)
+      ) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+    `)
+    // junction: 1 KPI ↔ หลายชุด · set_code = เลขข้อในชุดนั้น (ของความสัมพันธ์ ไม่ใช่ของ KPI)
+    // ต้องสร้างหลัง kpi_reports + kpi_sets เพราะ FK ผูกทั้งสอง
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS kpi_set_items (
+        kpi_id VARCHAR(50) NOT NULL,
+        set_id INT NOT NULL,
+        set_code VARCHAR(20) NULL,
+        sort_order INT DEFAULT 0,
+        PRIMARY KEY (kpi_id, set_id),
+        KEY idx_ksi_set (set_id),
+        CONSTRAINT fk_ksi_kpi FOREIGN KEY (kpi_id) REFERENCES kpi_reports(id) ON DELETE CASCADE,
+        CONSTRAINT fk_ksi_set FOREIGN KEY (set_id) REFERENCES kpi_sets(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+    `)
+    // seed 5 ชุดเริ่มต้น [name, slug, fiscal_year] — ตรวจราชการ/Ranking ผูกปีงบ, ที่เหลือใช้ยาว (NULL)
+    const DEFAULT_KPI_SETS: [string, string, string | null][] = [
+      ['ตัวชี้วัดตรวจราชการ เขต 3', 'inspection-r3', '2569'],
+      ['ตัวชี้วัดงานคุณภาพ (HA)', 'ha', null],
+      ['ตัวชี้วัดร่วม อบจ.', 'pao', null],
+      ['ตัวชี้วัดจังหวัด (Ranking)', 'ranking', '2569'],
+      ['ตัวชี้วัด Smart Hospital', 'smart-hospital', null],
+    ]
+    for (let i = 0; i < DEFAULT_KPI_SETS.length; i++) {
+      const [name, slug, fy] = DEFAULT_KPI_SETS[i]
+      await conn.execute(
+        'INSERT IGNORE INTO kpi_sets (name, slug, fiscal_year, sort_order) VALUES (?, ?, ?, ?)',
+        [name, slug, fy, i + 1],
+      )
+    }
 
     // ── monthly_data ────────────────────────────────────────────────────────
     await conn.execute(`

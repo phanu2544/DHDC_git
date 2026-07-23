@@ -23,6 +23,29 @@ async function attachWorkGroups(conn: PoolConnection, rows: Record<string, unkno
   }
 }
 
+/**
+ * เติม sets: KpiSetTag[] ให้แต่ละแถว — 1 query รวด (JOIN kpi_set_items × kpi_sets) กัน N+1
+ * defensive เหมือน attachWorkGroups: ถ้าตาราง kpi_set_items/kpi_sets ยังไม่มี (production ยังไม่รัน
+ * /api/init รอบ K1) → fallback sets: [] แทน throw — ไม่งั้น GET /api/kpis ทั้งเส้นพัง (บทเรียน work-groups §14)
+ */
+async function attachSets(conn: PoolConnection, rows: Record<string, unknown>[]) {
+  try {
+    const [siRows] = await conn.execute(
+      `SELECT i.kpi_id, i.set_code, s.id, s.name, s.slug
+         FROM kpi_set_items i JOIN kpi_sets s ON s.id = i.set_id
+         ORDER BY s.sort_order ASC, s.id ASC`,
+    )
+    const map = new Map<string, { id: number; name: string; slug: string; setCode: string | null }[]>()
+    for (const r of siRows as { kpi_id: string; set_code: string | null; id: number; name: string; slug: string }[]) {
+      if (!map.has(r.kpi_id)) map.set(r.kpi_id, [])
+      map.get(r.kpi_id)!.push({ id: r.id, name: r.name, slug: r.slug, setCode: r.set_code })
+    }
+    return rows.map((row) => ({ ...row, sets: map.get(row.id as string) ?? [] }))
+  } catch {
+    return rows.map((row) => ({ ...row, sets: [] }))
+  }
+}
+
 export async function GET() {
   const conn = await pool.getConnection()
   try {
@@ -44,7 +67,7 @@ export async function GET() {
                 status, target, unit, description
          FROM kpi_reports ORDER BY category, name`,
       )
-      return NextResponse.json(await attachWorkGroups(conn, rows as Record<string, unknown>[]))
+      return NextResponse.json(await attachSets(conn, await attachWorkGroups(conn, rows as Record<string, unknown>[])))
     } catch {
       // column ยังไม่มี → query เดิม (direction = undefined ฝั่ง client จะ default 'gte')
       const [rows] = await conn.execute(
@@ -59,7 +82,7 @@ export async function GET() {
                 status, target, unit, description
          FROM kpi_reports ORDER BY category, name`,
       )
-      return NextResponse.json(await attachWorkGroups(conn, rows as Record<string, unknown>[]))
+      return NextResponse.json(await attachSets(conn, await attachWorkGroups(conn, rows as Record<string, unknown>[])))
     }
   } catch (err) {
     return NextResponse.json({ message: String(err) }, { status: 500 })

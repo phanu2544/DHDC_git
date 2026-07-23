@@ -103,11 +103,43 @@
 - [x] **คอลัมน์แหล่งข้อมูล (data_source)** — owner ขอ 20 ก.ค. · schema เพิ่ม `kpi_reports.data_source VARCHAR(50) NOT NULL DEFAULT 'HDC'` (ระบุ provenance ต่างจาก manual_entry/monthly_data.source) · KPI เดิม 39 → 'HDC' · wire types + `/api/kpis` GET/POST + `[id]` GET/PUT + ฟอร์ม `/admin` (ช่องแก้ไข + datalist 'HDC') + badge "📊 <source>" ในตาราง · ทดสอบ init บน DB เปล่าผ่าน · **owner ตัดสิน 20 ก.ค.: คงทุกตัวเป็น HDC หมด** (ทั้ง auto + manual — ที่มาตัวเลขคือ HDC เหมือนกัน) · ปิดช่องว่างที่ `kpi-work-groups-plan.md` เคยเขียนเผื่อไว้ (YAGNI เดิม)
 - [x] **UI โหมดค่าเดียว + ป้าย "กลุ่มเป้าหมาย"** — owner ขอ 20 ก.ค. (commit `b79049e`) · โหมด `single` เปลี่ยนจากฟอร์ม 2 ช่อง → กราฟแท่ง + ตารางแถวเดียว "โรงพยาบาลดงเจริญ" (เหมือนโหมดรายหน่วยบริการ) · เปลี่ยนป้าย "ฐาน (B)" → "กลุ่มเป้าหมาย" **ทั้ง 2 โหมด** · verify ผ่าน browser จริงกับ KPI "test1" ของ owner (แก้ตัวเลข→%+กราฟ+สถานะ อัปเดตสด→ยกเลิกคืนค่าเดิม) · รายละเอียด: `kpi-keyin-plan.md` §Log งานเสริม 20 ก.ค.
 
+## K. 🏷️ ชุด/ประเภทตัวชี้วัด (แกนที่ 3 — 🔨 K1-K3 เสร็จ 23 ก.ค. · เหลือ K4-K6)
+> owner ขอจัดประเภทตัวชี้วัด: ตรวจราชการเขต 3 / งานคุณภาพ (HA) / ร่วม อบจ. / จังหวัด (Ranking) / Smart Hospital — **คนละแกนกับหมวดหมู่ HDC (เรื่องอะไร) และกลุ่มงาน (ใครทำ)** · ชุด = "ส่งใคร/พันธะไหน" · design doc: [`kpi-sets-plan.md`](kpi-sets-plan.md)
+> ✅ owner เคาะแล้ว 21 ก.ค.: 1 KPI อยู่**หลายชุด**ได้ · **เป้าเดียวใช้ทุกชุด** (→ ไม่แตะ engine/เป้าหมายเลย) · หน้าเว็บ = **ฟิลเตอร์ + หน้าสรุปชุด dynamic 1 หน้า** (ไม่แยก 5 หน้าจริง)
+- [~] **owner ส่งข้อมูล 2 ชุดแล้ว:** ตรวจราชการ 47 ตัว (§10) + Ranking 44 ตัว (§15) · §3.2 ปีงบ=แยกคอลัมน์ · §3.3 เลขข้อ=เก็บ (`set_code`) · §3.4 Ranking มีน้ำหนัก+เกณฑ์คะแนน 1-5 · **ยังรอ:** รายชื่อ KPI ชุด HA / อบจ. / Smart Hospital (เดาแทนไม่ได้ — CLAUDE.md ข้อ 5) — แต่**ไม่บล็อก K3** (K3 = กลไก ไม่ใช่ข้อมูล)
+- [x] **K1 เสร็จ 23 ก.ค.** schema `kpi_sets` + `kpi_set_items` + `/api/init` + seed 5 ชุด + กลุ่มงานที่ 14 `กายภาพบำบัด` · ทดสอบ init บน DB เปล่า (200, ครบ, FK ordering ถูก) + FK cascade/reject + idempotent/admin-guard + typecheck ผ่าน · backup `_resync_backup/kpi-sets-phase-k1/` · ยังไม่ commit · **เจอ drift 2:** (1) `กายภาพบำบัด` มีใน DB (id 31) แต่ไม่มีใน seed → แก้แล้ว (2) `test1` KPI ค้าง (kpi-1784536177814, owner=admin) ทำ kpi_reports=40 → รอ owner ตัดสินลบ
+- [x] **K2 เสร็จ 23 ก.ค.** `/api/kpi-sets` (GET/POST) + `[id]` (PUT/DELETE) + `components/KpiSetManager.tsx` mount ใน `/admin` แท็บ KPI + เพิ่ม `/api/kpi-sets` ใน `middleware.ts` ADMIN_MUTATE · **verify ผ่าน browser จริง:** GET 5 ชุด · POST slug ผิด→400 / ซ้ำ→409 / สำเร็จ→200 · PUT แก้+ล้าง fiscalYear เป็น NULL · DELETE มี item ผูก→409 (guard) / ไม่มี→200 · staff GET 200/POST 403 · UI render 5 ชุด+badge ปีงบ+ปุ่มครบ · typecheck ผ่าน · ยังไม่ commit
+- [x] **K3 เสร็จ 23 ก.ค.** `components/KpiSetPicker.tsx` (ติ๊กชุด + ช่องกรอก `set_code` ต่อชุด) ในฟอร์มแก้ไข KPI + `attachSets` ใน GET `/api/kpis` (มี try/catch fallback `sets:[]`) + sync `kpi_set_items` ใน PUT `/api/kpis/[id]` (DELETE+INSERT, try แยก) + badge 🎯 ในตาราง + `lib/kpiSets.ts` (ย้าย `SLUG_RE` ออกจาก route — Next ห้าม route export non-handler) + type `KpiSetTag` + form ใช้ write-shape `{setId,setCode}` · **verify browser จริง:** ผูก 2 ชุด/แก้ set_code/ถอด/ล้าง + itemCount ขยับถูก + badge + picker pre-check/pre-fill set_code · typecheck ผ่าน · ยังไม่ commit
+- [ ] **K4** owner ติ๊กข้อมูลจริง (กอง A = ตรงกับ 39 ตัวเดิม) + สร้าง KPI ใหม่ (กอง B = นอก HDC → ใช้ manual key-in ที่มีแล้ว ไม่ต้องเขียนโค้ด)
+- [ ] **K5** ฟิลเตอร์ "ประเภท" ใน `/dashboard` + `/kpi` (frontend ล้วน เหมือน Phase F)
+- [ ] **K6** หน้า `/sets` (การ์ดรวม ผ่าน x/y) + `/sets/[slug]` dynamic + ลิงก์ Navbar
+- [ ] ⚠️ **กติกากันแกนยุบรวม:** ห้ามสร้าง *หมวดหมู่* ชื่อเดียวกับ *ชุด* (เช่นหมวด "ตัวชี้วัดงานคุณภาพ HA") — จะนับซ้ำ + กลับไปติดข้อจำกัด 1:1
+
+## L. 📋 รองรับตัวชี้วัดแบบรายงาน (ขยายจาก K หลังตรวจไฟล์จริง 21 ก.ค.)
+> owner ส่ง `docs/data_owner/ตัวชี้วัดตรวจราชการ 69 รอบ 1.xlsx` (47 ตัว) → ตรวจแล้ว **ทับกับ 39 ตัวเดิมแค่ 2 ตัว** และเป็น**แบบรายงานทั้งฉบับ** (เป้า 3 ระดับ + ผลงาน + ปัญหา + แนวทาง + แหล่งข้อมูล) · **owner เลือกขอบเขต "ทำเต็มรูปแบบแทนไฟล์ Excel"** · รายละเอียด+หลักฐาน: [`kpi-sets-plan.md`](kpi-sets-plan.md) §10-§11
+> ✅ เคาะแล้ว 21 ก.ค.: ยึด**เป้า รพ.** ตัดสินผ่าน/ไม่ผ่าน · เก็บเป้าเขต/จังหวัดเป็น**ข้อมูลอ้างอิง** (ต่างจริง 8/48 แถว) · **ไม่ทำเป้ารายไตรมาส** (0/48 แถวที่ค่าต่างกัน) · 5 แถวที่ค่าเป้า=ผลงาน owner ยืนยันว่าเป็น**เป้าหมาย**
+- [ ] **L1** `measure_type` (numeric/text) + `report_freq` + `monthly_data.value_text` + สถานะ `narrative` — รองรับผลงานที่เป็นข้อความ (`อยู่ระหว่างดำเนินการ`, `ท้าทาย`, `2 ทีม`, `A`) · KPI เดิม 39 ตัวไม่กระทบ (default numeric)
+- [ ] **L2** ตาราง `kpi_period_notes` + ช่องกรอก ปัญหาอุปสรรค/แนวทางต่อไป/แหล่งที่มา ในหน้า `/kpi/[id]` (สิทธิ์เดียวกับ key-in)
+- [ ] **L3** `target_text` + `target_region`/`target_province` ใน `kpi_set_items` + แสดงเป้าอ้างอิงบนหน้าชุด
+- [ ] **L4** `report_freq='quarterly'` → picker ล็อกเดือนปิดไตรมาส + ป้าย "ไตรมาส 1/2569"
+- [ ] **L5** นำเข้า 47 ตัวจริง (ผ่านหน้าเว็บ/สคริปต์ที่ verify ได้ ห้ามยิง SQL ตรง) · ⚠️ ระวัง `number_format` ปนกัน (0.7259 = 72.59% vs 63.49) จะเพี้ยน 100 เท่า
+- [ ] **L6** Export กลับเป็นฟอร์มตรวจราชการ (เลย์เอาต์เดียวกับไฟล์ต้นฉบับ) — ปิดวงจร แทน Excel ได้เต็มตัว
+- [x] ✅ **owner ตอบแล้ว 21 ก.ค.:** #15 DSPM **ยึดค่าระบบ** (62.42%, ไฟล์ 13.95% ถือว่าไม่อัปเดต) · #15 ใช้ **DSPM ตัวปกติ** · #8 DM/HT → **ผูก KPI เดิมทั้ง 2 ตัวเข้าข้อ 8** (set_code ซ้ำได้ ไม่ต้องแก้ schema · ห้ามสร้างตัวรวมเพราะต้องเดาสูตร) — เหตุผลเต็ม: `kpi-sets-plan.md` §10.6
+- [x] ✅ **map ผู้รับผิดชอบครบแล้ว 21 ก.ค.** (`docs/data_owner/ผู้รับผิดชอบตรวจราชการ-69-กรอก.xlsx`) — **20 คน · 11 กลุ่มงาน · 43/48 ตัวชี้วัด** · ตารางเต็ม: `kpi-sets-plan.md` §10.5 · เจอ **1 คน 2 ชื่อเล่น 2 ราย** (ศุภนิจ = ER+พี่อุ้ม · วัชรวิทย์ = HR+หมอเบนซ์)
+- [x] ✅ **เพิ่มกลุ่มงานที่ 14 = `กายภาพบำบัด`** (น.ส.โสรญา น้อยเจริญ) — เสร็จตอน K1 (ทั้งใน DB + `DEFAULT_WORK_GROUPS` ใน `/api/init`)
+- [ ] 🔴 **ดลยา จันทร์คณา = OPD** (owner ยืนยัน) → ต้อง UPDATE `users.department` ปฐมภูมิ→OPD · ⚠️ **ผลพ่วง:** KPI เดิมที่เธอเป็น owner (1 ตัว, owner text = "ดลยา จันทร์คณา") แท็ก `ปฐมภูมิ` อยู่ → retag เป็น OPD ด้วย ไม่งั้นเธอกรอกงานตัวเองไม่ได้ — ทำตอน import (L5)
+- [ ] **สร้าง account เพิ่ม 17 คน** (มีแล้ว 3 = อัมพวัน/สุพัตรา/ดลยา) — ทำผ่านฟอร์ม `/admin` เหมือนรอบ 4 account แรก · 🔧 "พี่มอส LAB" ในไฟล์พิมพ์ "นาย" ซ้ำในช่องชื่อ ตัดออกตอนสร้าง
+- [x] ✅ **5 ตัวชี้วัดไม่มีเจ้าภาพ** (#16/#19/#24/#25/One Region) — owner ตัดสิน **ยังไม่เพิ่มเข้าระบบตอนนี้** เก็บเป็นงานรอบหน้า
+- [ ] **แสดงกลุ่มงานเพิ่มใน UI** — ตอนนี้เห็นแค่หน้า `/kpi` (badge) + `/admin` · **`/dashboard` scorecard ยังไม่โชว์** (บรรทัดใต้ชื่อมีแค่ หมวดหมู่ • ผู้รับผิดชอบ) และ modal "ดูรายละเอียด" ก็ไม่โชว์ · พอมี 11 กลุ่มงานจริง (จากเดิมปฐมภูมิล้วน) ควรเพิ่ม — งาน frontend ล้วน
+- [ ] ⚠️ **go-live กระทบ:** `/api/init` **ตอนนี้สร้าง 6 ตารางใหม่แล้ว** (เดิม 4 + `kpi_sets` + `kpi_set_items` จาก K1) · **จะเป็น 7** เมื่อทำ L2 (`kpi_period_notes`) + คอลัมน์ `measure_type`/`report_freq`/`value_text` (L1) — อัปเดต §D + runbook
+- [ ] **ลำดับแนะนำ:** ~~K1→K2→K3~~✅ → **L1→L3** (ปลดล็อกค่า/เป้าข้อความ) → **L5** (นำเข้าจริง เห็นของเร็ว) → K5→K6 → L2→L4 → L6
+
 ---
 
-## ลำดับที่แนะนำ (ปัจจุบัน 20 ก.ค.)
+## ลำดับที่แนะนำ (ปัจจุบัน 23 ก.ค.)
 **H (key-in โดย staff) เสร็จหมดแล้วทุก Phase** 🎉 (H1-J + เดือนไทย พ.ศ. + data_source + UI โหมดค่าเดียว, commit ถึง `b79049e` push แล้ว) — ดู `kpi-keyin-plan.md`
-**งานหลักที่เหลือ = D (production go-live)** รอ owner sign-off (โลหิตจาง/NCD BP) + ตั้ง env production + `/api/init` (ตอนนี้ต้องสร้าง **4 ตารางใหม่ + 2 คอลัมน์ใหม่ `manual_scope`/`data_source`** + remap `users.department`) + replay config + PM2/MariaDB auto-start (user รันเอง)
+**กำลังทำ = K (ชุด/ประเภทตัวชี้วัด)** — **K1+K2 เสร็จ 23 ก.ค. (ยังไม่ commit)** · owner ส่งข้อมูล 2 ไฟล์แล้ว (ตรวจราชการ 47 + Ranking 44) · **ถัดไป = K3** (ผูกตัวชี้วัดเข้าชุด) → แล้ว L1/L3/L5 · ดู §K/§L
+**งานหลักที่เหลือ = D (production go-live)** รอ owner sign-off (โลหิตจาง/NCD BP) + ตั้ง env production + `/api/init` (ตอนนี้ต้องสร้าง **6 ตารางใหม่** [cron_log, data_change_log, work_groups, kpi_work_groups, kpi_sets, kpi_set_items] **+ 2 คอลัมน์ `manual_scope`/`data_source`** + remap `users.department` + สร้าง account จริง) + replay config + PM2/MariaDB auto-start (user รันเอง)
 · **redesign หน้าตาเว็บยังไม่แตะ** (จุดเริ่มต้นเดิม "หน้าเว็บเหมือนหลังบ้าน" — งานที่ผ่านมาเป็นแค่จัดโครงข้อมูล)
 · A = ติดตาม owner (target มะเร็งเต้านม 85% ยืนยัน, ติ๊ก ก.1/ก.2) · F(admin polish) = เลือกทำ ไม่ด่วน · trend รอ cron ≥2 เดือน
 · **B/C เสร็จหมดแล้ว** · E ครอบคลุมด้วย KpiWizard แล้ว (เหลือ drilldown builder ขั้นสูง) · **G (หมวดหมู่+กลุ่มงาน) เสร็จหมดทุก Phase (A-F)** 🎉
