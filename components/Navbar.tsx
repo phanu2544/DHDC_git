@@ -12,6 +12,7 @@ interface NavbarProps {
 const NAV_LINKS = [
   { href: '/dashboard', label: 'ภาพรวม' },
   { href: '/kpi', label: 'รายการ KPI' },
+  { href: '/sets', label: 'ชุดตัวชี้วัด' },
   { href: '/compare', label: 'เปรียบเทียบรายเดือน' },
 ]
 

@@ -37,6 +37,8 @@ export default function DashboardPage() {
   const [selectedMonth, setSelectedMonth] = useState('')
   const [onlyAttention, setOnlyAttention] = useState(false)
   const [onlyMyGroup, setOnlyMyGroup] = useState(false)
+  const [sets, setSets] = useState<{ name: string }[]>([])
+  const [setFilter, setSetFilter] = useState('ทุกประเภท')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -44,13 +46,15 @@ export default function DashboardPage() {
     if (!user) return
     async function load() {
       try {
-        const [kRes, mRes] = await Promise.all([
+        const [kRes, mRes, sRes] = await Promise.all([
           fetch('/api/kpis'),
           fetch('/api/monthly'),
+          fetch('/api/kpi-sets'),
         ])
         if (!kRes.ok) throw new Error('โหลด KPI ไม่สำเร็จ')
         const kData: KPIReport[] = await kRes.json()
         setKpis(kData)
+        if (sRes.ok) setSets(await sRes.json())
 
         const mData: MonthlyData[] = await mRes.json()
         setMonthly(mData)
@@ -79,11 +83,12 @@ export default function DashboardPage() {
     return scorecard.rows
       .filter((r) => !onlyAttention || ATTENTION_STATUSES.includes(r.status))
       .filter((r) => !onlyMyGroup || (user?.department && r.kpi.workGroups?.includes(user.department)))
+      .filter((r) => setFilter === 'ทุกประเภท' || (r.kpi.sets?.some((s) => s.name === setFilter) ?? false))
       .slice()
       .sort((a, b) =>
         EXECUTIVE_SEVERITY_ORDER.indexOf(a.status) - EXECUTIVE_SEVERITY_ORDER.indexOf(b.status),
       )
-  }, [scorecard.rows, onlyAttention, onlyMyGroup, user])
+  }, [scorecard.rows, onlyAttention, onlyMyGroup, setFilter, user])
 
   // H3: KPI กรอกมือของกลุ่มงานตัวเองที่ยังไม่ได้กรอกเดือนนี้ (ไม่ผูกกับ toggle ด้านบน — เตือนเสมอ)
   const myPendingManual = useMemo(
@@ -161,6 +166,14 @@ export default function DashboardPage() {
                     />
                     เฉพาะที่ต้องติดตาม
                   </label>
+                  {sets.length > 0 && (
+                    <select value={setFilter} onChange={(e) => setSetFilter(e.target.value)}
+                      title="กรองตามชุด/ประเภทตัวชี้วัด (ตรวจราชการ / HA / Ranking ฯลฯ)"
+                      className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                      <option>ทุกประเภท</option>
+                      {sets.map((s) => <option key={s.name}>{s.name}</option>)}
+                    </select>
+                  )}
                   {user.department && (
                     <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none" title={`กรองเฉพาะ KPI ของกลุ่มงาน "${user.department}"`}>
                       <input

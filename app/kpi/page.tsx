@@ -18,9 +18,11 @@ export default function KPIListPage() {
   const { user } = useAuth()
   const [kpis, setKpis] = useState<KPIReport[]>([])
   const [categories, setCategories] = useState<string[]>([])
+  const [sets, setSets] = useState<{ name: string }[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [catFilter, setCatFilter] = useState('ทุกหมวด')
+  const [setFilter, setSetFilter] = useState('ทุกประเภท')
   const [statusFilter, setStatusFilter] = useState('')
   const [onlyMyGroup, setOnlyMyGroup] = useState(false)
   const [selected, setSelected] = useState<KPIReport | null>(null)
@@ -29,10 +31,11 @@ export default function KPIListPage() {
 
   useEffect(() => {
     if (!user) return
-    Promise.all([fetch('/api/kpis'), fetch('/api/categories')])
-      .then(async ([kRes, cRes]) => {
+    Promise.all([fetch('/api/kpis'), fetch('/api/categories'), fetch('/api/kpi-sets')])
+      .then(async ([kRes, cRes, sRes]) => {
         setKpis(await kRes.json())
         if (cRes.ok) setCategories(await cRes.json())
+        if (sRes.ok) setSets(await sRes.json())
       })
       .finally(() => setLoading(false))
   }, [user])
@@ -58,9 +61,10 @@ export default function KPIListPage() {
   const filtered = kpis.filter((k) => {
     const matchSearch = k.name.toLowerCase().includes(search.toLowerCase()) || k.owner.toLowerCase().includes(search.toLowerCase())
     const matchCat = catFilter === 'ทุกหมวด' || k.category === catFilter
+    const matchSet = setFilter === 'ทุกประเภท' || (k.sets?.some((s) => s.name === setFilter) ?? false)
     const matchStatus = !statusFilter || k.status === statusFilter
     const matchGroup = !onlyMyGroup || (user.department && k.workGroups?.includes(user.department))
-    return matchSearch && matchCat && matchStatus && matchGroup
+    return matchSearch && matchCat && matchSet && matchStatus && matchGroup
   })
 
   return (
@@ -81,6 +85,14 @@ export default function KPIListPage() {
             <option>ทุกหมวด</option>
             {categories.map((c) => <option key={c}>{c}</option>)}
           </select>
+          {sets.length > 0 && (
+            <select value={setFilter} onChange={(e) => setSetFilter(e.target.value)}
+              title="กรองตามชุด/ประเภทตัวชี้วัด (ตรวจราชการ / HA / Ranking ฯลฯ)"
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              <option>ทุกประเภท</option>
+              {sets.map((s) => <option key={s.name}>{s.name}</option>)}
+            </select>
+          )}
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
             {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
@@ -121,6 +133,13 @@ export default function KPIListPage() {
                           <div className="flex flex-wrap gap-1 mt-1">
                             {kpi.workGroups.map((g) => (
                               <span key={g} className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded text-[10px] font-medium">{g}</span>
+                            ))}
+                          </div>
+                        )}
+                        {kpi.sets && kpi.sets.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {kpi.sets.map((s) => (
+                              <span key={s.id} className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded text-[10px] font-medium">🎯 {s.name}{s.setCode ? ` (${s.setCode})` : ''}</span>
                             ))}
                           </div>
                         )}

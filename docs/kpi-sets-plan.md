@@ -512,3 +512,32 @@ ALTER TABLE kpi_set_items ADD COLUMN score_bands TEXT NULL;
 - **ผูกตัวชี้วัด 1 ตัว เข้าได้หลายชุด** พร้อมเลขข้อต่อชุด (เช่นตัวเดียวเป็น ตรวจราชการ ข้อ 1.5 + Ranking พร้อมกัน) — ครบ requirement §2 ข้อ 1
 - **owner ติ๊กเองได้** ที่ฟอร์มแก้ไข KPI ใน /admin (K4 = ติ๊กข้อมูลจริง)
 - **ยังไม่ทำ (K5/K6):** ฟิลเตอร์ "ประเภท" ใน dashboard/kpi · หน้า `/sets` + `/sets/[slug]`
+
+---
+
+## 17. Log การรัน K5 + K6 — ✅ เสร็จ 2026-07-23
+
+### K5 — ฟิลเตอร์ "ประเภท (ชุด)"
+- `app/kpi/page.tsx` + `app/dashboard/page.tsx`: เพิ่ม dropdown "ทุกประเภท / <ชื่อชุด>" (fetch /api/kpi-sets) + filter `k.sets?.some(s=>s.name===setFilter)` + badge 🎯 ในตาราง /kpi (สีม่วง แยกจากกลุ่มงานสีเขียว) · frontend ล้วน เหมือน Phase F กลุ่มงาน
+- โชว์ dropdown เฉพาะเมื่อ `sets.length>0` (ยังไม่มีชุด = ไม่รก)
+
+### K6 — หน้า /sets + /sets/[slug]
+- `lib/setsSummary.ts` **ใหม่ (pure)**: `summarizeSets(rows, sets)` จัดกลุ่ม ScorecardRow ตามชุด (1 KPI หลายชุดได้) + นับสถานะ + `evaluated`=total−no_target + **เรียงตาม set_code แบบ natural** (1 → 2.1 → 2.2 → 3, null ไปท้าย) · reuse `buildScorecard`
+- `app/sets/page.tsx`: การ์ด 5 ชุด — % ผ่าน (pass/evaluated) + แถบสัดส่วน เขียว/แดง/เทา + breakdown · ชุดว่าง = "ยังไม่มีตัวชี้วัดในชุดนี้"
+- `app/sets/[slug]/page.tsx`: dynamic ตาม slug (useParams) — ตาราง ข้อ/ตัวชี้วัด/ผล/เป้า/สถานะ · ลิงก์ drilldown ผ่าน `detailViewHref` · **เพิ่มชุดใหม่ = หน้าเกิดเอง ไม่ต้องเขียนโค้ด**
+- `components/Navbar.tsx`: ลิงก์ "ชุดตัวชี้วัด" → /sets
+
+### verify browser จริง (ผูก 4 KPI ทดสอบเข้าชุดตรวจราชการ แล้วเก็บกวาด)
+| เคส | ผล |
+|---|---|
+| /sets การ์ด | ✅ ตรวจราชการ "ผ่าน 1/1 ที่ประเมิน · ทั้งหมด 4 · ติดตาม 3" · ชุดว่างขึ้นข้อความถูก |
+| /sets/inspection-r3 | ✅ header "ผ่าน 1/1" · ตาราง 4 แถวเรียงเลขข้อ 1→2.1→2.2→3 · เป้า `—` เมื่อ direction=none |
+| /kpi ฟิลเตอร์ประเภท | ✅ 39→4 รายการ · "พบ 4 รายการ" · badge 🎯 |
+| /dashboard ฟิลเตอร์ | ✅ 39→4 แถว |
+| Navbar "ชุดตัวชี้วัด" → /sets | ✅ |
+| typecheck | ✅ |
+
+→ เก็บกวาด tag ทดสอบครบ (0 items) · ปล่อยชุดว่างให้ owner ติ๊กจริง (K4)
+
+### K (แกนชุด) เสร็จหมด K1-K3 + K5-K6 🎉 — เหลือ K4 (owner ติ๊กข้อมูลจริง ผ่านฟอร์ม ไม่ต้องเขียนโค้ด)
+**งานเขียนโค้ดถัดไป = L1** (ผลงาน/เป้าเป็นข้อความ) → L3 → L5 (นำเข้าตรวจราชการ) · ดู §11/§13
