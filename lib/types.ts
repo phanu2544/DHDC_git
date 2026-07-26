@@ -39,6 +39,8 @@ export interface KPIReport {
   dataSource?: string       // แหล่งที่มาข้อมูล (provenance) เช่น 'HDC' — column data_source · ต่างจาก manualEntry (กลไกดึง)
   workGroups?: string[]     // กลุ่มงานที่ผูกไว้ (many-to-many ผ่าน kpi_work_groups) — docs/kpi-work-groups-plan.md
   sets?: KpiSetTag[]        // ชุด/ประเภทที่ผูกไว้ (many-to-many ผ่าน kpi_set_items) — docs/kpi-sets-plan.md K3
+  measureType?: 'numeric' | 'text' | 'level'  // ชนิดการวัด (default 'numeric') · 'text'=ข้อความ ไม่ประเมิน · 'level'=ระดับ เรียงลำดับ ตัดสินผ่าน/ไม่ผ่าน — column measure_type (L1/L1b)
+  textOptions?: string | null       // text=ตัวเลือก dropdown · level=ระดับเรียงต่ำ→สูง (บรรทัดละ 1) — column text_options · เป้าของ level = kpi.target (index 1-based ของระดับที่ถือว่าผ่าน)
   owner: string
   deadline: string
   status: KPIStatus
@@ -84,6 +86,7 @@ export interface MonthlyData {
   month: string
   value: number
   target: number
+  valueText?: string | null   // ผลงานข้อความ (เมื่อ KPI measure_type='text') — column monthly_data.value_text (L1)
 }
 
 // ── MOPH Engine types (Phase 1) ─────────────────────────────────────────────
@@ -129,9 +132,11 @@ export type EvalDirection = 'gte' | 'lte' | 'eq' | 'none'
 //   no_target    = direction='none' ติดตามเฉยๆ ไม่ประเมิน
 //   invalid      = target<0 หรือ value=NaN (ข้อมูลผิด)
 //   needs_review = target=0 + direction='gte' (เป้ากำกวม ผ่านเสมอ — ต้องตรวจสอบ)
+//   narrative    = measure_type='text' ผลงานเป็นข้อความ (ท้าทาย/อยู่ระหว่างดำเนินการ) ไม่ตัดสินผ่าน/ไม่ผ่าน — L1
 export type KpiEvalStatus =
   | 'pass' | 'watch' | 'fail'
   | 'no_data' | 'no_target' | 'invalid' | 'needs_review'
+  | 'narrative'
 
 /** ผลการประเมิน KPI หนึ่งตัวสำหรับเดือนหนึ่ง — pure ไม่มี side-effect */
 export interface KpiEvalResult {

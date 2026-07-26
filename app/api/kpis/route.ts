@@ -62,6 +62,8 @@ export async function GET() {
                 manual_entry    as manualEntry,
                 manual_scope    as manualScope,
                 data_source     as dataSource,
+                measure_type    as measureType,
+                text_options    as textOptions,
                 owner,
                 DATE_FORMAT(deadline,'%Y-%m-%d') as deadline,
                 status, target, unit, description
@@ -94,9 +96,15 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const body = await req.json()
   const { name, category, mophUrl, mophTable, mophValueField, mophTargetField, mophCalcMode,
-          direction, owner, deadline, status, target, unit, description, manualEntry, manualScope, dataSource } = body
-  const scopeVal = manualScope === 'single' ? 'single' : 'unit'
+          direction, owner, deadline, status, target, unit, description, manualEntry, manualScope, dataSource, measureType, textOptions } = body
+  // ชนิด text/level = กรอกมือเสมอ + ค่าเดียว (single) — ดึง MOPH/แยกราย รพ.สต. ไม่ได้
+  const measureVal = (measureType === 'text' || measureType === 'level') ? measureType : 'numeric'
+  const isTextBased = measureVal === 'text' || measureVal === 'level'
+  const manualVal = (isTextBased || manualEntry) ? 1 : 0
+  const scopeVal = isTextBased ? 'single' : (manualScope === 'single' ? 'single' : 'unit')
   const sourceVal = (typeof dataSource === 'string' && dataSource.trim()) ? dataSource.trim() : 'HDC'
+  // ตัวเลือก/ระดับ เก็บเฉพาะ text/level (numeric ไม่ใช้) · ว่าง → NULL
+  const textOptsVal = isTextBased && typeof textOptions === 'string' && textOptions.trim() ? textOptions.trim() : null
 
   if (!name || !category || !owner || !deadline) {
     return NextResponse.json({ message: 'กรุณากรอกข้อมูลที่จำเป็น' }, { status: 400 })
@@ -117,11 +125,11 @@ export async function POST(req: NextRequest) {
     await conn.execute(
       `INSERT INTO kpi_reports
         (id, name, category, moph_url, moph_table, moph_value_field, moph_target_field, moph_calc_mode,
-         evaluation_direction, manual_entry, manual_scope, data_source, owner, deadline, status, target, unit, description)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         evaluation_direction, manual_entry, manual_scope, data_source, measure_type, text_options, owner, deadline, status, target, unit, description)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [id, name, category,
        mophUrl ?? null, mophTable ?? null, mophValueField ?? null, mophTargetField ?? null, mophCalcMode ?? 'percent',
-       evalDirection, manualEntry ? 1 : 0, scopeVal, sourceVal, owner, deadline, status ?? 'in_progress', target ?? 0, unit ?? '%', description ?? null],
+       evalDirection, manualVal, scopeVal, sourceVal, measureVal, textOptsVal, owner, deadline, status ?? 'in_progress', target ?? 0, unit ?? '%', description ?? null],
     )
     return NextResponse.json({ id, message: 'เพิ่ม KPI สำเร็จ' })
   } catch (err) {

@@ -90,6 +90,7 @@ export interface StatusSummary {
   no_target: number
   invalid: number
   needs_review: number
+  narrative: number
   /** จำนวนที่ประเมินได้จริง = pass + watch + fail */
   evaluable: number
   /** % ผ่าน = pass / (pass+watch+fail) × 100 — no_data/no_target/invalid/needs_review ไม่อยู่ในตัวหาร */
@@ -108,6 +109,7 @@ export function summarizeStatuses(statuses: KpiEvalStatus[]): StatusSummary {
     no_target:    count('no_target'),
     invalid:      count('invalid'),
     needs_review: count('needs_review'),
+    narrative:    count('narrative'),
     evaluable,
     passRate: evaluable > 0 ? +((pass / evaluable) * 100).toFixed(1) : null,
   }
@@ -126,4 +128,5 @@ export const STATUS_META: Record<KpiEvalStatus, { label: string; severity: numbe
   invalid:      { label: 'ข้อมูลผิด',        severity: 4 },
   pass:         { label: 'ผ่าน',             severity: 5 },
   no_target:    { label: 'ติดตาม (ไม่ประเมิน)', severity: 6 },
+  narrative:    { label: 'เชิงคุณภาพ',        severity: 7 },
 }

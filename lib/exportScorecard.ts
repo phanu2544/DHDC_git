@@ -28,8 +28,9 @@ export async function exportScorecardXlsx(
     r.kpi.name.trim(),
     r.kpi.category,
     r.kpi.owner,
-    r.value === null ? '—' : r.value,
-    r.target,
+    // ชนิด text/level เก็บผลเป็นข้อความ (valueText) — numeric เก็บตัวเลข (value)
+    r.valueText != null ? r.valueText : (r.value === null ? '—' : r.value),
+    r.valueText != null ? '—' : r.target,
     r.kpi.unit ?? '',
     DIRECTION_LABEL[r.direction],
     STATUS_META[r.status].label,

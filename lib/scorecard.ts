@@ -33,6 +33,7 @@ export interface ScorecardRow {
   direction: EvalDirection
   status: KpiEvalStatus
   message?: string
+  valueText?: string | null   // ผลงานข้อความ (เมื่อ status='narrative') — L1
 }
 
 /**
@@ -44,6 +45,43 @@ export interface ScorecardRow {
  */
 export function evalScorecardRow(kpi: KPIReport, row: MonthlyData | undefined): ScorecardRow {
   const direction: EvalDirection = kpi.direction ?? 'gte'
+
+  // ── L1: ตัวชี้วัดชนิดข้อความ — ไม่ประเมินผ่าน/ไม่ผ่าน แสดง value_text ล้วน ──
+  //    ต้องมาก่อนทุก branch (รวมก่อน !row) เพื่อไม่ให้ engine ตัวเลขมายุ่ง
+  //    ตัวชี้วัดเดิม (measureType undefined/'numeric') ไม่เข้า branch นี้เลย
+  if (kpi.measureType === 'text') {
+    return {
+      kpi, value: null, target: 0, direction: 'none', status: 'narrative',
+      valueText: row?.valueText ?? null,
+      message: row ? undefined : 'ยังไม่ได้กรอกผลงานเดือนนี้',
+    }
+  }
+
+  // ── L1b: ตัวชี้วัดชนิด "ระดับ" — ระดับเรียงลำดับ (textOptions ต่ำ→สูง) ตัดสินผ่าน/ไม่ผ่าน ──
+  //    เป้า = kpi.target เก็บเป็น index 1-based ของระดับที่ถือว่าผ่าน · ประเมิน achieved ≥ target
+  if (kpi.measureType === 'level') {
+    const levels = (kpi.textOptions ?? '').split('\n').map((s) => s.trim()).filter(Boolean)
+    const achieved = row?.valueText ?? null
+    const targetIdx = Math.round(Number(kpi.target ?? 0)) - 1   // 1-based → 0-based
+    if (!achieved) {
+      return { kpi, value: null, target: kpi.target ?? 0, direction: 'gte', status: 'no_data', valueText: null, message: 'ยังไม่ได้กรอกผลงานเดือนนี้' }
+    }
+    const achievedIdx = levels.indexOf(achieved)
+    // เลือก "อื่นๆ (พิมพ์เอง)" = ค่าไม่อยู่ในลิสต์ระดับ → แสดงเฉยๆ ไม่ตัดสิน
+    if (achievedIdx < 0) {
+      return { kpi, value: null, target: 0, direction: 'none', status: 'narrative', valueText: achieved }
+    }
+    // ยังไม่ได้ตั้งระดับเป้าหมาย → ติดตามเฉยๆ (แสดงระดับที่ได้)
+    if (targetIdx < 0 || targetIdx >= levels.length) {
+      return { kpi, value: null, target: 0, direction: 'none', status: 'no_target', valueText: achieved, message: 'ยังไม่ได้ตั้งระดับเป้าหมาย' }
+    }
+    const pass = achievedIdx >= targetIdx
+    return {
+      kpi, value: null, target: kpi.target ?? 0, direction: 'gte',
+      status: pass ? 'pass' : 'fail', valueText: achieved,
+      message: pass ? undefined : `ยังไม่ถึงระดับเป้าหมาย (${levels[targetIdx]})`,
+    }
+  }
 
   // ── ไม่มี monthly row เดือนนี้ — แยก logic ก่อนเรียก engine ──
   if (!row) {

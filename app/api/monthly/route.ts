@@ -11,12 +11,12 @@ export async function GET(req: NextRequest) {
     let rows
     if (kpiId) {
       ;[rows] = await conn.execute(
-        'SELECT kpi_id as kpiId, month, value, target FROM monthly_data WHERE kpi_id = ? ORDER BY month',
+        'SELECT kpi_id as kpiId, month, value, target, value_text as valueText FROM monthly_data WHERE kpi_id = ? ORDER BY month',
         [kpiId],
       )
     } else {
       ;[rows] = await conn.execute(
-        'SELECT kpi_id as kpiId, month, value, target FROM monthly_data ORDER BY kpi_id, month',
+        'SELECT kpi_id as kpiId, month, value, target, value_text as valueText FROM monthly_data ORDER BY kpi_id, month',
       )
     }
     return NextResponse.json(rows)

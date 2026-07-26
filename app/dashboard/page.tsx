@@ -26,6 +26,7 @@ const STATUS_STYLE: Record<KpiEvalStatus, { card: string; badge: string }> = {
   no_data:      { card: 'bg-gray-400',   badge: 'bg-gray-100 text-gray-600' },
   pass:         { card: 'bg-green-600',  badge: 'bg-green-100 text-green-700' },
   no_target:    { card: 'bg-slate-500',  badge: 'bg-slate-100 text-slate-700' },
+  narrative:    { card: 'bg-slate-500',  badge: 'bg-slate-100 text-slate-700' },
 }
 
 export default function DashboardPage() {
@@ -93,7 +94,9 @@ export default function DashboardPage() {
   // H3: KPI กรอกมือของกลุ่มงานตัวเองที่ยังไม่ได้กรอกเดือนนี้ (ไม่ผูกกับ toggle ด้านบน — เตือนเสมอ)
   const myPendingManual = useMemo(
     () => scorecard.rows.filter(
-      (r) => user?.department && r.kpi.manualEntry && r.kpi.workGroups?.includes(user.department) && r.value === null,
+      // ยังไม่กรอก: text/level ดูจาก valueText ว่าง (value เป็น null เสมอ) · numeric ดูจาก value===null
+      (r) => user?.department && r.kpi.manualEntry && r.kpi.workGroups?.includes(user.department)
+        && ((r.kpi.measureType === 'text' || r.kpi.measureType === 'level') ? !r.valueText : r.value === null),
     ),
     [scorecard.rows, user],
   )
@@ -242,6 +245,7 @@ export default function DashboardPage() {
                 <StatusCard status="no_target"    count={scorecard.summary.no_target} />
                 <StatusCard status="invalid"      count={scorecard.summary.invalid} />
                 <StatusCard status="needs_review" count={scorecard.summary.needs_review} />
+                {scorecard.summary.narrative > 0 && <StatusCard status="narrative" count={scorecard.summary.narrative} />}
               </div>
 
               {/* ตาราง KPI (เรียงตาม EXECUTIVE_SEVERITY_ORDER) */}
@@ -277,11 +281,13 @@ export default function DashboardPage() {
                               ) : null}
                               <div className="text-xs text-gray-400">{r.kpi.category} • {r.kpi.owner}</div>
                             </td>
-                            <td className="px-4 py-2.5 text-right tabular-nums">
-                              {r.value === null ? '—' : `${r.value.toLocaleString()}${r.kpi.unit ? ' ' + r.kpi.unit : ''}`}
+                            <td className="px-4 py-2.5 text-right">
+                              {r.valueText != null
+                                ? <span className="text-gray-700">{r.valueText || '—'}</span>
+                                : <span className="tabular-nums">{r.value === null ? '—' : `${r.value.toLocaleString()}${r.kpi.unit ? ' ' + r.kpi.unit : ''}`}</span>}
                             </td>
                             <td className="px-4 py-2.5 text-right tabular-nums text-gray-600">
-                              {r.target.toLocaleString()}
+                              {r.kpi.measureType === 'text' || r.kpi.measureType === 'level' ? '—' : r.target.toLocaleString()}
                             </td>
                             <td className="px-4 py-2.5 text-center text-xs text-gray-600">{DIRECTION_LABEL[r.direction]}</td>
                             <td className="px-4 py-2.5 text-center">
@@ -290,7 +296,7 @@ export default function DashboardPage() {
                               </span>
                             </td>
                             <td className="px-4 py-2.5 text-xs text-gray-500">
-                              {r.kpi.manualEntry && r.value === null
+                              {r.kpi.manualEntry && ((r.kpi.measureType === 'text' || r.kpi.measureType === 'level') ? !r.valueText : r.value === null)
                                 ? <span className="text-amber-700">✍️ ยังไม่กรอกเดือนนี้</span>
                                 : (r.message ?? '')}
                             </td>

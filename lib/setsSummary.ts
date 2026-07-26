@@ -25,7 +25,7 @@ export interface SetSummary {
 }
 
 const emptyCounts = (): Record<KpiEvalStatus, number> => ({
-  fail: 0, watch: 0, no_data: 0, needs_review: 0, invalid: 0, pass: 0, no_target: 0,
+  fail: 0, watch: 0, no_data: 0, needs_review: 0, invalid: 0, pass: 0, no_target: 0, narrative: 0,
 })
 
 /** เลขข้อ (set_code) ของ row ในชุด setId — ใช้เรียงลำดับ (null ไปท้าย) */
@@ -47,7 +47,8 @@ export function summarizeSets(rows: ScorecardRow[], sets: KpiSetInfo[]): SetSumm
     const members = rows.filter((r) => r.kpi.sets?.some((s) => s.id === set.id))
     const statusCounts = emptyCounts()
     for (const r of members) statusCounts[r.status] += 1
-    const evaluated = members.length - statusCounts.no_target
+    // ตัวหาร % ผ่าน = ตัดตัวที่ไม่ประเมิน (no_target=ติดตาม, narrative=ข้อความ) ออก
+    const evaluated = members.length - statusCounts.no_target - statusCounts.narrative
     members.sort((a, b) => {
       const ka = codeSortKey(setCodeOf(a, set.id))
       const kb = codeSortKey(setCodeOf(b, set.id))

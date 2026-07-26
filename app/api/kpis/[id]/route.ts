@@ -41,7 +41,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     const [rows] = await conn.execute(
       `SELECT id, name, category,
               moph_url, moph_table, moph_value_field, moph_target_field, moph_calc_mode,
-              moph_report_id, evaluation_direction, manual_entry, manual_scope, data_source, owner, deadline, status, target, unit, description,
+              moph_report_id, evaluation_direction, manual_entry, manual_scope, data_source, measure_type, text_options, owner, deadline, status, target, unit, description,
               moph_config
        FROM kpi_reports WHERE id = ?`,
       [params.id],
@@ -67,6 +67,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       manualEntry:     Number(row.manual_entry) === 1,
       manualScope:     row.manual_scope === 'single' ? 'single' : 'unit',
       dataSource:      (row.data_source as string) ?? 'HDC',
+      measureType:     row.measure_type === 'text' || row.measure_type === 'level' ? row.measure_type : 'numeric',
+      textOptions:     (row.text_options as string | null) ?? null,
       owner: row.owner, deadline: row.deadline, status: row.status,
       target: row.target, unit: row.unit, description: row.description,
       mophConfig,
@@ -82,10 +84,15 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   const body = await req.json()
   const { name, category, mophUrl, mophTable, mophValueField, mophTargetField, mophCalcMode,
-          direction, owner, deadline, status, target, unit, description, manualEntry, manualScope, dataSource, workGroups, sets } = body
-  const manualVal = manualEntry ? 1 : 0
-  const scopeVal = manualScope === 'single' ? 'single' : 'unit'
+          direction, owner, deadline, status, target, unit, description, manualEntry, manualScope, dataSource, measureType, textOptions, workGroups, sets } = body
+  // ชนิด text/level = กรอกมือเสมอ + ค่าเดียว (single) — ดึง MOPH/แยกราย รพ.สต. ไม่ได้
+  const measureVal = (measureType === 'text' || measureType === 'level') ? measureType : 'numeric'
+  const isTextBased = measureVal === 'text' || measureVal === 'level'
+  const manualVal = (isTextBased || manualEntry) ? 1 : 0
+  const scopeVal = isTextBased ? 'single' : (manualScope === 'single' ? 'single' : 'unit')
   const sourceVal = (typeof dataSource === 'string' && dataSource.trim()) ? dataSource.trim() : 'HDC'
+  // ตัวเลือก/ระดับ เก็บเฉพาะ text/level (numeric ล้างเป็น NULL) · ว่าง → NULL
+  const textOptsVal = isTextBased && typeof textOptions === 'string' && textOptions.trim() ? textOptions.trim() : null
 
   if (!name || !category || !owner || !deadline) {
     return NextResponse.json({ message: 'กรุณากรอกข้อมูลที่จำเป็น' }, { status: 400 })
@@ -114,22 +121,22 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       await conn.execute(
         `UPDATE kpi_reports SET
           name=?, category=?, moph_url=?, moph_table=?, moph_value_field=?, moph_target_field=?, moph_calc_mode=?,
-          evaluation_direction=?, manual_entry=?, manual_scope=?, data_source=?, owner=?, deadline=?, status=?, target=?, unit=?, description=?
+          evaluation_direction=?, manual_entry=?, manual_scope=?, data_source=?, measure_type=?, text_options=?, owner=?, deadline=?, status=?, target=?, unit=?, description=?
          WHERE id=?`,
         [name, category,
          mophUrl ?? null, mophTable ?? null, mophValueField ?? null, mophTargetField ?? null, mophCalcMode ?? 'percent',
-         direction, manualVal, scopeVal, sourceVal, owner, deadline, status, target, unit, description ?? null, params.id],
+         direction, manualVal, scopeVal, sourceVal, measureVal, textOptsVal, owner, deadline, status, target, unit, description ?? null, params.id],
       )
     } else {
       // ไม่ส่ง direction → คงค่า evaluation_direction เดิมใน DB
       await conn.execute(
         `UPDATE kpi_reports SET
           name=?, category=?, moph_url=?, moph_table=?, moph_value_field=?, moph_target_field=?, moph_calc_mode=?,
-          manual_entry=?, manual_scope=?, data_source=?, owner=?, deadline=?, status=?, target=?, unit=?, description=?
+          manual_entry=?, manual_scope=?, data_source=?, measure_type=?, text_options=?, owner=?, deadline=?, status=?, target=?, unit=?, description=?
          WHERE id=?`,
         [name, category,
          mophUrl ?? null, mophTable ?? null, mophValueField ?? null, mophTargetField ?? null, mophCalcMode ?? 'percent',
-         manualVal, scopeVal, sourceVal, owner, deadline, status, target, unit, description ?? null, params.id],
+         manualVal, scopeVal, sourceVal, measureVal, textOptsVal, owner, deadline, status, target, unit, description ?? null, params.id],
       )
     }
 

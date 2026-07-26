@@ -148,7 +148,9 @@ export default function KPIListPage() {
                       <td className="px-4 py-3 text-gray-600 hidden lg:table-cell">
                         {new Date(kpi.deadline).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
                       </td>
-                      <td className="px-4 py-3 text-center font-medium text-blue-700">{kpi.target} {kpi.unit}</td>
+                      <td className="px-4 py-3 text-center font-medium text-blue-700">
+                        {kpi.measureType === 'text' || kpi.measureType === 'level' ? '—' : <>{kpi.target} {kpi.unit}</>}
+                      </td>
                       <td className="px-4 py-3"><StatusBadge status={kpi.status} /></td>
                       <td className="px-4 py-3">
                         <button onClick={() => openDetail(kpi)}
@@ -192,11 +194,15 @@ export default function KPIListPage() {
                     {new Date(selected.deadline).toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' })}
                   </p>
                 </div>
-                <div><span className="text-gray-500">เป้าหมาย</span><p className="font-medium text-blue-700 mt-0.5">{selected.target} {selected.unit}</p></div>
+                <div><span className="text-gray-500">เป้าหมาย</span><p className="font-medium text-blue-700 mt-0.5">
+                  {selected.measureType === 'text' || selected.measureType === 'level' ? '—' : <>{selected.target} {selected.unit}</>}
+                </p></div>
                 {selected.description && <div className="col-span-2"><span className="text-gray-500">รายละเอียด</span><p className="text-gray-700 mt-0.5">{selected.description}</p></div>}
               </div>
               <h3 className="font-semibold text-gray-800 mb-3">แนวโน้มรายเดือน</h3>
-              {chartLoading ? (
+              {selected.measureType === 'text' || selected.measureType === 'level' ? (
+                <p className="text-gray-400 text-sm text-center py-8">ตัวชี้วัดเชิงคุณภาพ/ระดับ — ไม่มีกราฟแนวโน้มตัวเลข</p>
+              ) : chartLoading ? (
                 <div className="text-center py-10 text-gray-400">กำลังโหลด...</div>
               ) : chartData.length > 0 ? (
                 <ResponsiveContainer width="100%" height={220}>

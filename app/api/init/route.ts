@@ -129,6 +129,8 @@ export async function POST(req: NextRequest) {
         manual_entry TINYINT(1) DEFAULT 0,
         manual_scope VARCHAR(10) NOT NULL DEFAULT 'unit',
         data_source VARCHAR(50) NOT NULL DEFAULT 'HDC',
+        measure_type VARCHAR(10) NOT NULL DEFAULT 'numeric',
+        text_options TEXT NULL,
         owner VARCHAR(255) NOT NULL,
         deadline DATE NOT NULL,
         status ENUM('completed','in_progress','overdue') DEFAULT 'in_progress',
@@ -151,9 +153,12 @@ export async function POST(req: NextRequest) {
       "ALTER TABLE kpi_reports ADD COLUMN IF NOT EXISTS manual_entry TINYINT(1) DEFAULT 0",
       "ALTER TABLE kpi_reports ADD COLUMN IF NOT EXISTS manual_scope VARCHAR(10) NOT NULL DEFAULT 'unit'",
       "ALTER TABLE kpi_reports ADD COLUMN IF NOT EXISTS data_source VARCHAR(50) NOT NULL DEFAULT 'HDC'",
+      "ALTER TABLE kpi_reports ADD COLUMN IF NOT EXISTS measure_type VARCHAR(10) NOT NULL DEFAULT 'numeric'",
+      "ALTER TABLE kpi_reports ADD COLUMN IF NOT EXISTS text_options TEXT NULL",
       "ALTER TABLE monthly_data ADD COLUMN IF NOT EXISTS source VARCHAR(10) DEFAULT 'auto'",
       "ALTER TABLE monthly_data ADD COLUMN IF NOT EXISTS entered_by VARCHAR(255) DEFAULT NULL",
       "ALTER TABLE monthly_data ADD COLUMN IF NOT EXISTS entered_at TIMESTAMP NULL DEFAULT NULL",
+      "ALTER TABLE monthly_data ADD COLUMN IF NOT EXISTS value_text VARCHAR(255) NULL",
     ]
     for (const sql of alterCols) {
       await conn.execute(sql).catch(() => {})

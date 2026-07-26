@@ -21,6 +21,7 @@ const BADGE: Record<KpiEvalStatus, string> = {
   no_data:      'bg-gray-100 text-gray-600',
   pass:         'bg-green-100 text-green-700',
   no_target:    'bg-slate-100 text-slate-700',
+  narrative:    'bg-slate-100 text-slate-700',
 }
 const BAR_COLOR: Record<string, string> = {
   pass: '#16a34a', watch: '#f59e0b', fail: '#dc2626',
@@ -52,9 +53,11 @@ interface DetailResp {
     name: string; category: string; owner: string; unit: string
     direction: EvalDirection; description?: string | null; target?: number
   }
-  savedMonthly?: { value: number; target: number; enteredBy?: string | null; enteredAt?: string | null } | null
+  savedMonthly?: { value: number; target: number; valueText?: string | null; enteredBy?: string | null; enteredAt?: string | null } | null
   manual?: boolean
   manualScope?: 'unit' | 'single'
+  measureType?: 'numeric' | 'text' | 'level'
+  textOptions?: string | null
   canEdit?: boolean
   view?: 'area' | 'unit'
   live?: boolean
@@ -82,6 +85,8 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
   // กรอกค่าเอง แบบ "ค่าเดียว" (manualScope='single' — ไม่แยกราย รพ.สต.)
   const [sTarget, setSTarget] = useState('')
   const [sResult, setSResult] = useState('')
+  const [sText, setSText] = useState('')   // L1: ผลงานข้อความ (measureType='text')
+  const [sTextCustom, setSTextCustom] = useState(false)  // L1: เลือก "อื่นๆ (พิมพ์เอง)" แทน dropdown
   const [mSaving, setMSaving] = useState(false)
   const [mMsg, setMMsg] = useState('')
   const [editing, setEditing] = useState(false) // ล็อกฟอร์มหลังบันทึก — ต้องกด "แก้ไข" ก่อนจึงพิมพ์ทับได้ (กันมือลั่น)
@@ -134,6 +139,19 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data])
 
+  // L1: sync ฟอร์มชนิดข้อความ/ระดับ (measureType text|level) — เก็บ value_text ตรงๆ
+  useEffect(() => {
+    if (data?.measureType !== 'text' && data?.measureType !== 'level') return
+    const saved = data.savedMonthly?.valueText ?? ''
+    setSText(saved)
+    // ค่าที่บันทึกไว้ไม่ตรงตัวเลือกใด = โหมดพิมพ์เอง (เปิด textarea ให้เห็นค่าเดิม)
+    const opts = (data.textOptions ?? '').split('\n').map((s) => s.trim()).filter(Boolean)
+    setSTextCustom(!!saved && !opts.includes(saved))
+    setEntryMonth(data.month ?? thisMonth)
+    setEditing(!data.savedMonthly)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data])
+
   async function saveManualDetail() {
     for (const r of tRows) {
       const t = Number(r.target) || 0, a = Number(r.result) || 0
@@ -179,6 +197,26 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
     }
   }
 
+  async function saveTextValue() {
+    const s = sText.trim()
+    if (!s) { setMMsg('⚠️ กรุณากรอกผลงาน (ข้อความ)'); return }
+    setMSaving(true); setMMsg('')
+    try {
+      const res = await fetch('/api/monthly/single', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kpiId: params.id, month: entryMonth, valueText: s }),
+      })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.message || 'บันทึกไม่สำเร็จ')
+      setMMsg('✅ บันทึกสำเร็จ')
+      load(entryMonth)
+    } catch (e) {
+      setMMsg(`⚠️ ${String(e)}`)
+    } finally {
+      setMSaving(false)
+    }
+  }
+
   function changeView(v: 'area' | 'unit') {
     if (v === view) return
     setView(v)
@@ -203,7 +241,9 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
   if (!user) return null
 
   const manual = data?.manual === true
-  const singleMode = manual && data?.manualScope === 'single'
+  const textMode = manual && (data?.measureType === 'text' || data?.measureType === 'level')   // L1/L1b: กรอกข้อความ/เลือกระดับ (dropdown เดียวกัน)
+  const levelMode = data?.measureType === 'level'
+  const singleMode = manual && data?.manualScope === 'single' && !textMode
   // สิทธิ์แก้ไขจริง = เจ้าของ KPI (server) + เดือนที่กำลังดูแก้ได้ไหม (staff เฉพาะเดือนปัจจุบัน, admin ทุกเดือน)
   // เช็ก entryMonth ฝั่ง client เพราะอาจเปลี่ยนหลังโหลด (auto-jump ไปเดือนปัจจุบัน) โดยไม่ได้ re-fetch จาก server
   // — การเขียนจริงยัง enforce เข้มงวดฝั่ง POST เสมอ ไม่ว่า UI ตรงนี้จะคำนวณผิดพลาดยังไงก็ตาม
@@ -318,7 +358,89 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
               )}
             </div>
 
-            {singleMode ? (
+            {textMode ? (
+              <>
+                {/* L1/L1b: ชนิดข้อความ (ไม่ประเมิน) / ระดับ (ตัดสินผ่าน-ไม่ผ่านตามระดับ) */}
+                <div className="mb-6 bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-lg text-sm leading-relaxed">
+                  {levelMode
+                    ? <>ℹ️ KPI นี้ <b>เลือกระดับ</b> — ระบบตัดสินผ่าน/ไม่ผ่านตามระดับเป้าหมายที่ตั้งไว้ · เลือกระดับที่ทำได้จากรายการ</>
+                    : <>ℹ️ KPI นี้ <b>กรอกผลงานเป็นข้อความ</b> (ไม่คิดเป็น % ไม่ประเมินผ่าน/ไม่ผ่าน) — พิมพ์สถานะ/ความคืบหน้า เช่น &quot;อยู่ระหว่างดำเนินการ&quot;, &quot;ท้าทาย&quot;, &quot;2 ทีม&quot;</>}
+                </div>
+                <div className="bg-white rounded-xl shadow-sm border overflow-hidden mb-3">
+                  <div className="px-5 py-3 border-b flex items-center justify-between gap-3">
+                    <h2 className="font-semibold text-gray-800 text-sm">ผลงาน — เดือน{formatThaiMonth(entryMonth)} {canEdit && (editing
+                      ? <span className="text-xs font-normal text-blue-600">(กำลังแก้ไข)</span>
+                      : <span className="text-xs font-normal text-gray-400">🔒 ล็อก</span>)}</h2>
+                    <span className="shrink-0 inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-700">{levelMode ? 'ระดับ' : 'เชิงคุณภาพ'}</span>
+                  </div>
+                  <div className="px-5 py-4">
+                    {canEdit && editing ? (() => {
+                      const opts = (data.textOptions ?? '').split('\n').map((s) => s.trim()).filter(Boolean)
+                      // มีตัวเลือก → dropdown + "อื่นๆ" · ไม่มี → พิมพ์เองล้วน (เหมือนเดิม)
+                      if (opts.length === 0) {
+                        return <textarea value={sText} onChange={(e) => setSText(e.target.value)} maxLength={255} rows={3}
+                          placeholder="เช่น อยู่ระหว่างดำเนินการ / ท้าทาย / ผ่านเกณฑ์"
+                          className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      }
+                      const showCustom = sTextCustom || (sText !== '' && !opts.includes(sText))
+                      return (
+                        <>
+                          <select
+                            value={sText === '' && !sTextCustom ? '' : (opts.includes(sText) ? sText : '__custom__')}
+                            onChange={(e) => {
+                              if (e.target.value === '__custom__') { setSTextCustom(true); setSText('') }
+                              else { setSTextCustom(false); setSText(e.target.value) }
+                            }}
+                            className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="" disabled>— เลือกผลงาน —</option>
+                            {opts.map((o) => <option key={o} value={o}>{o}</option>)}
+                            <option value="__custom__">อื่นๆ (พิมพ์เอง)…</option>
+                          </select>
+                          {showCustom && (
+                            <textarea value={sText} onChange={(e) => setSText(e.target.value)} maxLength={255} rows={2}
+                              placeholder="พิมพ์ผลงาน"
+                              className="w-full border rounded-lg px-3 py-2 text-sm mt-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                          )}
+                        </>
+                      )
+                    })()
+                      : <p className="text-gray-800 text-sm whitespace-pre-wrap">{data.savedMonthly?.valueText || <span className="text-gray-400">— ยังไม่ได้กรอกเดือนนี้ —</span>}</p>}
+                  </div>
+                  {canEdit && (
+                    <div className="px-5 py-4 border-t flex flex-wrap items-center gap-3">
+                      {editing ? (
+                        <>
+                          <button onClick={saveTextValue} disabled={mSaving}
+                            className="bg-blue-800 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm px-5 py-2 rounded-lg font-medium">
+                            {mSaving ? 'กำลังบันทึก...' : 'บันทึกผลงาน'}
+                          </button>
+                          {manualSaved && (
+                            <button onClick={() => { setEditing(false); setMMsg(''); load(entryMonth) }} disabled={mSaving}
+                              className="border text-gray-600 hover:bg-gray-50 text-sm px-4 py-2 rounded-lg">
+                              ยกเลิก
+                            </button>
+                          )}
+                          {mMsg && <span className="text-sm">{mMsg}</span>}
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-sm text-gray-600">
+                            🔒 บันทึกแล้ว{manualSaved?.enteredBy ? ` โดย ${manualSaved.enteredBy}` : ''}
+                            {manualSaved?.enteredAt ? ` · ${new Date(manualSaved.enteredAt).toLocaleString('th-TH')}` : ''}
+                          </span>
+                          <button onClick={() => { setEditing(true); setMMsg('') }}
+                            className="bg-amber-500 hover:bg-amber-600 text-white text-sm px-4 py-2 rounded-lg font-medium">
+                            ✏️ แก้ไข
+                          </button>
+                          {mMsg && <span className="text-sm">{mMsg}</span>}
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {!canEdit && <p className="text-xs text-gray-400 mb-6">* เฉพาะผู้ดูแลระบบ หรือเจ้าหน้าที่กลุ่มงานที่รับผิดชอบ กรอก/แก้ค่าได้</p>}
+              </>
+            ) : singleMode ? (
               <>
                 {/* การ์ดสรุป — ค่าเดียว (คำนวณสดจากช่องกรอก) */}
                 <div className="bg-white rounded-xl shadow-sm border p-5 mb-6 flex flex-wrap items-center gap-8">

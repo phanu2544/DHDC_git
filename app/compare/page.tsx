@@ -41,6 +41,10 @@ export default function ComparePage() {
   function getVal(kpiId: string, month: string) {
     return monthly.find((m) => m.kpiId === kpiId && m.month === month)?.value ?? null
   }
+  // text/level: ค่าเป็นข้อความ (value_text) — เทียบตัวเลขรายเดือนไม่ได้
+  function getValText(kpiId: string, month: string) {
+    return monthly.find((m) => m.kpiId === kpiId && m.month === month)?.valueText ?? null
+  }
 
   function getSparkData(kpiId: string) {
     return months.map((m) => ({ m: m.slice(2), v: getVal(kpiId, m) })).filter((d) => d.v !== null)
@@ -102,9 +106,27 @@ export default function ComparePage() {
                 </thead>
                 <tbody className="divide-y">
                   {kpis.map((kpi) => {
+                    const isTextBased = kpi.measureType === 'text' || kpi.measureType === 'level'
                     const cur = getVal(kpi.id, selectedMonth)
                     const prev = getVal(kpi.id, prevMonth)
                     const spark = getSparkData(kpi.id)
+                    // text/level: แสดง value_text แทนตัวเลข · ไม่มีการเทียบ/กราฟ/เป้าตัวเลข
+                    if (isTextBased) {
+                      return (
+                        <tr key={kpi.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3">
+                            <p className="font-medium text-gray-900 line-clamp-2 text-xs">{kpi.name}</p>
+                            <p className="text-gray-400 text-xs mt-0.5">{kpi.owner}</p>
+                          </td>
+                          <td className="px-4 py-3 text-center text-gray-600">{getValText(kpi.id, prevMonth) ?? '-'}</td>
+                          <td className="px-4 py-3 text-center font-semibold text-gray-900">{getValText(kpi.id, selectedMonth) ?? '-'}</td>
+                          <td className="px-4 py-3 text-center text-gray-300">—</td>
+                          <td className="px-4 py-3 text-center text-gray-400">—</td>
+                          <td className="px-4 py-3 hidden lg:table-cell text-center text-gray-300 text-xs">เชิงคุณภาพ</td>
+                          <td className="px-4 py-3"><StatusBadge status={kpi.status} /></td>
+                        </tr>
+                      )
+                    }
                     return (
                       <tr key={kpi.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3">

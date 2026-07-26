@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
 
     // ── KPI meta + mapping (ชุดเดียวกับ batch/scorecard) ──────────────────
     const [kpiRows] = await conn.execute(
-      `SELECT id, name, category, owner, unit, target, description, moph_table, manual_entry, manual_scope,
+      `SELECT id, name, category, owner, unit, target, description, moph_table, manual_entry, manual_scope, measure_type, text_options,
               COALESCE(evaluation_direction,'gte') AS direction,
               moph_value_field, moph_target_field, moph_calc_mode, moph_config
        FROM kpi_reports WHERE id = ?`, [kpiId])
@@ -71,9 +71,9 @@ export async function GET(req: NextRequest) {
       const singleMonth = monthParam && singleMonths.includes(monthParam) ? monthParam : (singleMonths[singleMonths.length - 1] ?? null)
 
       const [mdRows] = await conn.execute(
-        'SELECT value, target, source, entered_by, entered_at FROM monthly_data WHERE kpi_id = ? AND month = ?',
+        'SELECT value, target, value_text, source, entered_by, entered_at FROM monthly_data WHERE kpi_id = ? AND month = ?',
         [kpiId, singleMonth ?? ''])
-      const md = (mdRows as { value: number; target: number; source: string | null; entered_by: string | null; entered_at: string | null }[])[0] ?? null
+      const md = (mdRows as { value: number; target: number; value_text: string | null; source: string | null; entered_by: string | null; entered_at: string | null }[])[0] ?? null
 
       const [allMd] = await conn.execute(
         'SELECT MAX(month) AS lastMonth, MAX(CASE WHEN month=? THEN 1 ELSE 0 END) AS hasCur FROM monthly_data WHERE kpi_id = ?',
@@ -82,10 +82,12 @@ export async function GET(req: NextRequest) {
 
       return NextResponse.json({
         ok: true, kpiId, month: singleMonth, months: singleMonths, manual, manualScope, canEdit,
+        measureType: kpi.measure_type === 'text' || kpi.measure_type === 'level' ? kpi.measure_type : 'numeric',
+        textOptions: (kpi.text_options as string | null) ?? null,
         kpi: { name: kpi.name, category: kpi.category, owner: kpi.owner, unit: kpi.unit,
                direction: kpi.direction, description: kpi.description, target: Number(kpi.target ?? 0) },
         savedMonthly: md
-          ? { value: Number(md.value), target: Number(md.target), enteredBy: md.entered_by, enteredAt: md.entered_at }
+          ? { value: Number(md.value), target: Number(md.target), valueText: md.value_text, enteredBy: md.entered_by, enteredAt: md.entered_at }
           : null,
         stale: !mdAgg?.hasCur,
         lastMonth: mdAgg?.lastMonth ?? null,

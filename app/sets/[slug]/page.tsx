@@ -16,7 +16,7 @@ const STATUS_BADGE: Record<KpiEvalStatus, string> = {
   fail: 'bg-red-100 text-red-700', watch: 'bg-amber-100 text-amber-700',
   no_data: 'bg-gray-100 text-gray-600', needs_review: 'bg-orange-100 text-orange-700',
   invalid: 'bg-purple-100 text-purple-700', pass: 'bg-green-100 text-green-700',
-  no_target: 'bg-slate-100 text-slate-700',
+  no_target: 'bg-slate-100 text-slate-700', narrative: 'bg-slate-100 text-slate-700',
 }
 
 /**
@@ -105,9 +105,21 @@ export default function SetDetailPage() {
                             <td className="px-4 py-3">
                               <Link href={detailViewHref(r.kpi)} className="font-medium text-gray-900 hover:text-indigo-700 hover:underline">{r.kpi.name}</Link>
                               <div className="text-xs text-gray-400">{r.kpi.category} • {r.kpi.owner}</div>
+                              {/* ที่มาของตัวเลข — กันสับสนเวลาตัวชี้วัดเดียวกันเลือกได้หลายรายงาน HDC */}
+                              <div className="text-[11px] text-gray-400 mt-0.5">
+                                ที่มา:{' '}
+                                {r.kpi.manualEntry
+                                  ? <span className="text-blue-600">✍️ กรอกมือ</span>
+                                  : <span className="font-mono text-gray-500">{r.kpi.mophTable ?? '—'}</span>}
+                                {r.kpi.dataSource && <span className="text-gray-400"> ({r.kpi.dataSource})</span>}
+                              </div>
                             </td>
-                            <td className="px-4 py-3 text-right tabular-nums">{r.value === null ? '—' : `${r.value.toLocaleString()}${r.kpi.unit ? ' ' + r.kpi.unit : ''}`}</td>
-                            <td className="px-4 py-3 text-right tabular-nums text-gray-600">{r.direction === 'none' ? '—' : r.target.toLocaleString()}</td>
+                            <td className="px-4 py-3 text-right">
+                              {r.valueText != null
+                                ? <span className="text-gray-700">{r.valueText || '—'}</span>
+                                : <span className="tabular-nums">{r.value === null ? '—' : `${r.value.toLocaleString()}${r.kpi.unit ? ' ' + r.kpi.unit : ''}`}</span>}
+                            </td>
+                            <td className="px-4 py-3 text-right tabular-nums text-gray-600">{(r.direction === 'none' || r.kpi.measureType === 'level') ? '—' : r.target.toLocaleString()}</td>
                             <td className="px-4 py-3 text-center">
                               <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[r.status]}`}>{STATUS_META[r.status].label}</span>
                             </td>

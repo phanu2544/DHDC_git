@@ -140,7 +140,7 @@ const PROVINCES = [
 type KpiFormState = Omit<KPIReport, 'id' | 'sets'> & { sets: { setId: number; setCode: string }[] }
 
 function emptyForm(): KpiFormState {
-  return { name: '', category: '', mophUrl: '', mophTable: '', mophValueField: '', mophTargetField: 'target', mophCalcMode: 'percent', direction: 'gte', manualEntry: false, manualScope: 'unit', dataSource: 'HDC', workGroups: [], sets: [], owner: '', deadline: '', status: 'in_progress', target: 0, unit: '%', description: '' }
+  return { name: '', category: '', mophUrl: '', mophTable: '', mophValueField: '', mophTargetField: 'target', mophCalcMode: 'percent', direction: 'gte', manualEntry: false, manualScope: 'unit', dataSource: 'HDC', measureType: 'numeric', textOptions: '', workGroups: [], sets: [], owner: '', deadline: '', status: 'in_progress', target: 0, unit: '%', description: '' }
 }
 
 interface MophPreview {
@@ -297,6 +297,8 @@ export default function AdminPage() {
       manualEntry: kpi.manualEntry ?? false,
       manualScope: kpi.manualScope ?? 'unit',
       dataSource: kpi.dataSource ?? 'HDC',
+      measureType: kpi.measureType ?? 'numeric',
+      textOptions: kpi.textOptions ?? '',
       workGroups: kpi.workGroups ?? [],
       sets: (kpi.sets ?? []).map((s) => ({ setId: s.id, setCode: s.setCode ?? '' })),
       owner: kpi.owner, deadline: kpi.deadline, status: kpi.status,
@@ -1564,23 +1566,28 @@ export default function AdminPage() {
                 </Field>
               </div>
               <Field label="ผู้รับผิดชอบ *"><input value={form.owner} onChange={(e) => setForm({ ...form, owner: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></Field>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="เป้าหมาย"><input type="number" value={form.target} onChange={(e) => setForm({ ...form, target: +e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></Field>
-                <Field label="หน่วย"><input value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></Field>
-              </div>
+              {/* เป้า/หน่วย/ทิศทาง = เฉพาะชนิดตัวเลข · text=ไม่ใช้ · level=ตั้งเป้าที่ picker ระดับ (ในช่องชนิดการวัด) */}
+              {(!form.measureType || form.measureType === 'numeric') && (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="เป้าหมาย"><input type="number" value={form.target} onChange={(e) => setForm({ ...form, target: +e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></Field>
+                    <Field label="หน่วย"><input value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></Field>
+                  </div>
 
-              {/* Phase 4: ทิศทางการประเมิน */}
-              <Field label="ทิศทางการประเมิน (ใช้ตัดสินผ่าน/ไม่ผ่านรายเดือน)">
-                <select value={form.direction ?? 'gte'} onChange={(e) => setForm({ ...form, direction: e.target.value as EvalDirection })}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  {DIRECTIONS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
-                </select>
-                {form.target === 0 && (form.direction ?? 'gte') === 'gte' && (
-                  <p className="mt-1.5 text-xs text-orange-600 bg-orange-50 border border-orange-200 rounded-lg px-2.5 py-1.5">
-                    ⚠️ เป้า=0 + ยิ่งมากยิ่งดี อาจตั้งค่าไม่ถูกต้อง ระบบจะจัดเป็น &quot;ต้องตรวจสอบ&quot;
-                  </p>
-                )}
-              </Field>
+                  {/* Phase 4: ทิศทางการประเมิน */}
+                  <Field label="ทิศทางการประเมิน (ใช้ตัดสินผ่าน/ไม่ผ่านรายเดือน)">
+                    <select value={form.direction ?? 'gte'} onChange={(e) => setForm({ ...form, direction: e.target.value as EvalDirection })}
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      {DIRECTIONS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
+                    </select>
+                    {form.target === 0 && (form.direction ?? 'gte') === 'gte' && (
+                      <p className="mt-1.5 text-xs text-orange-600 bg-orange-50 border border-orange-200 rounded-lg px-2.5 py-1.5">
+                        ⚠️ เป้า=0 + ยิ่งมากยิ่งดี อาจตั้งค่าไม่ถูกต้อง ระบบจะจัดเป็น &quot;ต้องตรวจสอบ&quot;
+                      </p>
+                    )}
+                  </Field>
+                </>
+              )}
 
               <Field label="กำหนดเสร็จ *"><input type="date" value={form.deadline} onChange={(e) => setForm({ ...form, deadline: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /></Field>
 
@@ -1598,6 +1605,51 @@ export default function AdminPage() {
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 <datalist id="data-source-suggestions"><option value="HDC" /></datalist>
                 <p className="mt-1 text-xs text-gray-400">ที่มาของข้อมูลตัวชี้วัด (ตอนนี้ทุกตัวมาจาก HDC) — อนาคตถ้ามาจากแหล่งอื่นแก้ตรงนี้ได้</p>
+              </Field>
+
+              <Field label="ชนิดการวัด">
+                <select value={form.measureType ?? 'numeric'}
+                  onChange={(e) => { const v = e.target.value; setForm({ ...form, measureType: v === 'text' || v === 'level' ? v : 'numeric' }) }}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="numeric">ตัวเลข (%/จำนวน — ประเมินผ่าน/ไม่ผ่าน)</option>
+                  <option value="text">ข้อความ (เช่น ท้าทาย / อยู่ระหว่างดำเนินการ — ไม่ประเมิน)</option>
+                  <option value="level">ระดับ (เรียงลำดับ — ตัดสินผ่าน/ไม่ผ่านตามระดับ)</option>
+                </select>
+                {(form.measureType === 'text' || form.measureType === 'level') && (() => {
+                  const isLevel = form.measureType === 'level'
+                  const opts = (form.textOptions ?? '').split('\n').map((s) => s.trim()).filter(Boolean)
+                  return (
+                  <>
+                    <p className="mt-1 text-xs text-amber-600">ℹ️ ชนิดนี้กรอกมือเสมอ (ดึง HDC อัตโนมัติไม่ได้) — ระบบตั้ง &quot;กรอกค่าเอง&quot; ให้อัตโนมัติ</p>
+                    <div className="mt-2">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        {isLevel ? 'ระดับ (เรียงจากต่ำ → สูง) — บรรทัดละ 1 ระดับ' : 'ตัวเลือกผลงาน (dropdown) — บรรทัดละ 1 ตัวเลือก'}
+                      </label>
+                      <textarea value={form.textOptions ?? ''}
+                        onChange={(e) => setForm({ ...form, textOptions: e.target.value })}
+                        rows={4} placeholder={'เช่น\nมาตรฐาน\nดีเยี่ยม\nท้าทาย'}
+                        className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      <p className="mt-1 text-xs text-gray-400">
+                        {isLevel
+                          ? 'เรียงจากระดับต่ำสุดขึ้นไปสูงสุด (บรรทัดล่างสุด = ดีที่สุด)'
+                          : 'กำหนดตัวเลือกให้เลือกตอนกรอก (กันพิมพ์ไม่ตรงกัน) · เว้นว่าง = ให้พิมพ์เอง · ผู้กรอกยังเลือก "อื่นๆ" พิมพ์เองได้เสมอ'}
+                      </p>
+                    </div>
+                    {isLevel && (
+                      <div className="mt-2">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">ระดับที่ถือว่า &quot;ผ่าน&quot; (เป้าหมาย)</label>
+                        <select value={Math.round(Number(form.target)) || 0}
+                          onChange={(e) => setForm({ ...form, target: +e.target.value })}
+                          className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                          <option value={0}>— ยังไม่ตั้ง (ติดตามเฉยๆ) —</option>
+                          {opts.map((o, i) => <option key={o + i} value={i + 1}>{o} ขึ้นไป</option>)}
+                        </select>
+                        <p className="mt-1 text-xs text-gray-400">ถ้าได้ระดับนี้ขึ้นไป = ผ่าน · ต่ำกว่า = ไม่ผ่าน · (แก้รายการระดับด้านบนแล้วต้องเลือกเป้าใหม่)</p>
+                      </div>
+                    )}
+                  </>
+                  )
+                })()}
               </Field>
 
               <div className="border-t pt-4">
