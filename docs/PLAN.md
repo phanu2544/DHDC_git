@@ -128,10 +128,11 @@
   - 🔴 **2 เรื่องที่เจอ+แก้ตอน verify:** (1) **dev DB ไม่มี 3 คอลัมน์เลย** (measure_type/text_options/value_text — code เขียนไว้แต่ไม่เคย migrate; GET /api/kpis รอดเพราะ fallback query) → ALTER แล้ว [backup `_resync_backup/L1-columns-2026-07-23/`] · MariaDB ใช้ port **3306** root/123456 ปกติ (ที่เคยจดว่า port 33071 denied = เข้าใจผิด) (2) **บั๊ก dashboard "ยังไม่กรอกเดือนนี้"** key จาก `value===null` แต่ text KPI value=null เสมอ → ตัวที่กรอกแล้วขึ้นว่ายังไม่กรอก · แก้เป็นเช็ก `valueText` เมื่อ narrative (2 จุด: banner §97 + row §296)
   - verify browser จริง (server 3005): สร้าง text KPI + ตัวเลือก 3 อัน → dropdown โชว์ครบ+"อื่นๆ" → เลือก "ท้าทาย" + custom "อยู่ระหว่างดำเนินการสมัคร" → dashboard/`/sets` narrative โชว์ข้อความ+badge "เชิงคุณภาพ" + ตัวหาร %ผ่านตัด narrative ออก → 39 numeric ไม่พัง · ⚠️ ไทยผ่าน curl เพี้ยน (artifact เหมือน mysql -e inline) verify จริงต้อง browser · typecheck ผ่าน · ยังไม่ commit
 - [ ] **L2** ตาราง `kpi_period_notes` + ช่องกรอก ปัญหาอุปสรรค/แนวทางต่อไป/แหล่งที่มา ในหน้า `/kpi/[id]` (สิทธิ์เดียวกับ key-in)
-- [ ] **L3** `target_text` + `target_region`/`target_province` ใน `kpi_set_items` + แสดงเป้าอ้างอิงบนหน้าชุด
+- [x] **L3 เสร็จ + verify 25 ก.ค.** เป้า 3 ระดับต่อ (kpi,set) ใน `kpi_set_items`: `target_hospital` (เป้า รพ. — ยึดตัดสิน) + `target_region` + `target_province` (อ้างอิง) · ทั้งหมด VARCHAR(100) รับข้อความ (`≥ ร้อยละ 95`/`ระดับท้าทาย`) · **ไม่แตะ engine** (เป็นข้อมูลอ้างอิง/แสดงผล เหมือน K3) · `/api/init` +3 คอลัมน์ + ALTER · attachSets/PUT sync ส่ง+เก็บ 3 เป้า · **KpiSetPicker ขยาย**: ติ๊กชุด → 3 ช่องเป้า (รพ./เขต/จังหวัด) ใต้เลขข้อ · `/sets/[slug]` คอลัมน์เป้าโชว์ `target_hospital` + บรรทัดเล็ก "เขต X · จังหวัด Y" · verify browser: save/read 3 เป้า + picker pre-fill + หน้าชุดแสดงถูก · backup `_resync_backup/L3-set-targets-2026-07-25/` · typecheck ผ่าน · ยังไม่ commit
 - [ ] **L4** `report_freq='quarterly'` → picker ล็อกเดือนปิดไตรมาส + ป้าย "ไตรมาส 1/2569"
-- [ ] **L5** นำเข้า 47 ตัวจริง (ผ่านหน้าเว็บ/สคริปต์ที่ verify ได้ ห้ามยิง SQL ตรง) · ⚠️ ระวัง `number_format` ปนกัน (0.7259 = 72.59% vs 63.49) จะเพี้ยน 100 เท่า
+- [ ] **L5** นำเข้า **ตรวจราชการ 47 ตัว** จริง (ผ่านหน้าเว็บ/สคริปต์ที่ verify ได้ ห้ามยิง SQL ตรง) · ⚠️ ระวัง `number_format` ปนกัน (0.7259 = 72.59% vs 63.49) จะเพี้ยน 100 เท่า · **⭐ coverage เช็คแล้ว 25 ก.ค.: ระบบครอบคลุมตรวจราชการครบ 100%** (ข้อความ 24/ตัวเลข 18/นับจำนวน 5/ระดับ 1 = numeric+text+level พอหมด) → **ทำได้เลย ไม่ติดอะไร** (ดู kpi-sets-plan §18)
 - [ ] **L6** Export กลับเป็นฟอร์มตรวจราชการ (เลย์เอาต์เดียวกับไฟล์ต้นฉบับ) — ปิดวงจร แทน Excel ได้เต็มตัว
+- [ ] **L7 (ใหม่) — ระบบคะแนน Ranking** (จำเป็นก่อนนำเข้า Ranking) · ⚠️ **coverage เช็คแล้ว: Ranking ยังไม่ครอบคลุม** — 41/44 ตัวมีเกณฑ์คะแนน 5 ช่วง + น้ำหนัก 2-3 รวม 100 · ต้องแปลงผล→คะแนน 1-5×น้ำหนัก→จัดอันดับ (evaluation model ที่ 4 · ระบบตอนนี้ทำแค่ผ่าน/ไม่ผ่าน) · schema `kpi_set_items` +`weight`+`score_bands` JSON · ต่อยอดจาก level (L1b) · ดู kpi-sets-plan §18.4
 - [x] ✅ **owner ตอบแล้ว 21 ก.ค.:** #15 DSPM **ยึดค่าระบบ** (62.42%, ไฟล์ 13.95% ถือว่าไม่อัปเดต) · #15 ใช้ **DSPM ตัวปกติ** · #8 DM/HT → **ผูก KPI เดิมทั้ง 2 ตัวเข้าข้อ 8** (set_code ซ้ำได้ ไม่ต้องแก้ schema · ห้ามสร้างตัวรวมเพราะต้องเดาสูตร) — เหตุผลเต็ม: `kpi-sets-plan.md` §10.6
 - [x] ✅ **map ผู้รับผิดชอบครบแล้ว 21 ก.ค.** (`docs/data_owner/ผู้รับผิดชอบตรวจราชการ-69-กรอก.xlsx`) — **20 คน · 11 กลุ่มงาน · 43/48 ตัวชี้วัด** · ตารางเต็ม: `kpi-sets-plan.md` §10.5 · เจอ **1 คน 2 ชื่อเล่น 2 ราย** (ศุภนิจ = ER+พี่อุ้ม · วัชรวิทย์ = HR+หมอเบนซ์)
 - [x] ✅ **เพิ่มกลุ่มงานที่ 14 = `กายภาพบำบัด`** (น.ส.โสรญา น้อยเจริญ) — เสร็จตอน K1 (ทั้งใน DB + `DEFAULT_WORK_GROUPS` ใน `/api/init`)
@@ -139,14 +140,17 @@
 - [ ] **สร้าง account เพิ่ม 17 คน** (มีแล้ว 3 = อัมพวัน/สุพัตรา/ดลยา) — ทำผ่านฟอร์ม `/admin` เหมือนรอบ 4 account แรก · 🔧 "พี่มอส LAB" ในไฟล์พิมพ์ "นาย" ซ้ำในช่องชื่อ ตัดออกตอนสร้าง
 - [x] ✅ **5 ตัวชี้วัดไม่มีเจ้าภาพ** (#16/#19/#24/#25/One Region) — owner ตัดสิน **ยังไม่เพิ่มเข้าระบบตอนนี้** เก็บเป็นงานรอบหน้า
 - [ ] **แสดงกลุ่มงานเพิ่มใน UI** — ตอนนี้เห็นแค่หน้า `/kpi` (badge) + `/admin` · **`/dashboard` scorecard ยังไม่โชว์** (บรรทัดใต้ชื่อมีแค่ หมวดหมู่ • ผู้รับผิดชอบ) และ modal "ดูรายละเอียด" ก็ไม่โชว์ · พอมี 11 กลุ่มงานจริง (จากเดิมปฐมภูมิล้วน) ควรเพิ่ม — งาน frontend ล้วน
-- [ ] ⚠️ **go-live กระทบ:** `/api/init` **ตอนนี้สร้าง 6 ตารางใหม่แล้ว** (เดิม 4 + `kpi_sets` + `kpi_set_items` จาก K1) · **จะเป็น 7** เมื่อทำ L2 (`kpi_period_notes`) + คอลัมน์ `measure_type`/`report_freq`/`value_text` (L1) — อัปเดต §D + runbook
-- [ ] **ลำดับแนะนำ:** ~~K1→K2→K3~~✅ → **L1→L3** (ปลดล็อกค่า/เป้าข้อความ) → **L5** (นำเข้าจริง เห็นของเร็ว) → K5→K6 → L2→L4 → L6
+- [ ] ⚠️ **go-live กระทบ (schema สะสม):** `/api/init` สร้าง **6 ตารางใหม่** (cron_log/data_change_log/work_groups/kpi_work_groups/kpi_sets/kpi_set_items) + คอลัมน์ใหม่: kpi_reports(`manual_scope`/`data_source`/`measure_type`/`text_options`) · monthly_data(`value_text`) · kpi_set_items(`target_hospital`/`target_region`/`target_province`) · **จะเป็น 7 ตาราง** เมื่อทำ L2 (`kpi_period_notes`) — อัปเดต §D + runbook
+- [x] **ลำดับแนะนำ (ปรับ 25 ก.ค. หลัง coverage):** ~~K1-K6 + L1/L1b/L3~~ ✅ เสร็จ → **commit L3 (ค้าง)** → **L5 นำเข้าตรวจราชการ 47 ตัว** (ครบแล้ว ทำได้เลย) → L6 export → **L7 ระบบคะแนน Ranking** → นำเข้า Ranking 44 · L2(notes)/L4(ไตรมาส) เลือกทำระหว่างทาง
 
 ---
 
-## ลำดับที่แนะนำ (ปัจจุบัน 23 ก.ค.)
-**H (key-in โดย staff) เสร็จหมดแล้วทุก Phase** 🎉 (H1-J + เดือนไทย พ.ศ. + data_source + UI โหมดค่าเดียว, commit ถึง `b79049e` push แล้ว) — ดู `kpi-keyin-plan.md`
-**กำลังทำ = K (ชุด/ประเภทตัวชี้วัด)** — **K1+K2 เสร็จ 23 ก.ค. (ยังไม่ commit)** · owner ส่งข้อมูล 2 ไฟล์แล้ว (ตรวจราชการ 47 + Ranking 44) · **ถัดไป = K3** (ผูกตัวชี้วัดเข้าชุด) → แล้ว L1/L3/L5 · ดู §K/§L
+## ลำดับที่แนะนำ (ปัจจุบัน 25 ก.ค.)
+**⭐ สถานะล่าสุด (เริ่มแชทใหม่อ่านนี่):** แกนชุด **K1-K6 เสร็จ** (commit `458169d`+`7cf1f85` push) · **L1(ข้อความ)+L1b(ระดับ)+bug fix เสร็จ** (commit `cd0738c` push) · **L3(เป้า 3 ระดับ) เสร็จ verify แล้ว 🔴 ยังไม่ commit (ค้าง 7 ไฟล์ในเครื่อง)**
+- ระบบมี **ตัวชี้วัด 3 ชนิด: numeric / text(เชิงคุณภาพ) / level(ระดับ)** + เป้า 3 ระดับต่อชุด (รพ./เขต/จังหวัด)
+- **coverage เช็คแล้ว 25 ก.ค. (kpi-sets-plan §18):** ✅ ตรวจราชการ 47 ตัว **ครอบคลุมครบ** (ข้อความ 24/ตัวเลข 18/นับ 5/ระดับ 1) → นำเข้าได้เลย · ⚠️ Ranking 44 ตัว **ยังไม่ครอบคลุม** (ต้องทำ L7 ระบบคะแนน weight×เกณฑ์ 1-5 ก่อน)
+- **งานถัดไป:** (1) commit L3 (2) **L5 นำเข้าตรวจราชการ 47 ตัว** ← เจาะต่อ · ต้องเตรียมข้อมูลก่อน: สร้าง account 17 คน + ย้ายดลยา→OPD+retag · (3) L7 ระบบคะแนน Ranking → นำเข้า Ranking
+**H (key-in โดย staff) เสร็จหมดแล้วทุก Phase** 🎉 (commit ถึง `b79049e`) — ดู `kpi-keyin-plan.md`
 **งานหลักที่เหลือ = D (production go-live)** รอ owner sign-off (โลหิตจาง/NCD BP) + ตั้ง env production + `/api/init` (ตอนนี้ต้องสร้าง **6 ตารางใหม่** [cron_log, data_change_log, work_groups, kpi_work_groups, kpi_sets, kpi_set_items] **+ 2 คอลัมน์ `manual_scope`/`data_source`** + remap `users.department` + สร้าง account จริง) + replay config + PM2/MariaDB auto-start (user รันเอง)
 · **redesign หน้าตาเว็บยังไม่แตะ** (จุดเริ่มต้นเดิม "หน้าเว็บเหมือนหลังบ้าน" — งานที่ผ่านมาเป็นแค่จัดโครงข้อมูล)
 · A = ติดตาม owner (target มะเร็งเต้านม 85% ยืนยัน, ติ๊ก ก.1/ก.2) · F(admin polish) = เลือกทำ ไม่ด่วน · trend รอ cron ≥2 เดือน

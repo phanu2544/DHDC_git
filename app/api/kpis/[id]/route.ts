@@ -159,20 +159,28 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     }
 
     // sync ชุด/ประเภท (kpi_set_items) — defensive แยก try เหมือน workGroups
-    // แต่ละตัว { setId, setCode? } · กรอง setId ที่ไม่ใช่ number ทิ้ง · set_code ว่าง → NULL
+    // แต่ละตัว { setId, setCode?, targetRegion?, targetProvince?, targetHospital? } · L3 เป้า 3 ระดับ
     let setsWarning: string | null = null
     if (hasSets) {
       try {
         await conn.execute('DELETE FROM kpi_set_items WHERE kpi_id=?', [params.id])
-        const items = (sets as { setId: number; setCode?: string }[])
+        type SetIn = { setId: number; setCode?: string; targetRegion?: string; targetProvince?: string; targetHospital?: string }
+        const trim = (v?: string) => (v?.toString().trim() || null)
+        // กัน setId ซ้ำ (PK = kpi_id+set_id) — เก็บตัวสุดท้าย
+        const items = (sets as SetIn[])
           .filter((s) => s && Number.isInteger(Number(s.setId)))
-          // กัน setId ซ้ำ (PK = kpi_id+set_id) — เก็บตัวสุดท้าย
-          .reduce((acc, s) => { acc.set(Number(s.setId), s.setCode?.toString().trim() || null); return acc }, new Map<number, string | null>())
+          .reduce((acc, s) => {
+            acc.set(Number(s.setId), { code: trim(s.setCode), reg: trim(s.targetRegion), prov: trim(s.targetProvince), hosp: trim(s.targetHospital) })
+            return acc
+          }, new Map<number, { code: string | null; reg: string | null; prov: string | null; hosp: string | null }>())
         if (items.size > 0) {
           const entries = [...items.entries()]
-          const placeholders = entries.map(() => '(?,?,?)').join(',')
-          const values = entries.flatMap(([setId, code]) => [params.id, setId, code])
-          await conn.execute(`INSERT INTO kpi_set_items (kpi_id, set_id, set_code) VALUES ${placeholders}`, values)
+          const placeholders = entries.map(() => '(?,?,?,?,?,?)').join(',')
+          const values = entries.flatMap(([setId, t]) => [params.id, setId, t.code, t.reg, t.prov, t.hosp])
+          await conn.execute(
+            `INSERT INTO kpi_set_items (kpi_id, set_id, set_code, target_region, target_province, target_hospital) VALUES ${placeholders}`,
+            values,
+          )
         }
       } catch (sErr) {
         setsWarning = `บันทึก KPI สำเร็จ แต่บันทึกชุดตัวชี้วัดไม่สำเร็จ: ${String(sErr)}`

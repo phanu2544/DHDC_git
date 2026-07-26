@@ -99,6 +99,8 @@ export default function SetDetailPage() {
                     <tbody className="divide-y">
                       {summary.rows.map((r) => {
                         const code = setCodeFor(r, summary.set.id)
+                        const tag = r.kpi.sets?.find((s) => s.id === summary.set.id)
+                        const refTargets = [tag?.targetRegion && `เขต ${tag.targetRegion}`, tag?.targetProvince && `จังหวัด ${tag.targetProvince}`].filter(Boolean).join(' · ')
                         return (
                           <tr key={r.kpi.id} className="hover:bg-gray-50">
                             <td className="px-4 py-3 text-gray-500 tabular-nums">{code ?? '—'}</td>
@@ -119,7 +121,12 @@ export default function SetDetailPage() {
                                 ? <span className="text-gray-700">{r.valueText || '—'}</span>
                                 : <span className="tabular-nums">{r.value === null ? '—' : `${r.value.toLocaleString()}${r.kpi.unit ? ' ' + r.kpi.unit : ''}`}</span>}
                             </td>
-                            <td className="px-4 py-3 text-right tabular-nums text-gray-600">{(r.direction === 'none' || r.kpi.measureType === 'level') ? '—' : r.target.toLocaleString()}</td>
+                            <td className="px-4 py-3 text-right text-gray-600">
+                              <div className="tabular-nums">{tag?.targetHospital
+                                ? tag.targetHospital
+                                : (r.direction === 'none' || r.kpi.measureType === 'level') ? '—' : r.target.toLocaleString()}</div>
+                              {refTargets && <div className="text-[10px] text-gray-400 mt-0.5">{refTargets}</div>}
+                            </td>
                             <td className="px-4 py-3 text-center">
                               <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[r.status]}`}>{STATUS_META[r.status].label}</span>
                             </td>

@@ -137,7 +137,7 @@ const PROVINCES = [
 
 // ฟอร์มเก็บ sets เป็น write-shape { setId, setCode } (ต่างจาก KPIReport.sets ที่เป็น read-shape KpiSetTag[])
 // เพราะ picker/PUT ใช้ setId+setCode ส่วนตาราง/GET ใช้ id/name/slug
-type KpiFormState = Omit<KPIReport, 'id' | 'sets'> & { sets: { setId: number; setCode: string }[] }
+type KpiFormState = Omit<KPIReport, 'id' | 'sets'> & { sets: { setId: number; setCode: string; targetRegion?: string; targetProvince?: string; targetHospital?: string }[] }
 
 function emptyForm(): KpiFormState {
   return { name: '', category: '', mophUrl: '', mophTable: '', mophValueField: '', mophTargetField: 'target', mophCalcMode: 'percent', direction: 'gte', manualEntry: false, manualScope: 'unit', dataSource: 'HDC', measureType: 'numeric', textOptions: '', workGroups: [], sets: [], owner: '', deadline: '', status: 'in_progress', target: 0, unit: '%', description: '' }
@@ -300,7 +300,8 @@ export default function AdminPage() {
       measureType: kpi.measureType ?? 'numeric',
       textOptions: kpi.textOptions ?? '',
       workGroups: kpi.workGroups ?? [],
-      sets: (kpi.sets ?? []).map((s) => ({ setId: s.id, setCode: s.setCode ?? '' })),
+      sets: (kpi.sets ?? []).map((s) => ({ setId: s.id, setCode: s.setCode ?? '',
+        targetRegion: s.targetRegion ?? '', targetProvince: s.targetProvince ?? '', targetHospital: s.targetHospital ?? '' })),
       owner: kpi.owner, deadline: kpi.deadline, status: kpi.status,
       target: kpi.target, unit: kpi.unit, description: kpi.description ?? '',
     })

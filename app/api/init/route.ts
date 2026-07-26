@@ -202,6 +202,9 @@ export async function POST(req: NextRequest) {
         kpi_id VARCHAR(50) NOT NULL,
         set_id INT NOT NULL,
         set_code VARCHAR(20) NULL,
+        target_region VARCHAR(100) NULL,
+        target_province VARCHAR(100) NULL,
+        target_hospital VARCHAR(100) NULL,
         sort_order INT DEFAULT 0,
         PRIMARY KEY (kpi_id, set_id),
         KEY idx_ksi_set (set_id),
@@ -209,6 +212,10 @@ export async function POST(req: NextRequest) {
         CONSTRAINT fk_ksi_set FOREIGN KEY (set_id) REFERENCES kpi_sets(id) ON DELETE CASCADE
       ) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
     `)
+    // L3: เป้า 3 ระดับต่อ (kpi,set) — migrate DB เดิมที่สร้างก่อน L3 (idempotent)
+    await conn.execute('ALTER TABLE kpi_set_items ADD COLUMN IF NOT EXISTS target_region VARCHAR(100) NULL AFTER set_code').catch(() => {})
+    await conn.execute('ALTER TABLE kpi_set_items ADD COLUMN IF NOT EXISTS target_province VARCHAR(100) NULL AFTER target_region').catch(() => {})
+    await conn.execute('ALTER TABLE kpi_set_items ADD COLUMN IF NOT EXISTS target_hospital VARCHAR(100) NULL AFTER target_province').catch(() => {})
     // seed 5 ชุดเริ่มต้น [name, slug, fiscal_year] — ตรวจราชการ/Ranking ผูกปีงบ, ที่เหลือใช้ยาว (NULL)
     const DEFAULT_KPI_SETS: [string, string, string | null][] = [
       ['ตัวชี้วัดตรวจราชการ เขต 3', 'inspection-r3', '2569'],

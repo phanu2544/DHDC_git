@@ -20,6 +20,10 @@ export interface KpiSetTag {
   name: string        // ชื่อชุด
   slug: string        // สำหรับลิงก์ /sets/<slug>
   setCode: string | null  // เลขข้อในชุด เช่น '1.5' (nullable)
+  // L3: เป้า 3 ระดับต่อชุด (ข้อมูลอ้างอิง — ยึดเป้า รพ. ตัดสิน · เขต/จังหวัดแสดงประกอบ)
+  targetRegion?: string | null    // เป้าเขต เช่น '≥ ร้อยละ 95'
+  targetProvince?: string | null  // เป้าจังหวัด
+  targetHospital?: string | null  // เป้า รพ.
 }
 
 export interface KPIReport {
