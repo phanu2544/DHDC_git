@@ -7,9 +7,11 @@ import { useAuth } from '@/lib/useAuth'
 import Navbar from '@/components/Navbar'
 import { buildScorecard } from '@/lib/scorecard'
 import { summarizeSets, setCodeFor, type KpiSetInfo } from '@/lib/setsSummary'
+import { exportInspectionXlsx, isInspectionSet, type InspectionNote } from '@/lib/exportInspection'
 import { STATUS_META } from '@/lib/kpiStatus'
 import { detailViewHref } from '@/lib/detailView'
 import { formatThaiMonth } from '@/lib/formatMonth'
+import { quarterInfoOfMonth } from '@/lib/fiscalQuarter'
 import type { KPIReport, KpiEvalStatus, MonthlyData } from '@/lib/types'
 
 const STATUS_BADGE: Record<KpiEvalStatus, string> = {
@@ -29,7 +31,9 @@ export default function SetDetailPage() {
   const [sets, setSets] = useState<KpiSetInfo[]>([])
   const [monthly, setMonthly] = useState<MonthlyData[]>([])
   const [latestMonth, setLatestMonth] = useState('')
+  const [months, setMonths] = useState<string[]>([])   // ทุกเดือนที่มีข้อมูล (ให้เลือกดูย้อนหลังได้)
   const [loading, setLoading] = useState(true)
+  const [exporting, setExporting] = useState(false)
 
   useEffect(() => {
     if (!user) return
@@ -41,16 +45,36 @@ export default function SetDetailPage() {
           const mData: MonthlyData[] = await mRes.json()
           setMonthly(mData)
           const monthList = Array.from(new Set(mData.map((m) => m.month))).sort()
+          setMonths(monthList)
           setLatestMonth(monthList[monthList.length - 1] || '')
         }
       })
       .finally(() => setLoading(false))
   }, [user])
 
+  // ตัวชี้วัดที่รายงานเป็นรอบ (เช่น ตรวจราชการ รอบ 1 = ปิดที่ มี.ค.) เก็บค่าไว้คนละเดือนกับ KPI รายเดือน
+  // → ให้เลือกเดือนได้ ไม่งั้นค่าที่กรอกไว้เดือนอื่นจะไม่โผล่เลย (default ยังเป็นเดือนล่าสุดเหมือนเดิม)
   const summary = useMemo(() => {
     const { rows } = buildScorecard(kpis, monthly, latestMonth)
     return summarizeSets(rows, sets).find((s) => s.set.slug === slug) ?? null
   }, [kpis, monthly, latestMonth, sets, slug])
+
+  // L6 — ส่งออกกลับเป็นฟอร์มตรวจราชการ (แทนการกรอก Excel ซ้ำ)
+  // หมายเหตุเชิงคุณภาพอยู่คนละตาราง (kpi_period_notes) → ดึงทั้งรอบทีเดียวตอนกด ไม่ถ่วงตอนเปิดหน้า
+  async function handleExport() {
+    if (!summary || !latestMonth) return
+    setExporting(true)
+    try {
+      const res = await fetch(`/api/kpi-notes?period=${latestMonth}`)
+      const notes: InspectionNote[] = res.ok ? ((await res.json()).notes ?? []) : []
+      await exportInspectionXlsx(summary, notes, latestMonth)
+    } catch (err) {
+      console.error('export ฟอร์มตรวจราชการล้มเหลว:', err)
+      alert('ส่งออกไม่สำเร็จ — ลองใหม่อีกครั้ง')
+    } finally {
+      setExporting(false)
+    }
+  }
 
   if (!user) return null
 
@@ -72,11 +96,35 @@ export default function SetDetailPage() {
                 {summary.set.fiscalYear && <span className="bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded text-xs font-medium">ปีงบ {summary.set.fiscalYear}</span>}
               </div>
               {summary.set.description && <p className="text-gray-500 text-sm mt-1">{summary.set.description}</p>}
-              <p className="text-gray-500 text-sm mt-2">
-                {summary.total} ตัวชี้วัด
-                {summary.evaluated > 0 && <> · <b className="text-gray-700">ผ่าน {summary.pass}/{summary.evaluated} ที่ประเมิน</b></>}
-                {latestMonth && <> · เดือน {formatThaiMonth(latestMonth)}</>}
-              </p>
+              <div className="flex items-center gap-2 flex-wrap mt-2">
+                <p className="text-gray-500 text-sm">
+                  {summary.total} ตัวชี้วัด
+                  {summary.evaluated > 0 && <> · <b className="text-gray-700">ผ่าน {summary.pass}/{summary.evaluated} ที่ประเมิน</b></>}
+                </p>
+                {months.length > 0 && (
+                  <label className="flex items-center gap-1.5 text-sm text-gray-500">
+                    · เดือน
+                    <select
+                      value={latestMonth}
+                      onChange={(e) => setLatestMonth(e.target.value)}
+                      className="border rounded-lg px-2 py-1 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                      {[...months].reverse().map((m) => (
+                        <option key={m} value={m}>{quarterInfoOfMonth(m) ? `${formatThaiMonth(m)} (${quarterInfoOfMonth(m)!.label})` : formatThaiMonth(m)}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {isInspectionSet(summary.set.slug) && summary.total > 0 && (
+                  <button
+                    onClick={handleExport}
+                    disabled={exporting || !latestMonth}
+                    title="ดาวน์โหลดเป็นไฟล์ Excel เลย์เอาต์เดียวกับฟอร์มตรวจราชการ — ส่งเขตได้เลย"
+                    className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium px-3 py-1.5 rounded-lg"
+                  >
+                    📥 {exporting ? 'กำลังสร้างไฟล์...' : 'ส่งออกฟอร์มตรวจราชการ'}
+                  </button>
+                )}
+              </div>
             </div>
 
             {summary.total === 0 ? (
@@ -120,6 +168,10 @@ export default function SetDetailPage() {
                               {r.valueText != null
                                 ? <span className="text-gray-700">{r.valueText || '—'}</span>
                                 : <span className="tabular-nums">{r.value === null ? '—' : `${r.value.toLocaleString()}${r.kpi.unit ? ' ' + r.kpi.unit : ''}`}</span>}
+                              {/* ค่ายกมาจากเดือนก่อน (ยอดสะสม) — บอกอายุข้อมูลเสมอ */}
+                              {r.isCarriedForward && r.dataMonth && (
+                                <div className="text-[10px] text-amber-700">ณ {formatThaiMonth(r.dataMonth)}</div>
+                              )}
                             </td>
                             <td className="px-4 py-3 text-right text-gray-600">
                               <div className="tabular-nums">{tag?.targetHospital

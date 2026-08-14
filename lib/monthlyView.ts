@@ -1,4 +1,5 @@
 import pool from '@/lib/db'
+import { fetchMophRows } from './mophFetch'
 
 /**
  * Phase 8 — แหล่งข้อมูลรายเดือนกลางสำหรับกราฟ detail
@@ -11,8 +12,6 @@ import pool from '@/lib/db'
  * สำคัญ: ความผิดพลาดฝั่ง DB ทั้งหมด degrade ไป live เสมอ — หน้า detail
  * เป็นเรื่องของข้อมูลสด MOPH เป็นหลัก ไม่ควรพังเพราะ DB
  */
-const MOPH_API = 'https://opendata.moph.go.th/api/report_data'
-
 export interface MonthlyRowsResult {
   rows: Record<string, unknown>[]
   source: 'snapshot' | 'live'
@@ -32,15 +31,8 @@ export interface MonthlyViewOpts {
 }
 
 async function fetchLive(table: string, year: string, province: string, areacode: string) {
-  const res = await fetch(MOPH_API, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tableName: table, year, province, type: 'json' }),
-    signal: AbortSignal.timeout(30000),
-  })
-  if (!res.ok) throw new Error(`MOPH ตอบ ${res.status}`)
-  const raw = await res.json()
-  return (Array.isArray(raw) ? raw : Object.values(raw))
-    .filter((r: Record<string, unknown>) => String(r.areacode ?? '').startsWith(areacode)) as Record<string, unknown>[]
+  const rows = await fetchMophRows(table, year, province)
+  return rows.filter((r) => String(r.areacode ?? '').startsWith(areacode))
 }
 
 /** resolve kpiId + เดือนที่มี snapshot — ล้มเหลว (DB ล่ม) → คืนค่าว่าง ไม่ throw */

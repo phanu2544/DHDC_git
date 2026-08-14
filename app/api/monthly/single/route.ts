@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { COOKIE_NAME, verifySession } from '@/lib/auth'
 import { isManualEntry, manualScopeOf, parseManualNumber } from '@/lib/manualKpi'
-import { canEditManualKpi, isEditableMonth } from '@/lib/kpiOwnership'
+import { canEditManualKpi, isEditableMonth, monthLockMessage } from '@/lib/kpiOwnership'
 
 /**
  * POST /api/monthly/single — บันทึกค่า manual แบบ "ค่าเดียว" (ไม่แยกราย รพ.สต.)
@@ -30,8 +30,8 @@ export async function POST(req: NextRequest) {
 
   const conn = await pool.getConnection()
   try {
-    const [kr] = await conn.execute('SELECT target, manual_entry, manual_scope, measure_type FROM kpi_reports WHERE id = ?', [kpiId])
-    const krow = (kr as { target: number; manual_entry: number; manual_scope: string; measure_type: string }[])[0]
+    const [kr] = await conn.execute('SELECT target, manual_entry, manual_scope, measure_type, rate_per FROM kpi_reports WHERE id = ?', [kpiId])
+    const krow = (kr as { target: number; manual_entry: number; manual_scope: string; measure_type: string; rate_per: number }[])[0]
     if (!krow) return NextResponse.json({ message: 'ไม่พบ KPI' }, { status: 404 })
     if (!isManualEntry(krow.manual_entry)) {
       return NextResponse.json({ message: 'KPI นี้ไม่ได้ตั้งเป็น "กรอกค่าเอง" (manual) — ติ๊กในหน้า /admin ก่อน' }, { status: 400 })
@@ -70,21 +70,26 @@ export async function POST(req: NextRequest) {
     }
     // เดือน: admin แก้ย้อนหลังได้ / staff แก้ได้เฉพาะเดือนปัจจุบันเท่านั้น (owner ขอ 2026-07-20)
     if (!isEditableMonth(session, month)) {
-      return NextResponse.json({ message: 'เจ้าหน้าที่กรอก/แก้ไขได้เฉพาะเดือนปัจจุบันเท่านั้น — ติดต่อผู้ดูแลระบบหากต้องการแก้ไขย้อนหลัง' }, { status: 403 })
+      return NextResponse.json({ message: monthLockMessage() }, { status: 403 })
     }
 
     const kpiTarget = Number(krow.target ?? 0) // เป้าหมายจริงของ KPI (ประเมินผ่าน/ไม่ผ่าน) — คนละตัวกับ "กลุ่มเป้าหมาย (B)" ที่ผู้ใช้กรอกไว้เป็นตัวหาร
-    // text: เก็บ value=0 + value_text · numeric: value=% + value_text=NULL
-    const value = isText ? 0 : (t > 0 ? +((r / t) * 100).toFixed(2) : 0)
+    const ratePer = Number(krow.rate_per) || 100 // ตัวคูณ A/B — 100=ร้อยละ (ส่วนใหญ่) · 100000=ต่อแสนประชากร ฯลฯ
+    // text: เก็บ value=0 + value_text · numeric: value=A/B×ratePer + value_text=NULL
+    const value = isText ? 0 : (t > 0 ? +((r / t) * ratePer).toFixed(2) : 0)
     const targetToStore = isText ? 0 : kpiTarget
+    // เก็บ B/A ดิบที่กรอกจริงไว้คู่กับ % เสมอ (numeric เท่านั้น) — กันเปิดฟอร์มแก้ไขซ้ำแล้วต้องเดาค่าคืนจาก %
+    // (เดาแล้วผิดเงียบๆ มาก่อน — ดู kpi-hdc-api-checklist.md 6 ส.ค. 2569)
+    const rawTargetToStore = isText ? null : t
+    const rawResultToStore = isText ? null : r
 
     await conn.beginTransaction()
 
     // ถ้าเดือนนี้มีข้อมูลเดิมอยู่ → เก็บลง data_change_log (action=overwrite) ก่อนทับ (กู้คืนได้)
     const [oldM] = await conn.execute(
-      'SELECT value, target, value_text, source FROM monthly_data WHERE kpi_id = ? AND month = ?', [kpiId, month],
+      'SELECT value, target, value_text, source, raw_target, raw_result FROM monthly_data WHERE kpi_id = ? AND month = ?', [kpiId, month],
     )
-    const prevMonthly = (oldM as { value: number; target: number; value_text: string | null; source: string }[])[0]
+    const prevMonthly = (oldM as { value: number; target: number; value_text: string | null; source: string; raw_target: number | null; raw_result: number | null }[])[0]
     if (prevMonthly) {
       await conn.execute(
         `INSERT INTO data_change_log (kpi_id, month, action, old_data, changed_by)
@@ -94,11 +99,12 @@ export async function POST(req: NextRequest) {
     }
 
     await conn.execute(
-      `INSERT INTO monthly_data (kpi_id, month, value, target, value_text, source, entered_by, entered_at)
-       VALUES (?,?,?,?,?, 'manual', ?, NOW())
+      `INSERT INTO monthly_data (kpi_id, month, value, target, value_text, raw_target, raw_result, source, entered_by, entered_at)
+       VALUES (?,?,?,?,?,?,?, 'manual', ?, NOW())
        ON DUPLICATE KEY UPDATE value=VALUES(value), target=VALUES(target), value_text=VALUES(value_text),
+         raw_target=VALUES(raw_target), raw_result=VALUES(raw_result),
          source='manual', entered_by=VALUES(entered_by), entered_at=NOW()`,
-      [kpiId, month, value, targetToStore, textVal, enteredBy],
+      [kpiId, month, value, targetToStore, textVal, rawTargetToStore, rawResultToStore, enteredBy],
     )
     await conn.commit()
     return NextResponse.json({ ok: true, message: 'บันทึกผลงานสำเร็จ', value, target: t, result: r, valueText: textVal })

@@ -23,7 +23,7 @@ const MONTH_SUFFIX_RE = /(0[1-9]|1[0-2])$/
  *  - s_kpi_ageing : ค่าจริงอยู่รายไตรมาส (targetq1, result1q1 = คัดกรอง/ติดสังคม รอบ1-2)
  *                   ถ้าตัด q1-q4 จะเหลือแค่ target (จำนวนผู้สูงอายุ) คิด % ไม่ได้
  */
-const KEEP_MONTHLY_TABLES = new Set(['s_epi2', 's_kpi_ageing', 's_colon_screen_w'])
+const KEEP_MONTHLY_TABLES = new Set(['s_epi2', 's_kpi_ageing', 's_colon_screen_w', 's_kpi_sepsis_septic'])
 
 export function isSummaryField(name: string): boolean {
   if (META_FIELDS.has(name.toLowerCase())) return false
@@ -50,6 +50,45 @@ export function filterSummaryFields(row: Record<string, unknown>, tableName = ''
 export interface DetailSaveResult {
   saved: number
   error?: string
+}
+
+/**
+ * เก็บ audit ก่อน "ดึงอัตโนมัติ" ทับค่าที่ **คนกรอกมือ** ไว้ (source='manual')
+ *
+ * ทำไมต้องมี: เส้นกรอกมือ (`/api/monthly/single`, `/detail`) เขียน `data_change_log` ก่อนทับเสมอ
+ * แต่เส้น auto (`/api/moph`, `lib/mophBatch`) เดิม**ไม่เขียนเลย** → เคสจริงที่เจอได้คือ
+ * MOPH API ล่ม → เจ้าหน้าที่ติ๊ก "กรอกค่าเอง" แล้วคีย์มือ → พอ API กลับมาแล้วปลดติ๊ก/กดดึงซ้ำ
+ * ค่าที่คนพิมพ์หายถาวรโดยไม่มีร่องรอย
+ *
+ * - log **เฉพาะ** เมื่อค่าเดิมเป็น manual (auto ทับ auto = ข้อมูลชุดเดียวกัน ไม่ต้องเก็บ)
+ * - เก็บทั้ง monthly_data และ moph_monthly_detail (รูปแบบเดียวกับเส้น manual → กู้คืนวิธีเดียวกัน)
+ * - **ต้องเรียกก่อน `saveMonthlyDetail`** เพราะฟังก์ชันนั้น DELETE detail เดิมทิ้งก่อน insert
+ * - additive: พังแล้วห้ามกระทบการบันทึกหลัก (คืน false เงียบๆ เหมือน saveMonthlyDetail)
+ */
+export async function logAutoOverwriteIfManual(kpiId: string, month: string): Promise<boolean> {
+  const conn = await pool.getConnection()
+  try {
+    const [mRows] = await conn.execute(
+      'SELECT value, target, value_text, source, raw_target, raw_result FROM monthly_data WHERE kpi_id=? AND month=?',
+      [kpiId, month],
+    )
+    const prev = (mRows as { source: string | null }[])[0]
+    if (!prev || prev.source !== 'manual') return false
+
+    const [dRows] = await conn.execute(
+      'SELECT hospcode, data FROM moph_monthly_detail WHERE kpi_id=? AND month=?', [kpiId, month],
+    )
+    await conn.execute(
+      `INSERT INTO data_change_log (kpi_id, month, action, old_data, changed_by)
+       VALUES (?, ?, 'overwrite', ?, ?)`,
+      [kpiId, month, JSON.stringify({ monthly: prev, detail: dRows }), 'ระบบ (ดึงอัตโนมัติจาก MOPH)'],
+    )
+    return true
+  } catch {
+    return false // audit พลาด ห้ามบล็อกการดึงข้อมูลหลัก
+  } finally {
+    conn.release()
+  }
 }
 
 /**

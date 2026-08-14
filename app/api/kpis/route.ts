@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { PoolConnection } from 'mysql2/promise'
 import pool from '@/lib/db'
 import { isValidDirection, VALID_DIRECTIONS } from '@/lib/kpiStatus'
+import { reportFreqOf } from '@/lib/fiscalQuarter'
 
 /**
  * เติม workGroups: string[] ให้แต่ละแถว KPI — 1 query รวด กัน N+1 (docs/kpi-work-groups-plan.md)
@@ -67,6 +68,8 @@ export async function GET() {
                 data_source     as dataSource,
                 measure_type    as measureType,
                 text_options    as textOptions,
+                report_freq     as reportFreq,
+                rate_per        as ratePer,
                 owner,
                 DATE_FORMAT(deadline,'%Y-%m-%d') as deadline,
                 status, target, unit, description
@@ -99,7 +102,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const body = await req.json()
   const { name, category, mophUrl, mophTable, mophValueField, mophTargetField, mophCalcMode,
-          direction, owner, deadline, status, target, unit, description, manualEntry, manualScope, dataSource, measureType, textOptions } = body
+          direction, owner, deadline, status, target, unit, description, manualEntry, manualScope, dataSource, measureType, textOptions, reportFreq } = body
   // ชนิด text/level = กรอกมือเสมอ + ค่าเดียว (single) — ดึง MOPH/แยกราย รพ.สต. ไม่ได้
   const measureVal = (measureType === 'text' || measureType === 'level') ? measureType : 'numeric'
   const isTextBased = measureVal === 'text' || measureVal === 'level'
@@ -108,6 +111,8 @@ export async function POST(req: NextRequest) {
   const sourceVal = (typeof dataSource === 'string' && dataSource.trim()) ? dataSource.trim() : 'HDC'
   // ตัวเลือก/ระดับ เก็บเฉพาะ text/level (numeric ไม่ใช้) · ว่าง → NULL
   const textOptsVal = isTextBased && typeof textOptions === 'string' && textOptions.trim() ? textOptions.trim() : null
+  // L4: ความถี่รายงาน — 'quarterly' = กรอก 4 ครั้ง/ปี (ตรวจราชการ) · อื่นๆ = รายเดือนตามเดิม
+  const freqVal = reportFreqOf(reportFreq)
 
   if (!name || !category || !owner || !deadline) {
     return NextResponse.json({ message: 'กรุณากรอกข้อมูลที่จำเป็น' }, { status: 400 })
@@ -128,11 +133,11 @@ export async function POST(req: NextRequest) {
     await conn.execute(
       `INSERT INTO kpi_reports
         (id, name, category, moph_url, moph_table, moph_value_field, moph_target_field, moph_calc_mode,
-         evaluation_direction, manual_entry, manual_scope, data_source, measure_type, text_options, owner, deadline, status, target, unit, description)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         evaluation_direction, manual_entry, manual_scope, data_source, measure_type, text_options, report_freq, owner, deadline, status, target, unit, description)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [id, name, category,
        mophUrl ?? null, mophTable ?? null, mophValueField ?? null, mophTargetField ?? null, mophCalcMode ?? 'percent',
-       evalDirection, manualVal, scopeVal, sourceVal, measureVal, textOptsVal, owner, deadline, status ?? 'in_progress', target ?? 0, unit ?? '%', description ?? null],
+       evalDirection, manualVal, scopeVal, sourceVal, measureVal, textOptsVal, freqVal, owner, deadline, status ?? 'in_progress', target ?? 0, unit ?? '%', description ?? null],
     )
     return NextResponse.json({ id, message: 'เพิ่ม KPI สำเร็จ' })
   } catch (err) {

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { COOKIE_NAME, verifySession } from '@/lib/auth'
 import { isManualEntry, parseManualNumber } from '@/lib/manualKpi'
-import { canEditManualKpi, isEditableMonth } from '@/lib/kpiOwnership'
+import { canEditManualKpi, isEditableMonth, monthLockMessage } from '@/lib/kpiOwnership'
 import { HOSPCODE_NAMES, hospcodeNameOf } from '@/lib/areaRef'
 
 /**
@@ -70,9 +70,9 @@ export async function POST(req: NextRequest) {
           : 'ไม่มีสิทธิ์กรอกผลงาน KPI นี้ — ต้องเป็นผู้ดูแลระบบ หรือเจ้าหน้าที่กลุ่มงานที่รับผิดชอบ',
       }, { status: 403 })
     }
-    // เดือน: admin แก้ย้อนหลังได้ / staff แก้ได้เฉพาะเดือนปัจจุบันเท่านั้น (owner ขอ 2026-07-20)
+    // เดือน: admin แก้ย้อนหลังได้ / staff แก้ได้เฉพาะเดือนปัจจุบัน (owner ขอ 2026-07-20)
     if (!isEditableMonth(session, month)) {
-      return NextResponse.json({ message: 'เจ้าหน้าที่กรอก/แก้ไขได้เฉพาะเดือนปัจจุบันเท่านั้น — ติดต่อผู้ดูแลระบบหากต้องการแก้ไขย้อนหลัง' }, { status: 403 })
+      return NextResponse.json({ message: monthLockMessage() }, { status: 403 })
     }
     const kpiTarget = Number(krow.target ?? 0)
 

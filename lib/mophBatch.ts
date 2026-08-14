@@ -1,23 +1,10 @@
 import pool from '@/lib/db'
 import { buildMappingFromLegacy, computeMoph } from './mophEngine'
-import { saveMonthlyDetail } from './mophDetail'
+import { fetchMophRows } from './mophFetch'
+import { saveMonthlyDetail, logAutoOverwriteIfManual } from './mophDetail'
 import { getTargetsForYear } from './targets'
 import { isManualEntry } from './manualKpi'
 import type { MophMapping } from './types'
-
-const MOPH_API = 'https://opendata.moph.go.th/api/report_data'
-
-export async function fetchMOPH(tableName: string, year: string, province: string) {
-  const res = await fetch(MOPH_API, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tableName, year, province, type: 'json' }),
-    signal: AbortSignal.timeout(30000),
-  })
-  if (!res.ok) throw new Error(`MOPH ตอบ ${res.status}`)
-  const raw = await res.json()
-  return (Array.isArray(raw) ? raw : Object.values(raw)) as Record<string, unknown>[]
-}
 
 export interface BatchOptions {
   year?: string
@@ -142,7 +129,7 @@ export async function runBatchSave(opts: BatchOptions = {}): Promise<BatchResult
         continue
       }
 
-      let rows = await fetchMOPH(kpi.moph_table, year, province)
+      let rows = await fetchMophRows(kpi.moph_table, year, province)
 
       if (hospcode) rows = rows.filter((r) => String(r.hospcode) === String(hospcode))
       if (areacode) rows = rows.filter((r) => String(r.areacode ?? '').startsWith(String(areacode)))
@@ -184,6 +171,11 @@ export async function runBatchSave(opts: BatchOptions = {}): Promise<BatchResult
           warnings: r.warnings.length > 0 ? r.warnings : undefined,
         })
         continue
+      }
+
+      // audit ก่อนทับค่าที่คนกรอกมือไว้ — ต้องเรียกก่อน saveMonthlyDetail (ฟังก์ชันนั้นลบ detail เดิมทิ้ง)
+      if (await logAutoOverwriteIfManual(kpi.id, saveMonth)) {
+        r.warnings.push(`ทับค่าที่กรอกมือไว้ของเดือน ${saveMonth} — ค่าเดิมเก็บใน data_change_log แล้ว`)
       }
 
       // ── Phase 4.8: เก็บ detail ราย hospcode (เฉพาะ field ยอดรวม) ─────────

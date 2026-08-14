@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { classifyField } from '@/lib/mophEngine'
 import { isValidDirection, VALID_DIRECTIONS } from '@/lib/kpiStatus'
+import { reportFreqOf } from '@/lib/fiscalQuarter'
 import type { MophMapping } from '@/lib/types'
 
 const VALID_CALC_MODES = new Set(['percent', 'sum', 'raw', 'noTarget'])
@@ -41,7 +42,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     const [rows] = await conn.execute(
       `SELECT id, name, category,
               moph_url, moph_table, moph_value_field, moph_target_field, moph_calc_mode,
-              moph_report_id, evaluation_direction, manual_entry, manual_scope, data_source, measure_type, text_options, owner, deadline, status, target, unit, description,
+              moph_report_id, evaluation_direction, manual_entry, manual_scope, data_source, measure_type, text_options, report_freq, rate_per, owner, deadline, status, target, unit, description,
               moph_config
        FROM kpi_reports WHERE id = ?`,
       [params.id],
@@ -69,6 +70,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       dataSource:      (row.data_source as string) ?? 'HDC',
       measureType:     row.measure_type === 'text' || row.measure_type === 'level' ? row.measure_type : 'numeric',
       textOptions:     (row.text_options as string | null) ?? null,
+      reportFreq:      reportFreqOf(row.report_freq),
+      ratePer:         Number(row.rate_per) || 100,
       owner: row.owner, deadline: row.deadline, status: row.status,
       target: row.target, unit: row.unit, description: row.description,
       mophConfig,
@@ -84,7 +87,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   const body = await req.json()
   const { name, category, mophUrl, mophTable, mophValueField, mophTargetField, mophCalcMode,
-          direction, owner, deadline, status, target, unit, description, manualEntry, manualScope, dataSource, measureType, textOptions, workGroups, sets } = body
+          direction, owner, deadline, status, target, unit, description, manualEntry, manualScope, dataSource, measureType, textOptions, reportFreq, ratePer, workGroups, sets } = body
   // ชนิด text/level = กรอกมือเสมอ + ค่าเดียว (single) — ดึง MOPH/แยกราย รพ.สต. ไม่ได้
   const measureVal = (measureType === 'text' || measureType === 'level') ? measureType : 'numeric'
   const isTextBased = measureVal === 'text' || measureVal === 'level'
@@ -93,6 +96,12 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   const sourceVal = (typeof dataSource === 'string' && dataSource.trim()) ? dataSource.trim() : 'HDC'
   // ตัวเลือก/ระดับ เก็บเฉพาะ text/level (numeric ล้างเป็น NULL) · ว่าง → NULL
   const textOptsVal = isTextBased && typeof textOptions === 'string' && textOptions.trim() ? textOptions.trim() : null
+  // L4: ความถี่รายงาน (ไม่ส่งมา = คงเดิม เหมือน direction — กันฟอร์มเก่ารีเซ็ตเงียบ)
+  const hasFreq = reportFreq !== undefined
+  const freqVal = reportFreqOf(reportFreq)
+  // Phase 3: ตัวคูณ A/B (100=ร้อยละ default) — ไม่ส่งมา = คงเดิม (กันฟอร์มเก่าที่ยังไม่มีช่องนี้รีเซ็ตเงียบ)
+  const hasRatePer = ratePer !== undefined
+  const rateVal = hasRatePer ? (Number(ratePer) || 100) : null
 
   if (!name || !category || !owner || !deadline) {
     return NextResponse.json({ message: 'กรุณากรอกข้อมูลที่จำเป็น' }, { status: 400 })
@@ -121,22 +130,24 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       await conn.execute(
         `UPDATE kpi_reports SET
           name=?, category=?, moph_url=?, moph_table=?, moph_value_field=?, moph_target_field=?, moph_calc_mode=?,
-          evaluation_direction=?, manual_entry=?, manual_scope=?, data_source=?, measure_type=?, text_options=?, owner=?, deadline=?, status=?, target=?, unit=?, description=?
+          evaluation_direction=?, manual_entry=?, manual_scope=?, data_source=?, measure_type=?, text_options=?,
+          report_freq=COALESCE(?, report_freq), rate_per=COALESCE(?, rate_per), owner=?, deadline=?, status=?, target=?, unit=?, description=?
          WHERE id=?`,
         [name, category,
          mophUrl ?? null, mophTable ?? null, mophValueField ?? null, mophTargetField ?? null, mophCalcMode ?? 'percent',
-         direction, manualVal, scopeVal, sourceVal, measureVal, textOptsVal, owner, deadline, status, target, unit, description ?? null, params.id],
+         direction, manualVal, scopeVal, sourceVal, measureVal, textOptsVal, hasFreq ? freqVal : null, rateVal, owner, deadline, status, target, unit, description ?? null, params.id],
       )
     } else {
       // ไม่ส่ง direction → คงค่า evaluation_direction เดิมใน DB
       await conn.execute(
         `UPDATE kpi_reports SET
           name=?, category=?, moph_url=?, moph_table=?, moph_value_field=?, moph_target_field=?, moph_calc_mode=?,
-          manual_entry=?, manual_scope=?, data_source=?, measure_type=?, text_options=?, owner=?, deadline=?, status=?, target=?, unit=?, description=?
+          manual_entry=?, manual_scope=?, data_source=?, measure_type=?, text_options=?,
+          report_freq=COALESCE(?, report_freq), rate_per=COALESCE(?, rate_per), owner=?, deadline=?, status=?, target=?, unit=?, description=?
          WHERE id=?`,
         [name, category,
          mophUrl ?? null, mophTable ?? null, mophValueField ?? null, mophTargetField ?? null, mophCalcMode ?? 'percent',
-         manualVal, scopeVal, sourceVal, measureVal, textOptsVal, owner, deadline, status, target, unit, description ?? null, params.id],
+         manualVal, scopeVal, sourceVal, measureVal, textOptsVal, hasFreq ? freqVal : null, rateVal, owner, deadline, status, target, unit, description ?? null, params.id],
       )
     }
 

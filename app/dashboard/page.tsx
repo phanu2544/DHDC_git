@@ -11,9 +11,13 @@ import { buildScorecard, EXECUTIVE_SEVERITY_ORDER, ATTENTION_STATUSES, DIRECTION
 import { exportScorecardXlsx } from '@/lib/exportScorecard'
 import { detailViewHref } from '@/lib/detailView'
 import { formatThaiMonth } from '@/lib/formatMonth'
+import { isQuarterEndMonth, quarterInfoOfMonth } from '@/lib/fiscalQuarter'
 import type { KPIReport, KpiEvalStatus, MonthlyData } from '@/lib/types'
 
 const PIE_COLORS = ['#22c55e', '#3b82f6', '#ef4444']
+
+// จำนวนตัวชี้วัดค้างกรอกที่โชว์เป็นชิปในแบนเนอร์ (ที่เหลือสรุปเป็น "และอีก N รายการ")
+const PENDING_PREVIEW = 5
 
 // Executive Scorecard core (eval/order/labels) ย้ายไป lib/scorecard.ts เพื่อ reuse กับ Export
 // เหลือเฉพาะ STATUS_STYLE (สี) ที่เป็น presentation ของหน้านี้
@@ -91,14 +95,25 @@ export default function DashboardPage() {
       )
   }, [scorecard.rows, onlyAttention, onlyMyGroup, setFilter, user])
 
-  // H3: KPI กรอกมือของกลุ่มงานตัวเองที่ยังไม่ได้กรอกเดือนนี้ (ไม่ผูกกับ toggle ด้านบน — เตือนเสมอ)
+  // H3: KPI กรอกมือของกลุ่มงานตัวเองที่ยังไม่ได้กรอกรอบนี้ (ไม่ผูกกับ toggle ด้านบน — เตือนเสมอ)
+  // L4: ตัวชี้วัดรายไตรมาสรายงาน 4 ครั้ง/ปี → เตือนเฉพาะตอนอยู่ในเดือนปิดไตรมาส
+  //     ไม่งั้นจะไล่ทวงทุกเดือนทั้งที่ยังไม่ถึงรอบส่ง (เจอจริงตอนนำเข้าตรวจราชการ — OPD ค้าง 11 ตัว)
+  const inQuarterEnd = isQuarterEndMonth(selectedMonth || '')
+  // ⚠️ ต้องเช็ก isCarriedForward ด้วย — ตั้งแต่ทำ carry-forward ค่าเดือนเก่าจะถูกยกมาแสดง
+  //    ถ้าดูแค่ value===null จะเข้าใจว่า "กรอกแล้ว" ทั้งที่ยังไม่ได้กรอกเดือนนี้ → คำเตือนหายเงียบ
+  const notFilledThisMonth = (r: typeof scorecard.rows[number]) => {
+    const isTextual = r.kpi.measureType === 'text' || r.kpi.measureType === 'level'
+    const empty = isTextual ? !r.valueText : r.value === null
+    return empty || !!r.isCarriedForward
+  }
   const myPendingManual = useMemo(
     () => scorecard.rows.filter(
-      // ยังไม่กรอก: text/level ดูจาก valueText ว่าง (value เป็น null เสมอ) · numeric ดูจาก value===null
       (r) => user?.department && r.kpi.manualEntry && r.kpi.workGroups?.includes(user.department)
-        && ((r.kpi.measureType === 'text' || r.kpi.measureType === 'level') ? !r.valueText : r.value === null),
+        && (r.kpi.reportFreq === 'quarterly' ? inQuarterEnd : true)
+        && notFilledThisMonth(r),
     ),
-    [scorecard.rows, user],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [scorecard.rows, user, inQuarterEnd],
   )
 
   if (!user) return null
@@ -157,7 +172,7 @@ export default function DashboardPage() {
                   >
                     {months.length === 0 && <option value="">— ไม่มีข้อมูล —</option>}
                     {months.map((m) => (
-                      <option key={m} value={m}>{formatThaiMonth(m)}</option>
+                      <option key={m} value={m}>{quarterInfoOfMonth(m) ? `${formatThaiMonth(m)} (${quarterInfoOfMonth(m)!.label})` : formatThaiMonth(m)}</option>
                     ))}
                   </select>
                   <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
@@ -201,14 +216,22 @@ export default function DashboardPage() {
 
               {myPendingManual.length > 0 && (
                 <div className="mb-4 px-4 py-3 rounded-lg bg-blue-50 border border-blue-200 text-blue-800 text-sm">
-                  <p className="mb-2">✍️ มี <b>{myPendingManual.length}</b> ตัวชี้วัดกลุ่ม &quot;{user.department}&quot; ที่ยังไม่ได้กรอกผลงานเดือนนี้</p>
-                  <div className="flex flex-wrap gap-2">
-                    {myPendingManual.map((r) => (
+                  <p className="mb-2">✍️ มี <b>{myPendingManual.length}</b> ตัวชี้วัดกลุ่ม &quot;{user.department}&quot; ที่ยังไม่ได้กรอกผลงานรอบนี้</p>
+                  {/* จำกัดจำนวนที่โชว์ — พอมีตัวชี้วัดตรวจราชการเข้ามา บางกลุ่มค้างเป็นสิบตัว
+                      ถ้าโชว์หมดจะกลายเป็นพรืดจนอ่านไม่ออก · ที่เหลือกดดูได้ที่รายการด้านล่าง */}
+                  <div className="flex flex-wrap gap-2 items-center">
+                    {myPendingManual.slice(0, PENDING_PREVIEW).map((r) => (
                       <Link key={r.kpi.id} href={detailViewHref(r.kpi)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white border border-blue-300 hover:bg-blue-100 text-xs font-medium text-blue-800">
+                        title={r.kpi.name}
+                        className="inline-flex items-center gap-1 max-w-xs truncate px-2.5 py-1 rounded-full bg-white border border-blue-300 hover:bg-blue-100 text-xs font-medium text-blue-800">
                         {r.kpi.name} →
                       </Link>
                     ))}
+                    {myPendingManual.length > PENDING_PREVIEW && (
+                      <span className="text-xs text-blue-700">
+                        และอีก {myPendingManual.length - PENDING_PREVIEW} รายการ (ดูในตารางด้านล่าง)
+                      </span>
+                    )}
                   </div>
                 </div>
               )}
@@ -285,6 +308,10 @@ export default function DashboardPage() {
                               {r.valueText != null
                                 ? <span className="text-gray-700">{r.valueText || '—'}</span>
                                 : <span className="tabular-nums">{r.value === null ? '—' : `${r.value.toLocaleString()}${r.kpi.unit ? ' ' + r.kpi.unit : ''}`}</span>}
+                              {/* ค่ามาจากเดือนก่อนหน้า (ยอดสะสม) — ต้องบอกอายุข้อมูลเสมอ กันเข้าใจผิดว่าเป็นเลขสด */}
+                              {r.isCarriedForward && r.dataMonth && (
+                                <div className="text-[10px] text-amber-700 font-normal">ณ {formatThaiMonth(r.dataMonth)}</div>
+                              )}
                             </td>
                             <td className="px-4 py-2.5 text-right tabular-nums text-gray-600">
                               {r.kpi.measureType === 'text' || r.kpi.measureType === 'level' ? '—' : r.target.toLocaleString()}
@@ -296,7 +323,7 @@ export default function DashboardPage() {
                               </span>
                             </td>
                             <td className="px-4 py-2.5 text-xs text-gray-500">
-                              {r.kpi.manualEntry && ((r.kpi.measureType === 'text' || r.kpi.measureType === 'level') ? !r.valueText : r.value === null)
+                              {r.kpi.manualEntry && notFilledThisMonth(r)
                                 ? <span className="text-amber-700">✍️ ยังไม่กรอกเดือนนี้</span>
                                 : (r.message ?? '')}
                             </td>

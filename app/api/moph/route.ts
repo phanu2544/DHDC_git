@@ -1,23 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { buildMappingFromLegacy, classifyFields, computeMoph } from '@/lib/mophEngine'
-import { saveMonthlyDetail } from '@/lib/mophDetail'
+import { fetchMophRows } from '@/lib/mophFetch'
+import { saveMonthlyDetail, logAutoOverwriteIfManual } from '@/lib/mophDetail'
 import { getTargetFor } from '@/lib/targets'
 import type { MophMapping } from '@/lib/types'
-
-const MOPH_API = 'https://opendata.moph.go.th/api/report_data'
-
-async function fetchMOPH(tableName: string, year: string, province: string) {
-  const res = await fetch(MOPH_API, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tableName, year, province, type: 'json' }),
-    signal: AbortSignal.timeout(30000),
-  })
-  if (!res.ok) throw new Error(`MOPH ตอบ ${res.status}`)
-  const raw = await res.json()
-  return (Array.isArray(raw) ? raw : Object.values(raw)) as Record<string, unknown>[]
-}
 
 /** กรองแถวตาม hospcode และ/หรือ areacode prefix */
 function applyFilters(
@@ -43,7 +30,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: 'กรุณาระบุ tableName, year, province' }, { status: 400 })
   }
 
-  let rows = await fetchMOPH(tableName, year, province).catch((e) => {
+  let rows = await fetchMophRows(tableName, year, province).catch((e) => {
     throw new Error('เชื่อมต่อ MOPH ไม่ได้: ' + e.message)
   })
 
@@ -107,7 +94,10 @@ export async function POST(req: NextRequest) {
 
   // ── Phase 4.8: เก็บ detail ราย hospcode (เฉพาะเมื่อระบุ kpiId) — additive ──
   let detailSaved = 0
+  let overwroteManual = false
   if (kpiId) {
+    // audit ก่อนทับค่าที่คนกรอกมือไว้ — ต้องเรียกก่อน saveMonthlyDetail (ฟังก์ชันนั้นลบ detail เดิมทิ้ง)
+    overwroteManual = await logAutoOverwriteIfManual(kpiId, saveMonth)
     const detail = await saveMonthlyDetail(kpiId, saveMonth, rows, tableName)
     detailSaved = detail.saved
     if (detail.error) engineResult.warnings.push(`เก็บ detail ไม่สำเร็จ: ${detail.error}`)
@@ -131,6 +121,13 @@ export async function POST(req: NextRequest) {
     }
   } else if (kpiId && engineResult.calcValue === null) {
     engineResult.warnings.push('ไม่บันทึกลง DB เนื่องจากคำนวณค่าไม่ได้ (noTarget หรือ target=0)')
+  }
+
+  // เตือนให้ admin เห็นชัดว่าเพิ่งทับของที่คนกรอกมือ (ค่าเดิมกู้คืนได้จาก data_change_log)
+  if (overwroteManual) {
+    engineResult.warnings.push(
+      `ทับค่าที่กรอกมือไว้ของเดือน ${saveMonth} — ค่าเดิมถูกเก็บใน data_change_log แล้ว (กู้คืนได้)`,
+    )
   }
 
   return NextResponse.json({
@@ -168,7 +165,7 @@ export async function GET(req: NextRequest) {
 
   let rows: Record<string, unknown>[]
   try {
-    rows = await fetchMOPH(tableName, year, province)
+    rows = await fetchMophRows(tableName, year, province)
   } catch (e) {
     return NextResponse.json({ ok: false, message: String(e) }, { status: 502 })
   }

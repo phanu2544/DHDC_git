@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
-import { buildMappingFromLegacy, computeMoph } from '@/lib/mophEngine'
+import { buildMappingFromLegacy, computeMoph, DISTRICT_ONLY_TABLES } from '@/lib/mophEngine'
 import { evaluateKpiStatus } from '@/lib/kpiStatus'
-import { tambonCodeOf, tambonNameOf, hospcodeNameOf, HOSPCODE_NAMES } from '@/lib/areaRef'
+import { tambonCodeOf, tambonNameOf, hospcodeNameOf, HOSPCODE_NAMES, TAMBON_NAMES, DISTRICT_NAME } from '@/lib/areaRef'
 import { fieldLabelsFor, legendFor } from '@/lib/detailLabels'
 import { isManualEntry, manualScopeOf } from '@/lib/manualKpi'
 import { COOKIE_NAME, verifySession } from '@/lib/auth'
 import { canEditManualKpi } from '@/lib/kpiOwnership'
-import { fetchMOPH, currentMophFiscalYear } from '@/lib/mophBatch'
+import { reportFreqOf } from '@/lib/fiscalQuarter'
+import { currentMophFiscalYear } from '@/lib/mophBatch'
+import { fetchMophRows } from '@/lib/mophFetch'
 import { filterSummaryFields } from '@/lib/mophDetail'
 import type { MophMapping, EvalDirection, KpiEvalStatus } from '@/lib/types'
 
@@ -49,7 +51,7 @@ export async function GET(req: NextRequest) {
 
     // ── KPI meta + mapping (ชุดเดียวกับ batch/scorecard) ──────────────────
     const [kpiRows] = await conn.execute(
-      `SELECT id, name, category, owner, unit, target, description, moph_table, manual_entry, manual_scope, measure_type, text_options,
+      `SELECT id, name, category, owner, unit, target, description, moph_table, manual_entry, manual_scope, measure_type, text_options, report_freq, rate_per,
               COALESCE(evaluation_direction,'gte') AS direction,
               moph_value_field, moph_target_field, moph_calc_mode, moph_config
        FROM kpi_reports WHERE id = ?`, [kpiId])
@@ -57,11 +59,18 @@ export async function GET(req: NextRequest) {
     if (!kpi) return NextResponse.json({ ok: false, message: 'ไม่พบ KPI' }, { status: 404 })
     const manual = isManualEntry(kpi.manual_entry) // KPI กรอกมือ → หน้า drilldown ทำตารางให้แก้ไขได้
     const manualScope = manualScopeOf(kpi.manual_scope)
-    // canEdit = สิทธิ์เจ้าของ KPI เท่านั้น (ไม่ผูกกับเดือนที่กำลังดู) — เช็กครั้งเดียว reuse ทุก branch
-    // เดือนแก้ได้ไหม (staff เฉพาะเดือนปัจจุบัน) ให้ frontend เช็กเองจาก entryMonth (isEditableMonth ฝั่ง client)
-    // เพราะ entryMonth อาจเปลี่ยนหลังโหลด (auto-jump ไปเดือนปัจจุบัน) โดยไม่ได้ re-fetch — ส่วนการเขียนจริง
-    // ฝั่ง POST /api/monthly/detail และ /single ยัง enforce isEditableMonth เข้มงวดเสมอ ไม่ว่า UI จะโชว์ยังไง
-    const canEdit = manual && session ? await canEditManualKpi(conn, session, kpiId) : false
+    // สิทธิ์เจ้าของ KPI — เช็กครั้งเดียว reuse ทุก branch (ไม่ผูกกับเดือนที่กำลังดู)
+    // เดือนแก้ได้ไหม (staff เฉพาะเดือนปัจจุบัน) ให้ frontend เช็กเองจากเดือนที่แสดง (isEditableMonth ฝั่ง client)
+    // เพราะเดือนอาจเปลี่ยนหลังโหลด (auto-jump ไปเดือนปัจจุบัน) โดยไม่ได้ re-fetch — ส่วนการเขียนจริง
+    // ฝั่ง POST (/api/monthly/detail, /single, /api/kpi-notes) ยัง enforce isEditableMonth เข้มงวดเสมอ
+    const isKpiOwner = session ? await canEditManualKpi(conn, session, kpiId) : false
+    // canEdit = แก้ "ผลงาน" ได้ → เฉพาะ KPI ที่กรอกมือ (auto มาจาก MOPH ห้ามพิมพ์ทับ)
+    const canEdit = manual && isKpiOwner
+    // canEditNotes = แก้ "บันทึกเชิงคุณภาพ" (L2) ได้ → ทุก KPI ไม่ว่า auto หรือ manual
+    // (ตัวชี้วัดตรวจราชการบางข้อผูกกับ KPI auto เดิม เช่น DM/HT, DSPM — ต้องเขียนปัญหา/แนวทางได้ด้วย)
+    const canEditNotes = isKpiOwner
+    // L4: ความถี่รายงาน — หน้า /kpi/[id] ใช้เลือกว่าจะโชว์ตัวเลือกเดือนหรือไตรมาส
+    const reportFreq = reportFreqOf(kpi.report_freq)
 
     // ── manual scope='single' — ค่าเดียว ไม่มี moph_monthly_detail ให้ดู แยก branch อ่านจาก monthly_data ล้วน ──
     if (manual && manualScope === 'single') {
@@ -71,9 +80,9 @@ export async function GET(req: NextRequest) {
       const singleMonth = monthParam && singleMonths.includes(monthParam) ? monthParam : (singleMonths[singleMonths.length - 1] ?? null)
 
       const [mdRows] = await conn.execute(
-        'SELECT value, target, value_text, source, entered_by, entered_at FROM monthly_data WHERE kpi_id = ? AND month = ?',
+        'SELECT value, target, value_text, source, entered_by, entered_at, raw_target, raw_result FROM monthly_data WHERE kpi_id = ? AND month = ?',
         [kpiId, singleMonth ?? ''])
-      const md = (mdRows as { value: number; target: number; value_text: string | null; source: string | null; entered_by: string | null; entered_at: string | null }[])[0] ?? null
+      const md = (mdRows as { value: number; target: number; value_text: string | null; source: string | null; entered_by: string | null; entered_at: string | null; raw_target: number | null; raw_result: number | null }[])[0] ?? null
 
       const [allMd] = await conn.execute(
         'SELECT MAX(month) AS lastMonth, MAX(CASE WHEN month=? THEN 1 ELSE 0 END) AS hasCur FROM monthly_data WHERE kpi_id = ?',
@@ -81,13 +90,15 @@ export async function GET(req: NextRequest) {
       const mdAgg = (allMd as { lastMonth: string | null; hasCur: number }[])[0]
 
       return NextResponse.json({
-        ok: true, kpiId, month: singleMonth, months: singleMonths, manual, manualScope, canEdit,
+        ok: true, kpiId, month: singleMonth, months: singleMonths, manual, manualScope, canEdit, canEditNotes, reportFreq,
         measureType: kpi.measure_type === 'text' || kpi.measure_type === 'level' ? kpi.measure_type : 'numeric',
         textOptions: (kpi.text_options as string | null) ?? null,
         kpi: { name: kpi.name, category: kpi.category, owner: kpi.owner, unit: kpi.unit,
-               direction: kpi.direction, description: kpi.description, target: Number(kpi.target ?? 0) },
+               direction: kpi.direction, description: kpi.description, target: Number(kpi.target ?? 0),
+               ratePer: Number(kpi.rate_per) || 100 },
         savedMonthly: md
-          ? { value: Number(md.value), target: Number(md.target), valueText: md.value_text, enteredBy: md.entered_by, enteredAt: md.entered_at }
+          ? { value: Number(md.value), target: Number(md.target), valueText: md.value_text, enteredBy: md.entered_by, enteredAt: md.entered_at,
+              rawTarget: md.raw_target != null ? Number(md.raw_target) : null, rawResult: md.raw_result != null ? Number(md.raw_result) : null }
           : null,
         stale: !mdAgg?.hasCur,
         lastMonth: mdAgg?.lastMonth ?? null,
@@ -122,7 +133,7 @@ export async function GET(req: NextRequest) {
     const months = (mRows as { month: string }[]).map((r) => r.month)
     if (months.length === 0 && !isLive) {
       return NextResponse.json({
-        ok: true, kpiId, months: [], manual, manualScope, canEdit,
+        ok: true, kpiId, months: [], manual, manualScope, canEdit, canEditNotes, reportFreq,
         kpi: { name: kpi.name, category: kpi.category, owner: kpi.owner, unit: kpi.unit,
                direction: kpi.direction, description: kpi.description, target: Number(kpi.target ?? 0) },
         savedMonthly: null, stale: manual, lastMonth: null,
@@ -152,7 +163,7 @@ export async function GET(req: NextRequest) {
     if (isLive) {
       try {
         const AREACODE_PREFIX = process.env.MOPH_FETCH_AREACODE ?? '6611'
-        const rawRows = await fetchMOPH(String(kpi.moph_table), currentMophFiscalYear(), '66')
+        const rawRows = await fetchMophRows(String(kpi.moph_table), currentMophFiscalYear(), '66')
         const scopeRows = rawRows.filter((r) => String(r.areacode ?? '').startsWith(AREACODE_PREFIX))
         detail = scopeRows.map((r) => ({
           hospcode: String(r.hospcode ?? ''),
@@ -201,7 +212,11 @@ export async function GET(req: NextRequest) {
       return { calcValue: res.calcValue, status: evaluateKpiStatus(res.calcValue, evalTarget, direction).status }
     }
 
-    const groups: GroupOut[] = [...byGroup.entries()]
+    // ตารางระดับอำเภอเท่านั้น (DISTRICT_ONLY_TABLES) — hospcode/areacode ที่ติดมาไม่ใช่ของจริง
+    // (พิสูจน์แล้วกับ s_child0_5_pshyche_develop_coverage) → ไม่แยกราย ตำบล/หน่วยบริการ โชว์แถวเดียว
+    const isDistrictOnly = DISTRICT_ONLY_TABLES.has(String(kpi.moph_table))
+
+    const groups: GroupOut[] = isDistrictOnly ? [] : [...byGroup.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([code, rows]) => ({
         code, name: nameOf(code), rows: rows.length,
@@ -209,11 +224,23 @@ export async function GET(req: NextRequest) {
       }))
 
     // unit view: inject hospcodes ที่ไม่มีข้อมูลเป็น row "ไม่มีข้อมูล" (ไม่ตัดทิ้ง = รู้ว่าหน่วยไหนขาด)
-    if (grpView === 'unit') {
+    if (!isDistrictOnly && grpView === 'unit') {
       const have = new Set(groups.map((g) => g.code))
       for (const code of Object.keys(HOSPCODE_NAMES)) {
         if (!have.has(code)) {
           groups.push({ code, name: hospcodeNameOf(code), rows: 0, fields: {}, calcValue: null, status: null })
+        }
+      }
+      groups.sort((a, b) => a.code.localeCompare(b.code))
+    }
+
+    // area view: inject ตำบลที่ไม่มีข้อมูลเป็น row "ไม่มีข้อมูล" — เหมือน unit view ด้านบน
+    // (สำคัญกับ KPI ระดับโรงพยาบาลอย่าง sepsis ที่มีข้อมูลจริงแค่ 1 ตำบล — ให้เห็นว่าตำบลอื่นไม่มีข้อมูล ไม่ใช่ดึงตกหล่น)
+    if (!isDistrictOnly && grpView === 'area') {
+      const have = new Set(groups.map((g) => g.code))
+      for (const code of Object.keys(TAMBON_NAMES)) {
+        if (!have.has(code)) {
+          groups.push({ code, name: tambonNameOf(code), rows: 0, fields: {}, calcValue: null, status: null })
         }
       }
       groups.sort((a, b) => a.code.localeCompare(b.code))
@@ -224,6 +251,10 @@ export async function GET(req: NextRequest) {
       code: 'all', name: 'รวมอำเภอ', rows: allRows.length,
       fields: sumFields(allRows), ...totalEval,
     }
+    // DISTRICT_ONLY_TABLES: groups มีแถวเดียว "อำเภอดงเจริญ" (ไม่มีตำบล/หน่วยบริการจริงให้แยก)
+    // ให้กราฟ+ตารางยังมีแถวให้เห็น ไม่ใช่ว่าง — ส่วน total ยังส่งไปเป็นแหล่งข้อมูลการ์ดสรุปด้านบนตามปกติ
+    // (หน้าเว็บซ่อนแถว "รวมอำเภอ" ซ้ำเองเมื่อ groups.length===1 — ดู app/kpi/[id]/page.tsx)
+    if (isDistrictOnly) groups.push({ ...total, name: DISTRICT_NAME })
 
     // ลำดับคอลัมน์: target/value fields ของ mapping ก่อน แล้วที่เหลือเรียงชื่อ
     const mappingFields = [...(mapping.targetFields ?? []), ...mapping.valueFields]
@@ -232,12 +263,41 @@ export async function GET(req: NextRequest) {
 
     // ป้ายไทย + เลือก/จัดลำดับคอลัมน์ตาม label map (ถ้ามี) — ให้หน้า generic อ่านง่ายแบบ HDC
     // มี map → โชว์**เฉพาะ**คอลัมน์ที่กำหนด (whitelist + ลำดับ + ป้ายไทย) · ไม่มี map → field ดิบทั้งหมด (KPI อื่นไม่กระทบ)
-    const labelMap = fieldLabelsFor(kpi.moph_table as string)
+    //
+    // ⚠️ KPI กรอกมือ **ห้ามใช้ whitelist ของ moph_table** — ข้อมูลที่คนกรอกเก็บเป็น {target,result} เสมอ
+    // แต่ whitelist ผูกกับชื่อ field ของ MOPH (เช่น cavity-free = c/b/a · s_ncd_bp = b1/r1/a1)
+    // ถ้ากรองด้วย whitelist หลังกรอกมือจะไม่เหลือคอลัมน์ให้แสดงเลย (ตาราง drilldown ว่างเปล่า)
+    // เคสจริงที่เจอได้: MOPH API ล่ม → ติ๊ก "กรอกค่าเอง" ชั่วคราว → คีย์มือ → ตารางหาย
+    const labelMap = manual ? null : fieldLabelsFor(kpi.moph_table as string)
     if (labelMap) {
       fieldList = Object.keys(labelMap).filter((f) => f in total.fields)
+    } else if (manual) {
+      // ใช้ target/result ตรงๆ (ตรงกับที่ฟอร์มกรอก) · ถ้ายังไม่เคยกรอกทับ (ยังเป็น snapshot auto เดิม
+      // ที่ชื่อ field คนละชุด) ให้ fallback เป็น field ดิบทั้งหมด — ดีกว่าโชว์ตารางว่าง
+      const preferred = ['target', 'result'].filter((f) => f in total.fields)
+      fieldList = preferred.length > 0 ? preferred : Object.keys(total.fields).sort()
     }
+    const MANUAL_LABELS: Record<string, string> = { target: 'กลุ่มเป้าหมาย (B)', result: 'ผลงาน (A)' }
     const fieldLabels: Record<string, string> = {}
-    for (const f of fieldList) fieldLabels[f] = labelMap?.[f] ?? f
+    for (const f of fieldList) fieldLabels[f] = labelMap?.[f] ?? (manual ? MANUAL_LABELS[f] ?? f : f)
+
+    // s_kpi_sepsis_septic: ยุบ D/A/B/C รายไตรมาส (16 field ดิบ) เป็นผลรวมทั้งปีงบ + คอลัมน์ A+C
+    // (owner ขอตารางแบบสั้น — ทุก field เป็นยอดสะสมปีงบอยู่แล้วจึงรวม 4 ไตรมาสตรงๆ ได้ ไม่ต้องเฉลี่ย)
+    // !manual: ถ้าสลับเป็นกรอกมือ ข้อมูลจะเป็น {target,result} ไม่มี field ไตรมาสให้ยุบ (จะได้ 0 ทุกช่อง)
+    if (kpi.moph_table === 's_kpi_sepsis_septic' && !manual) {
+      const collapse = (f: Record<string, number>) => {
+        const D = (f.targetq1 ?? 0) + (f.targetq2 ?? 0) + (f.targetq3 ?? 0) + (f.targetq4 ?? 0)
+        const A = (f.resultq1 ?? 0) + (f.resultq2 ?? 0) + (f.resultq3 ?? 0) + (f.resultq4 ?? 0)
+        const B = (f.result2q1 ?? 0) + (f.result2q2 ?? 0) + (f.result2q3 ?? 0) + (f.result2q4 ?? 0)
+        const C = (f.result3q1 ?? 0) + (f.result3q2 ?? 0) + (f.result3q3 ?? 0) + (f.result3q4 ?? 0)
+        return { D, A, B, C, 'A+C': A + C }
+      }
+      for (const g of groups) g.fields = collapse(g.fields)
+      total.fields = collapse(total.fields)
+      fieldList = ['D', 'A', 'B', 'C', 'A+C']
+      for (const k of Object.keys(fieldLabels)) delete fieldLabels[k]
+      for (const k of fieldList) fieldLabels[k] = k
+    }
 
     // mapping ใช้ได้จริงไหม (KPI ที่ BLOCK จะ error → UI งดแสดง %)
     const engineCheck = computeMoph(allRows, mapping)
@@ -252,7 +312,7 @@ export async function GET(req: NextRequest) {
       savedMonthly: md
         ? { value: Number(md.value), target: Number(md.target), enteredBy: md.entered_by, enteredAt: md.entered_at }
         : null,
-      manual, manualScope, canEdit, view: grpView,
+      manual, manualScope, canEdit, canEditNotes, reportFreq, view: grpView,
       stale: manual && !mdAgg?.hasCur, // manual + ยังไม่กรอกเดือนปัจจุบัน
       lastMonth: mdAgg?.lastMonth ?? null,
       live: isLive,

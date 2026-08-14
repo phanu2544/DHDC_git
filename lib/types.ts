@@ -45,6 +45,9 @@ export interface KPIReport {
   sets?: KpiSetTag[]        // ชุด/ประเภทที่ผูกไว้ (many-to-many ผ่าน kpi_set_items) — docs/kpi-sets-plan.md K3
   measureType?: 'numeric' | 'text' | 'level'  // ชนิดการวัด (default 'numeric') · 'text'=ข้อความ ไม่ประเมิน · 'level'=ระดับ เรียงลำดับ ตัดสินผ่าน/ไม่ผ่าน — column measure_type (L1/L1b)
   textOptions?: string | null       // text=ตัวเลือก dropdown · level=ระดับเรียงต่ำ→สูง (บรรทัดละ 1) — column text_options · เป้าของ level = kpi.target (index 1-based ของระดับที่ถือว่าผ่าน)
+  reportFreq?: 'monthly' | 'quarterly' // รอบส่ง/ความถี่เตือน (default 'monthly') — column report_freq (L4)
+                                       // ⚠️ ข้อมูลเก็บ "รายเดือน" เสมอทั้ง 2 แบบ · 'quarterly' แค่บอกว่าส่งเป็นรอบไตรมาส (เตือนตอนเดือนปิดไตรมาส) · ดู lib/fiscalQuarter.ts
+  ratePer?: number  // Phase 3: ตัวคูณ A/B ก่อนแสดงผล (manualScope='single' เท่านั้น) — 100=ร้อยละ (default) · 100000=ต่อแสนประชากร ฯลฯ — column rate_per
   owner: string
   deadline: string
   status: KPIStatus

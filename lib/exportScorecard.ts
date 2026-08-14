@@ -23,13 +23,15 @@ export async function exportScorecardXlsx(
   )
 
   // ── Sheet 1: Scorecard ──────────────────────────────────────────────────
-  const header = ['ตัวชี้วัด (KPI)', 'หมวดหมู่', 'ผู้รับผิดชอบ', 'ค่าจริง', 'เป้าหมาย', 'หน่วย', 'ทิศทาง', 'สถานะ', 'หมายเหตุ']
+  // 'ข้อมูล ณ เดือน' = เดือนจริงของค่าที่แสดง (อาจเก่ากว่าเดือนที่เลือก เพราะยอดสะสมยกมา)
+  const header = ['ตัวชี้วัด (KPI)', 'หมวดหมู่', 'ผู้รับผิดชอบ', 'ค่าจริง', 'ข้อมูล ณ เดือน', 'เป้าหมาย', 'หน่วย', 'ทิศทาง', 'สถานะ', 'หมายเหตุ']
   const body = sorted.map((r) => [
     r.kpi.name.trim(),
     r.kpi.category,
     r.kpi.owner,
     // ชนิด text/level เก็บผลเป็นข้อความ (valueText) — numeric เก็บตัวเลข (value)
     r.valueText != null ? r.valueText : (r.value === null ? '—' : r.value),
+    r.dataMonth ? new Date(r.dataMonth + '-01').toLocaleDateString('th-TH', { month: 'short', year: 'numeric' }) : '—',
     r.valueText != null ? '—' : r.target,
     r.kpi.unit ?? '',
     DIRECTION_LABEL[r.direction],
@@ -44,7 +46,7 @@ export async function exportScorecardXlsx(
     ...body,
   ])
   ws['!cols'] = [
-    { wch: 64 }, { wch: 18 }, { wch: 18 }, { wch: 10 }, { wch: 10 },
+    { wch: 64 }, { wch: 18 }, { wch: 18 }, { wch: 10 }, { wch: 14 }, { wch: 10 },
     { wch: 8 }, { wch: 14 }, { wch: 18 }, { wch: 44 },
   ]
 

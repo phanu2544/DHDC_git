@@ -140,7 +140,7 @@ const PROVINCES = [
 type KpiFormState = Omit<KPIReport, 'id' | 'sets'> & { sets: { setId: number; setCode: string; targetRegion?: string; targetProvince?: string; targetHospital?: string }[] }
 
 function emptyForm(): KpiFormState {
-  return { name: '', category: '', mophUrl: '', mophTable: '', mophValueField: '', mophTargetField: 'target', mophCalcMode: 'percent', direction: 'gte', manualEntry: false, manualScope: 'unit', dataSource: 'HDC', measureType: 'numeric', textOptions: '', workGroups: [], sets: [], owner: '', deadline: '', status: 'in_progress', target: 0, unit: '%', description: '' }
+  return { name: '', category: '', mophUrl: '', mophTable: '', mophValueField: '', mophTargetField: 'target', mophCalcMode: 'percent', direction: 'gte', manualEntry: false, manualScope: 'unit', dataSource: 'HDC', measureType: 'numeric', textOptions: '', workGroups: [], sets: [], owner: '', deadline: '', status: 'in_progress', target: 0, unit: '%', description: '', ratePer: 100 }
 }
 
 interface MophPreview {
@@ -304,6 +304,9 @@ export default function AdminPage() {
         targetRegion: s.targetRegion ?? '', targetProvince: s.targetProvince ?? '', targetHospital: s.targetHospital ?? '' })),
       owner: kpi.owner, deadline: kpi.deadline, status: kpi.status,
       target: kpi.target, unit: kpi.unit, description: kpi.description ?? '',
+      // DECIMAL column กลับมาเป็น string จาก mysql2 (เช่น "100000.00") — <select> match ด้วย string เป๊ะ
+      // ไม่ตรงกับ <option value={100000}> ต้อง Number() ก่อนเสมอ ไม่งั้น dropdown เด้งกลับตัวเลือกแรกเงียบๆ
+      ratePer: Number(kpi.ratePer) || 100,
     })
     setShowForm(true)
   }
@@ -1587,6 +1590,21 @@ export default function AdminPage() {
                       </p>
                     )}
                   </Field>
+
+                  {/* Phase 3: ตัวคูณ A/B — เฉพาะโหมด "กรอกค่าเดียว" เท่านั้น (ราย รพ.สต. ยังคำนวณเป็นร้อยละเสมอ) */}
+                  {form.manualEntry && form.manualScope === 'single' && (
+                    <Field label="วิธีคิดค่าที่กรอก (กลุ่มเป้าหมาย/ผลงาน)">
+                      <select value={form.ratePer ?? 100} onChange={(e) => setForm({ ...form, ratePer: +e.target.value })}
+                        className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value={100}>ร้อยละ (A/B×100) — ค่าเริ่มต้น</option>
+                        <option value={1000}>ต่อพัน (A/B×1,000)</option>
+                        <option value={10000}>ต่อหมื่น (A/B×10,000)</option>
+                        <option value={100000}>ต่อแสนประชากร (A/B×100,000) — เช่น อัตราตาย/เกิด</option>
+                        <option value={1000000}>ต่อล้าน (A/B×1,000,000)</option>
+                      </select>
+                      <p className="mt-1 text-xs text-gray-400">ต้องตั้ง &quot;หน่วย&quot; ด้านบนให้ตรงกัน (เช่น &quot;ต่อแสนประชากร&quot;) — ไม่งั้นตัวเลขจะโชว์ถูกแต่ป้ายหน่วยผิด</p>
+                    </Field>
+                  )}
                 </>
               )}
 

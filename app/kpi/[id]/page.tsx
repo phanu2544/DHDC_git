@@ -1,10 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, Cell } from 'recharts'
 import Navbar from '@/components/Navbar'
 import ThaiMonthInput from '@/components/ThaiMonthInput'
+import QuarterSummary, { type MonthValue } from '@/components/QuarterSummary'
+import { currentQuarter, fiscalYearOfMonth, quarterInfoOfMonth } from '@/lib/fiscalQuarter'
 import { useAuth } from '@/lib/useAuth'
 import { STATUS_META, evaluateKpiStatus } from '@/lib/kpiStatus'
 import { DIRECTION_LABEL } from '@/lib/scorecard'
@@ -52,13 +54,19 @@ interface DetailResp {
   kpi: {
     name: string; category: string; owner: string; unit: string
     direction: EvalDirection; description?: string | null; target?: number
+    ratePer?: number  // ตัวคูณ A/B ก่อนแสดงผล — 100=ร้อยละ (default) · 100000=ต่อแสนประชากร ฯลฯ (single mode)
   }
-  savedMonthly?: { value: number; target: number; valueText?: string | null; enteredBy?: string | null; enteredAt?: string | null } | null
+  savedMonthly?: {
+    value: number; target: number; valueText?: string | null; enteredBy?: string | null; enteredAt?: string | null
+    rawTarget?: number | null; rawResult?: number | null  // B/A ดิบที่กรอกจริง (single mode) — null = แถวเก่าก่อนมีคอลัมน์นี้
+  } | null
   manual?: boolean
   manualScope?: 'unit' | 'single'
   measureType?: 'numeric' | 'text' | 'level'
   textOptions?: string | null
   canEdit?: boolean
+  canEditNotes?: boolean   // L2: แก้บันทึกเชิงคุณภาพได้ไหม (ทุก KPI ไม่ว่า auto/manual — ต่างจาก canEdit)
+  reportFreq?: 'monthly' | 'quarterly'  // L4: รอบส่ง/ความถี่เตือน — ข้อมูลเก็บรายเดือนเสมอทั้ง 2 แบบ
   view?: 'area' | 'unit'
   live?: boolean
   liveError?: string
@@ -85,6 +93,7 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
   // กรอกค่าเอง แบบ "ค่าเดียว" (manualScope='single' — ไม่แยกราย รพ.สต.)
   const [sTarget, setSTarget] = useState('')
   const [sResult, setSResult] = useState('')
+  const [legacyNoRaw, setLegacyNoRaw] = useState(false) // true = มีค่า % บันทึกไว้แต่ไม่มี B/A ดิบ (แถวเก่าก่อนมีคอลัมน์นี้) — ต้องกรอกใหม่ทั้งคู่
   const [sText, setSText] = useState('')   // L1: ผลงานข้อความ (measureType='text')
   const [sTextCustom, setSTextCustom] = useState(false)  // L1: เลือก "อื่นๆ (พิมพ์เอง)" แทน dropdown
   const [mSaving, setMSaving] = useState(false)
@@ -92,6 +101,16 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
   const [editing, setEditing] = useState(false) // ล็อกฟอร์มหลังบันทึก — ต้องกด "แก้ไข" ก่อนจึงพิมพ์ทับได้ (กันมือลั่น)
   const [view, setView] = useState<'area' | 'unit'>('area') // มุมมอง drilldown (KPI auto)
   const [isLive, setIsLive] = useState(false) // โหมดสดจาก MOPH
+  // L2: บันทึกเชิงคุณภาพต่อรอบ (ปัญหา/แนวทาง/แหล่งที่มา) — ใช้ได้ทั้ง KPI auto และ manual
+  const [nProblem, setNProblem] = useState('')
+  const [nNextAction, setNNextAction] = useState('')
+  const [nDataRef, setNDataRef] = useState('')
+  const [nSavedBy, setNSavedBy] = useState<{ by: string | null; at: string | null } | null>(null)
+  const [nEditing, setNEditing] = useState(false)
+  const [nSaving, setNSaving] = useState(false)
+  const [nMsg, setNMsg] = useState('')
+  // L4: ค่าทุกเดือนของ KPI นี้ (ใช้สร้างตาราง/กราฟ 4 ไตรมาส) — /api/monthly มีอยู่แล้ว ไม่ต้องทำ API ใหม่
+  const [allMonths, setAllMonths] = useState<MonthValue[]>([])
 
   const load = useCallback(async (month?: string, v?: 'area' | 'unit') => {
     setLoading(true)
@@ -106,6 +125,44 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
       setError(String(e))
     } finally {
       setLoading(false)
+    }
+  }, [params.id])
+
+  // L4: โหลดค่าทุกเดือนของ KPI นี้ (สำหรับตาราง/กราฟรายไตรมาส)
+  const loadAllMonths = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/monthly?kpiId=${params.id}`)
+      if (!res.ok) return
+      const j = await res.json()
+      setAllMonths((Array.isArray(j) ? j : []).map((r: { month: string; value: unknown; valueText?: string | null }) => ({
+        month: r.month,
+        value: r.value === null || r.value === undefined ? null : Number(r.value),
+        valueText: r.valueText ?? null,
+      })))
+    } catch {
+      /* ตารางไตรมาสเป็นส่วนเสริม — พังแล้วต้องไม่ทำหน้าหลักล่ม */
+    }
+  }, [params.id])
+
+  // L2: โหลดบันทึกเชิงคุณภาพของรอบที่กำลังดู (แยกจาก /api/detail — ไม่ทำให้หน้าเดิมพังถ้าตารางยังไม่มี)
+  // ⚠️ กัน race: ตอนเปิดหน้า เดือนเปลี่ยน 2 จังหวะ (thisMonth → เดือนจริงของข้อมูล) จึงยิง 2 request
+  // ถ้า response ของเดือนเก่ามาถึงทีหลัง จะทับข้อมูลเดือนที่ถูกต้องด้วยค่าว่าง → เก็บเดือนล่าสุดที่ขอไว้ใน ref แล้วทิ้ง response ที่ไม่ตรง
+  const notesReqRef = useRef('')
+  const loadNotes = useCallback(async (period: string) => {
+    notesReqRef.current = period
+    try {
+      const res = await fetch(`/api/kpi-notes?kpiId=${params.id}&period=${period}`)
+      const j = await res.json()
+      if (notesReqRef.current !== period) return   // มีคำขอเดือนใหม่กว่าแล้ว — ทิ้งผลเก่า
+      const n = j.note
+      setNProblem(n?.problem ?? '')
+      setNNextAction(n?.nextAction ?? '')
+      setNDataRef(n?.dataRef ?? '')
+      setNSavedBy(n ? { by: n.updatedBy ?? null, at: n.updatedAt ?? null } : null)
+      setNEditing(!n)   // ยังไม่เคยบันทึก → เปิดให้พิมพ์เลย · มีแล้ว → ล็อกไว้ก่อน (กันมือลั่นทับ)
+      setNMsg('')
+    } catch {
+      /* เงียบไว้ — หมายเหตุเป็นส่วนเสริม ไม่ควรทำให้หน้าหลักพัง */
     }
   }, [params.id])
 
@@ -127,13 +184,17 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data])
 
-  // sync ฟอร์ม "ค่าเดียว" จากข้อมูลที่โหลด — monthly_data เก็บแค่ value(%)+target ไม่มี result(A) ดิบ
-  // → ผลงาน (A) ตอนเปิดฟอร์มซ้ำ คำนวณย้อนจาก % ที่บันทึกไว้ (ปัดเศษ อาจคลาดเคลื่อน ±1 ในบางกรณี — ผู้กรอกปรับก่อนบันทึกทับได้)
+  // sync ฟอร์ม "ค่าเดียว" จากข้อมูลที่โหลด — ใช้ B/A ดิบที่กรอกจริง (rawTarget/rawResult)
+  // แถวเก่าก่อนมีคอลัมน์นี้ (rawTarget=null) ไม่เดาค่าคืนจาก % แล้ว (เดาแล้วผิดเงียบๆ มาก่อน
+  // เพราะ md.target คือเป้าหมายของ KPI เอง ไม่ใช่ B ที่กรอก — ดู kpi-hdc-api-checklist.md 6 ส.ค. 2569)
+  // → เว้นว่างให้กรอกใหม่ทั้งคู่ + ขึ้นป้ายเตือนแทน
   useEffect(() => {
     if (!data?.manual || data.manualScope !== 'single') return
     const md = data.savedMonthly
-    setSTarget(md ? String(md.target) : '')
-    setSResult(md && md.target > 0 ? String(Math.round((md.value / 100) * md.target)) : '')
+    const hasRaw = !!md && md.rawTarget != null && md.rawResult != null
+    setSTarget(hasRaw ? String(md!.rawTarget) : '')
+    setSResult(hasRaw ? String(md!.rawResult) : '')
+    setLegacyNoRaw(!!md && !hasRaw)
     setEntryMonth(data.month ?? thisMonth)
     setEditing(!data.savedMonthly)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -151,6 +212,41 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
     setEditing(!data.savedMonthly)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data])
+
+  // L2: โหลดหมายเหตุใหม่ทุกครั้งที่รอบที่แสดงเปลี่ยน
+  // manual = เดือนในฟอร์มกรอก (entryMonth) · auto = เดือนของข้อมูลที่โหลดมา (data.month)
+  const notesPeriod = data?.manual ? entryMonth : (data?.month ?? '')
+  useEffect(() => {
+    if (!data || !notesPeriod) return
+    loadNotes(notesPeriod)
+  }, [data, notesPeriod, loadNotes])
+
+  // L4: ดึงค่าทุกเดือนของ KPI นี้ (ใช้กับตารางสรุปทั้งปี — สลับดูไตรมาส/เดือนได้ทุกตัวชี้วัด)
+  useEffect(() => {
+    if (data) loadAllMonths()
+  }, [data, loadAllMonths])
+
+  async function saveNotes(period: string) {
+    setNSaving(true); setNMsg('')
+    try {
+      const res = await fetch('/api/kpi-notes', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kpiId: params.id, period,
+          problem: nProblem, nextAction: nNextAction, dataRef: nDataRef,
+        }),
+      })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.message || 'บันทึกไม่สำเร็จ')
+      setNMsg(`✅ ${j.message}`)
+      setNEditing(false)
+      loadNotes(period)
+    } catch (e) {
+      setNMsg(`⚠️ ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      setNSaving(false)
+    }
+  }
 
   async function saveManualDetail() {
     for (const r of tRows) {
@@ -179,6 +275,11 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
 
   async function saveSingleValue() {
     const t = Number(sTarget) || 0, r = Number(sResult) || 0
+    // กันบันทึกทับด้วย 0/0 เงียบๆ ตอนช่องว่าง (แถว legacy ไม่มี raw B/A ให้ preload — ต้องกรอกใหม่จริงก่อนบันทึก)
+    if (legacyNoRaw && t === 0 && r === 0) {
+      setMMsg(`⚠️ กรุณากรอกกลุ่มเป้าหมาย (B) และผลงาน (A) ใหม่ทั้งคู่ก่อนบันทึก — ค่าเดิม ${committedPct}${data?.kpi.unit} จะไม่ถูกนำมาใช้ต่ออัตโนมัติ`)
+      return
+    }
     if (r > t) { setMMsg('⚠️ ผลงาน (A) ต้องไม่เกินฐาน (B)'); return }
     setMSaving(true); setMMsg('')
     try {
@@ -247,8 +348,18 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
   // สิทธิ์แก้ไขจริง = เจ้าของ KPI (server) + เดือนที่กำลังดูแก้ได้ไหม (staff เฉพาะเดือนปัจจุบัน, admin ทุกเดือน)
   // เช็ก entryMonth ฝั่ง client เพราะอาจเปลี่ยนหลังโหลด (auto-jump ไปเดือนปัจจุบัน) โดยไม่ได้ re-fetch จาก server
   // — การเขียนจริงยัง enforce เข้มงวดฝั่ง POST เสมอ ไม่ว่า UI ตรงนี้จะคำนวณผิดพลาดยังไงก็ตาม
+  // L4: รอบส่งเป็นไตรมาส — ใช้แค่กำหนดป้ายรอบ + ความถี่เตือน (ข้อมูลเก็บรายเดือนเสมอ)
+  const quarterly = data?.reportFreq === 'quarterly'
+  const qInfo = quarterly ? quarterInfoOfMonth(entryMonth) : null
+  // ป้ายรอบที่ใช้ทั่วหน้า: รายไตรมาส → "ไตรมาส 2/2569" · รายเดือน → "เดือนมีนาคม 2569"
+  const periodLabel = qInfo ? qInfo.label : `เดือน${formatThaiMonth(entryMonth)}`
   const monthLocked = user.role !== 'admin' && entryMonth !== thisMonth
   const canEdit = (data?.canEdit ?? false) && !monthLocked
+  // L2: บันทึกเชิงคุณภาพ — ล็อกตามรอบที่แสดงจริง (notesPeriod) ซึ่งอาจคนละเดือนกับฟอร์มกรอกผลงาน
+  const notesQ = quarterly ? quarterInfoOfMonth(notesPeriod) : null
+  const notesPeriodLabel = notesQ ? notesQ.label : `เดือน${formatThaiMonth(notesPeriod)}`
+  const notesLocked = user.role !== 'admin' && notesPeriod !== thisMonth
+  const canEditNotes = (data?.canEditNotes ?? false) && !notesLocked
   const viewLabel = view === 'unit' ? 'หน่วยบริการ' : 'ตำบล'
   const groups = data?.groups ?? []
   const total = data?.total
@@ -270,11 +381,21 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
   const liveTotalStatus = manual ? evaluateKpiStatus(liveTotalPct, target, direction ?? 'none').status : null
   const manualStatus = liveTotalStatus
 
-  // manualScope='single': คำนวณสดจากช่องกรอกค่าเดียว
+  // manualScope='single': คำนวณสดจากช่องกรอกค่าเดียว (ใช้กับตารางกรอก/แถวที่กำลังแก้ — ไม่ใช่แหล่งความจริง)
+  const ratePer = data?.kpi.ratePer || 100  // 100=ร้อยละ (ส่วนใหญ่) · 100000=ต่อแสนประชากร ฯลฯ
   const sTargetNum = Number(sTarget) || 0
   const sResultNum = Number(sResult) || 0
-  const sPct = sTargetNum > 0 ? +((sResultNum / sTargetNum) * 100).toFixed(2) : 0
+  const sPct = sTargetNum > 0 ? +((sResultNum / sTargetNum) * ratePer).toFixed(2) : 0
   const sStatus = singleMode ? evaluateKpiStatus(sPct, target, direction ?? 'none').status : null
+
+  // ค่า % ที่บันทึกจริงจากเซิร์ฟเวอร์ (แหล่งความจริง) — การ์ดสรุป/กราฟ/badge ต้องอิงจากตรงนี้เสมอ ไม่ใช่ sPct
+  // (sPct มาจากฟอร์มกรอกซึ่งแถวเก่าที่ไม่มี raw B/A จะว่างเปล่า — ถ้าเอา sPct ไปโชว์การ์ดสรุป
+  // จะทำให้ % ที่เคยบันทึกถูกต้องแล้วหายไปเป็น "—" ทั้งที่ยังมีค่าจริงอยู่ใน DB)
+  const committedPct = data?.savedMonthly ? Number(data.savedMonthly.value) : null
+  const committedStatus = singleMode && committedPct != null
+    ? evaluateKpiStatus(committedPct, target, direction ?? 'none').status : null
+  const committedRawTarget = data?.savedMonthly?.rawTarget ?? null
+  const committedRawResult = data?.savedMonthly?.rawResult ?? null
 
   const chartData = manual
     ? liveRows.map((r) => ({ name: r.name, value: r.pct ?? 0, status: evaluateKpiStatus(r.pct ?? 0, target, direction ?? 'none').status }))
@@ -314,6 +435,23 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                 <p className="text-gray-500 text-sm mt-1">
                   {DISTRICT_NAME} • {data.kpi.category} • ผู้รับผิดชอบ: {data.kpi.owner} • {DIRECTION_LABEL[data.kpi.direction]}
                 </p>
+                <div className="flex items-center gap-2 flex-wrap mt-2">
+                  {/* ที่มาของตัวเลข — กัน staff งงว่าทำไมบางตัวไม่มีช่องกรอก */}
+                  {manual ? (
+                    <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                      ✍️ กรอกเอง โดยผู้รับผิดชอบ
+                    </span>
+                  ) : (
+                    <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      📊 ดึงอัตโนมัติจาก HDC — ไม่ต้องกรอกเอง
+                    </span>
+                  )}
+                  {quarterly && (
+                    <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-violet-50 text-violet-700 border border-violet-200">
+                      ส่งเขตรายไตรมาส
+                    </span>
+                  )}
+                </div>
               </div>
               {manual ? (
                 // staff กรอกได้เฉพาะเดือนปัจจุบัน (ล็อก min=max) — admin เลือกย้อนหลังได้เหมือนเดิม
@@ -329,8 +467,9 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                       สดจาก MOPH
                     </span>
                   )}
-                  {/* มุมมอง: รายตำบล / รายหน่วยบริการ */}
-                  {data.months.length > 0 && (
+                  {/* มุมมอง: รายตำบล / รายหน่วยบริการ — ซ่อนถ้ามีแค่แถวเดียว (KPI ระดับอำเภอ เช่น เอกสาร HDC
+                      ไม่รองรับแยกตำบล/หน่วยบริการจริง) เพราะสลับ 2 ปุ่มแล้วได้ผลเหมือนกันเป๊ะ ไม่มีตัวเลือกจริงให้กด */}
+                  {data.months.length > 0 && groups.length !== 1 && (
                     <div className="inline-flex rounded-lg border overflow-hidden text-sm">
                       <button onClick={() => changeView('area')}
                         className={`px-3 py-2 ${view === 'area' ? 'bg-blue-700 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
@@ -368,7 +507,7 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                 </div>
                 <div className="bg-white rounded-xl shadow-sm border overflow-hidden mb-3">
                   <div className="px-5 py-3 border-b flex items-center justify-between gap-3">
-                    <h2 className="font-semibold text-gray-800 text-sm">ผลงาน — เดือน{formatThaiMonth(entryMonth)} {canEdit && (editing
+                    <h2 className="font-semibold text-gray-800 text-sm">ผลงาน — {periodLabel} {canEdit && (editing
                       ? <span className="text-xs font-normal text-blue-600">(กำลังแก้ไข)</span>
                       : <span className="text-xs font-normal text-gray-400">🔒 ล็อก</span>)}</h2>
                     <span className="shrink-0 inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-700">{levelMode ? 'ระดับ' : 'เชิงคุณภาพ'}</span>
@@ -442,20 +581,26 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
               </>
             ) : singleMode ? (
               <>
-                {/* การ์ดสรุป — ค่าเดียว (คำนวณสดจากช่องกรอก) */}
+                {/* การ์ดสรุป — ค่าเดียว (ยึดค่าที่บันทึกจริงจากเซิร์ฟเวอร์เสมอ ไม่ใช่ฟอร์มที่กำลังกรอก
+                    กันเคส legacy ที่ยังไม่มี B/A ดิบ — ไม่งั้น % ที่เคยบันทึกถูกจะหายไปเป็น "—" ตอนเปิดหน้า) */}
                 <div className="bg-white rounded-xl shadow-sm border p-5 mb-6 flex flex-wrap items-center gap-8">
                   <div className="text-center">
                     <div className="text-4xl font-bold text-blue-700">
-                      {sTargetNum > 0 ? sPct : '—'}
+                      {committedPct != null ? committedPct : '—'}
                       <span className="text-xl text-gray-400"> {data.kpi.unit}</span>
                     </div>
-                    <p className="text-gray-500 text-xs mt-1">{sResultNum.toLocaleString()}/{sTargetNum.toLocaleString()} — {formatThaiMonth(entryMonth)}</p>
+                    <p className="text-gray-500 text-xs mt-1">
+                      {committedRawTarget != null
+                        ? `${(committedRawResult ?? 0).toLocaleString()}/${committedRawTarget.toLocaleString()}`
+                        : (committedPct != null ? 'ไม่มีข้อมูลดิบ (บันทึกก่อนอัปเดตระบบ)' : 'ยังไม่มีข้อมูล')}
+                      {' — '}{qInfo ? qInfo.label : formatThaiMonth(entryMonth)}
+                    </p>
                   </div>
                   <div className="text-sm text-gray-600 space-y-1">
                     <p>เป้าหมาย: <b>{target}</b> {data.kpi.unit} ({direction && DIRECTION_LABEL[direction]})</p>
-                    {sTargetNum > 0 && sStatus && (
-                      <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${BADGE[sStatus]}`}>
-                        {STATUS_META[sStatus].label}
+                    {committedStatus && (
+                      <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${BADGE[committedStatus]}`}>
+                        {STATUS_META[committedStatus].label}
                       </span>
                     )}
                     {manualSaved?.enteredBy && (
@@ -474,15 +619,32 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                   </div>
                 )}
 
+                {legacyNoRaw && (
+                  <div className="mb-6 bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg text-sm">
+                    ⚠️ เดือนนี้บันทึกไว้เป็น <b>{committedPct}{data.kpi.unit}</b> ตั้งแต่ก่อนระบบเก็บ "กลุ่มเป้าหมาย"/"ผลงาน (A)" ดิบ —
+                    ตัวเลข % ด้านบนยังถูกต้อง แต่ถ้าจะแก้ไข <b>ต้องกรอกทั้ง 2 ช่องใหม่ทั้งคู่</b> (ระบบจะไม่เดาค่าเดิมให้ กันเพี้ยนซ้ำ)
+                  </div>
+                )}
+
                 <div className="mb-6 bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-lg text-sm leading-relaxed">
-                  ℹ️ KPI นี้ <b>กรอกค่าเอง แบบค่าเดียว</b> (ไม่แยกราย รพ.สต.) — กรอก <b>กลุ่มเป้าหมาย</b> และ <b>ผลงาน (A)</b> รวม · ระบบคำนวณ % = A/B ให้อัตโนมัติ
+                  ℹ️ KPI นี้ <b>กรอกค่าเอง แบบค่าเดียว</b> (ไม่แยกราย รพ.สต.) — กรอก <b>กลุ่มเป้าหมาย</b> และ <b>ผลงาน (A)</b> รวม · ระบบคำนวณ{' '}
+                  {ratePer === 100 ? '% = A/B ให้อัตโนมัติ' : `${data.kpi.unit} = A/B × ${ratePer.toLocaleString()} ให้อัตโนมัติ`}
                 </div>
+
+                {/* นิยาม/หมายเหตุ — สำคัญมากสำหรับ single-mode เพราะ "กลุ่มเป้าหมาย"/"ผลงาน (A)" เป็นป้ายทั่วไป
+                    บาง KPI (เช่น เทียบค่าเฉลี่ยย้อนหลัง) ความหมายจริงไม่ตรงตัวป้าย ต้องมีคำอธิบายเฉพาะตัวกันสับสน */}
+                {data.kpi.description && (
+                  <div className="mb-6 bg-white rounded-xl shadow-sm border p-5 text-sm text-gray-600">
+                    <h3 className="font-semibold text-gray-800 mb-2 text-sm">นิยาม / วิธีกรอก</h3>
+                    <p className="whitespace-pre-line">{data.kpi.description}</p>
+                  </div>
+                )}
 
                 {/* กราฟแท่ง — ค่าเดียว (โรงพยาบาลดงเจริญ) */}
                 <div className="bg-white rounded-xl shadow-sm border p-5 mb-6">
-                  <h2 className="font-semibold text-gray-800 mb-3 text-sm">แผนภูมิ — เดือน{formatThaiMonth(entryMonth)}</h2>
+                  <h2 className="font-semibold text-gray-800 mb-3 text-sm">แผนภูมิ — {periodLabel}</h2>
                   <ResponsiveContainer width="100%" height={220}>
-                    <BarChart data={[{ name: SINGLE_MODE_UNIT_NAME, value: sTargetNum > 0 ? sPct : 0, status: sStatus }]}
+                    <BarChart data={[{ name: SINGLE_MODE_UNIT_NAME, value: committedPct ?? 0, status: committedStatus }]}
                       margin={{ top: 16, right: 16, bottom: 4, left: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} />
                       <XAxis dataKey="name" tick={{ fontSize: 12 }} />
@@ -493,7 +655,7 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                           label={{ value: `เป้าหมาย ${target}`, fill: '#dc2626', fontSize: 12, position: 'insideTopRight' }} />
                       )}
                       <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={80}>
-                        <Cell fill={sTargetNum > 0 && sStatus ? (BAR_COLOR[sStatus] ?? '#3b82f6') : '#9ca3af'} />
+                        <Cell fill={committedStatus ? (BAR_COLOR[committedStatus] ?? '#3b82f6') : '#9ca3af'} />
                       </Bar>
                     </BarChart>
                   </ResponsiveContainer>
@@ -502,7 +664,7 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                 {/* ตารางกรอกค่าเดียว */}
                 <div className="bg-white rounded-xl shadow-sm border overflow-hidden mb-3">
                   <div className="px-5 py-3 border-b flex items-center justify-between">
-                    <h2 className="font-semibold text-gray-800 text-sm">ตาราง — เดือน{formatThaiMonth(entryMonth)} {canEdit && (editing
+                    <h2 className="font-semibold text-gray-800 text-sm">ตาราง — {periodLabel} {canEdit && (editing
                       ? <span className="text-xs font-normal text-blue-600">(กำลังแก้ไข)</span>
                       : <span className="text-xs font-normal text-gray-400">🔒 ล็อก</span>)}</h2>
                   </div>
@@ -511,9 +673,9 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                       <thead className="bg-gray-50 text-gray-500 text-xs">
                         <tr>
                           <th className="text-left px-4 py-2 font-medium">หน่วยบริการ</th>
-                          <th className="text-right px-3 py-2 font-medium">กลุ่มเป้าหมาย</th>
+                          <th className="text-right px-3 py-2 font-medium">กลุ่มเป้าหมาย (B)</th>
                           <th className="text-right px-3 py-2 font-medium">ผลงาน (A)</th>
-                          <th className="text-right px-4 py-2 font-medium">% (A/B)</th>
+                          <th className="text-right px-4 py-2 font-medium">{ratePer === 100 ? '% (A/B)' : `${data?.kpi.unit ?? ''} (A/B×${ratePer.toLocaleString()})`}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y">
@@ -523,13 +685,13 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                             {canEdit && editing
                               ? <input type="number" min="0" value={sTarget} onChange={(e) => setSTarget(e.target.value)}
                                   className="border rounded px-2 py-1 text-sm w-24 text-right" />
-                              : <span className="tabular-nums text-gray-700">{sTargetNum.toLocaleString()}</span>}
+                              : <span className="tabular-nums text-gray-700">{sTargetNum > 0 ? sTargetNum.toLocaleString() : '—'}</span>}
                           </td>
                           <td className="px-3 py-2 text-right">
                             {canEdit && editing
                               ? <input type="number" min="0" value={sResult} onChange={(e) => setSResult(e.target.value)}
                                   className="border rounded px-2 py-1 text-sm w-24 text-right" />
-                              : <span className="tabular-nums text-gray-700">{sResultNum.toLocaleString()}</span>}
+                              : <span className="tabular-nums text-gray-700">{sTargetNum > 0 ? sResultNum.toLocaleString() : '—'}</span>}
                           </td>
                           <td className="px-4 py-2 text-right tabular-nums font-semibold">{sTargetNum > 0 ? sPct : '—'}</td>
                         </tr>
@@ -579,7 +741,7 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                       {liveSumT > 0 ? liveTotalPct : '—'}
                       <span className="text-xl text-gray-400"> {data.kpi.unit}</span>
                     </div>
-                    <p className="text-gray-500 text-xs mt-1">รวมอำเภอ ({liveSumA.toLocaleString()}/{liveSumT.toLocaleString()}) — {formatThaiMonth(entryMonth)}</p>
+                    <p className="text-gray-500 text-xs mt-1">รวมอำเภอ ({liveSumA.toLocaleString()}/{liveSumT.toLocaleString()}) — {qInfo ? qInfo.label : formatThaiMonth(entryMonth)}</p>
                   </div>
                   <div className="text-sm text-gray-600 space-y-1">
                     <p>เป้าหมาย: <b>{target}</b> {data.kpi.unit} ({direction && DIRECTION_LABEL[direction]})</p>
@@ -610,7 +772,7 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
 
                 {/* กราฟแท่ง %รายหน่วยบริการ (สด) */}
                 <div className="bg-white rounded-xl shadow-sm border p-5 mb-6">
-                  <h2 className="font-semibold text-gray-800 mb-3 text-sm">แผนภูมิ %รายหน่วยบริการ — เดือน{formatThaiMonth(entryMonth)}</h2>
+                  <h2 className="font-semibold text-gray-800 mb-3 text-sm">แผนภูมิ %รายหน่วยบริการ — {periodLabel}</h2>
                   <ResponsiveContainer width="100%" height={260}>
                     <BarChart data={chartData} margin={{ top: 16, right: 16, bottom: 4, left: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -631,7 +793,7 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                 {/* ตารางกรอกรายหน่วยบริการ */}
                 <div className="bg-white rounded-xl shadow-sm border overflow-hidden mb-3">
                   <div className="px-5 py-3 border-b flex items-center justify-between">
-                    <h2 className="font-semibold text-gray-800 text-sm">ตารางรายหน่วยบริการ — เดือน{formatThaiMonth(entryMonth)} {canEdit && (editing
+                    <h2 className="font-semibold text-gray-800 text-sm">ตารางรายหน่วยบริการ — {periodLabel} {canEdit && (editing
                       ? <span className="text-xs font-normal text-blue-600">(กำลังแก้ไข)</span>
                       : <span className="text-xs font-normal text-gray-400">🔒 ล็อก</span>)}</h2>
                   </div>
@@ -822,7 +984,8 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                             )}
                           </tr>
                         ))}
-                        {total && (
+                        {/* groups.length===1 → แถวเดียวนั้นคือค่าเดียวกับ total อยู่แล้ว (เช่น KPI ระดับอำเภอล้วน) ไม่ต้องซ้ำแถว */}
+                        {total && groups.length !== 1 && (
                           <tr className="bg-gray-100 font-semibold">
                             <td className="px-4 py-2.5 sticky left-0 z-10 bg-gray-100">{total.name}</td>
                             {fieldList.map((f) => (
@@ -855,6 +1018,100 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                   </div>
                 )}
               </>
+            )}
+
+            {/* L4: ตาราง+กราฟสรุปทั้งปีงบ — สลับดู "รายไตรมาส ↔ รายเดือน" ได้ทุกตัวชี้วัด
+                (พื้นฐานเก็บรายเดือน · ไตรมาสเป็นมุมมอง/รอบส่งเท่านั้น) */}
+            {allMonths.length > 0 && (
+              <QuarterSummary
+                fiscalYear={fiscalYearOfMonth(entryMonth) || currentQuarter().fiscalYear}
+                values={allMonths}
+                target={target}
+                direction={direction ?? 'none'}
+                unit={data.kpi.unit}
+                isText={textMode}
+              />
+            )}
+
+            {/* ── L2: บันทึกเชิงคุณภาพต่อรอบ (ปัญหา/แนวทาง/แหล่งที่มา) — แสดงทั้ง KPI auto และ manual ── */}
+            {notesPeriod && (
+              <div className="bg-white rounded-xl shadow-sm border overflow-hidden mt-6">
+                <div className="px-5 py-3 border-b flex items-center justify-between gap-3 flex-wrap">
+                  <h2 className="font-semibold text-gray-800 text-sm">
+                    📝 บันทึกการดำเนินงาน — {notesPeriodLabel}
+                  </h2>
+                  {canEditNotes && !nEditing && (
+                    <button
+                      onClick={() => { setNEditing(true); setNMsg('') }}
+                      className="text-xs px-3 py-1.5 rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50">
+                      ✏️ แก้ไข
+                    </button>
+                  )}
+                </div>
+                <div className="p-5 space-y-4">
+                  {nSavedBy?.by && !nEditing && (
+                    <p className="text-xs text-gray-500 bg-gray-50 border rounded-lg px-3 py-2">
+                      🔒 บันทึกแล้วโดย {nSavedBy.by}{nSavedBy.at ? ` · ${nSavedBy.at}` : ''}
+                    </p>
+                  )}
+                  {[
+                    { label: 'ปัญหา/อุปสรรค', value: nProblem, set: setNProblem, rows: 3,
+                      ph: 'อุปสรรคที่พบในรอบนี้ (ถ้าไม่มี ปล่อยว่างได้)' },
+                    { label: 'แนวทางการดำเนินงานต่อไป', value: nNextAction, set: setNNextAction, rows: 3,
+                      ph: 'แผน/สิ่งที่จะทำต่อในรอบถัดไป' },
+                  ].map((f) => (
+                    <div key={f.label}>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">{f.label}</label>
+                      {canEditNotes && nEditing ? (
+                        <textarea
+                          value={f.value} onChange={(e) => f.set(e.target.value)} rows={f.rows}
+                          placeholder={f.ph}
+                          className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      ) : (
+                        <p className="text-sm text-gray-700 whitespace-pre-line min-h-[1.5rem]">
+                          {f.value || <span className="text-gray-400 italic">— ยังไม่ได้บันทึก —</span>}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">แหล่งที่มาข้อมูล</label>
+                    {canEditNotes && nEditing ? (
+                      <input
+                        value={nDataRef} onChange={(e) => setNDataRef(e.target.value)}
+                        placeholder="ลิงก์รายงาน หรือระบุช่องทาง/ผู้รับผิดชอบ"
+                        className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    ) : (
+                      <p className="text-sm text-gray-700 break-all min-h-[1.5rem]">
+                        {nDataRef || <span className="text-gray-400 italic">— ยังไม่ได้บันทึก —</span>}
+                      </p>
+                    )}
+                  </div>
+
+                  {canEditNotes && nEditing && (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        onClick={() => saveNotes(notesPeriod)} disabled={nSaving}
+                        className="px-4 py-2 rounded-lg bg-blue-700 text-white text-sm font-medium hover:bg-blue-800 disabled:opacity-50">
+                        {nSaving ? 'กำลังบันทึก…' : '💾 บันทึกหมายเหตุ'}
+                      </button>
+                      {nSavedBy && (
+                        <button
+                          onClick={() => { loadNotes(notesPeriod) }} disabled={nSaving}
+                          className="px-4 py-2 rounded-lg border text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50">
+                          ยกเลิก
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {nMsg && <p className="text-sm text-gray-700">{nMsg}</p>}
+                  {!canEditNotes && (
+                    <p className="text-xs text-gray-400">
+                      * เฉพาะผู้ดูแลระบบ หรือเจ้าหน้าที่กลุ่มงานที่รับผิดชอบ บันทึก/แก้ไขได้
+                    </p>
+                  )}
+                </div>
+              </div>
             )}
           </>
         )}

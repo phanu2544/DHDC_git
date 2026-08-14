@@ -34,6 +34,14 @@ export interface ScorecardRow {
   status: KpiEvalStatus
   message?: string
   valueText?: string | null   // ผลงานข้อความ (เมื่อ status='narrative') — L1
+  /**
+   * เดือนของค่าที่แสดงจริง (YYYY-MM) — อาจเก่ากว่าเดือนที่เลือก เพราะตัวเลขเป็น "ยอดสะสมปีงบ"
+   * ค่าเดือน มี.ค. ยังเป็นตัวเลขล่าสุดที่ดีที่สุดในเดือน เม.ย.-พ.ค. ที่ยังไม่มีรายงานใหม่
+   * null = ไม่มีข้อมูลเลย · UI ต้องติดป้าย "ณ <เดือน>" เมื่อ dataMonth ≠ เดือนที่เลือก
+   */
+  dataMonth?: string | null
+  /** true = ค่าที่แสดงมาจากเดือนก่อนหน้า (ไม่ใช่เดือนที่เลือก) — ให้ UI เตือนอายุข้อมูล */
+  isCarriedForward?: boolean
 }
 
 /**
@@ -107,17 +115,38 @@ export interface ScorecardResult {
   summary: StatusSummary
 }
 
-/** ประเมินทุก KPI สำหรับเดือนที่เลือก (pure — Dashboard และ Export ใช้ตัวเดียวกัน) */
+/**
+ * ประเมินทุก KPI สำหรับเดือนที่เลือก (pure — Dashboard / หน้าชุด / Export ใช้ตัวเดียวกัน)
+ *
+ * **ใช้ "ค่าล่าสุดที่ไม่เกินเดือนที่เลือก" (carry-forward)** ไม่ใช่ตรงเดือนเป๊ะ
+ * เพราะตัวเลขเป็น **ยอดสะสมปีงบ** — ค่าเดือน มี.ค. ยังเป็นตัวเลขล่าสุดที่ดีที่สุดในเดือน เม.ย.
+ * ที่ยังไม่มีรายงานใหม่ · ถ้าจับคู่ตรงเดือนเป๊ะ ตัวชี้วัดที่รายงานเป็นรอบ (ตรวจราชการ) จะขึ้น
+ * "ยังไม่มีข้อมูล" ทั้งชุดทันทีที่พ้นเดือนที่กรอก ทั้งที่ส่งรายงานไปแล้ว (เจอจริง 30 ก.ค.)
+ *
+ * แถวที่ค่ามาจากเดือนก่อนหน้าจะติดธง `isCarriedForward` + `dataMonth`
+ * → UI **ต้อง**แสดง "ณ <เดือน>" กำกับ ไม่งั้นผู้อ่านจะเข้าใจผิดว่าเป็นเลขสดของเดือนนั้น
+ */
 export function buildScorecard(
   kpis: KPIReport[],
   monthly: MonthlyData[],
   month: string,
 ): ScorecardResult {
+  // เก็บ "แถวล่าสุดที่ month <= เดือนที่เลือก" ต่อ KPI
   const byKpi = new Map<string, MonthlyData>()
   for (const m of monthly) {
-    if (m.month === month) byKpi.set(m.kpiId, m)
+    if (!month || m.month > month) continue
+    const prev = byKpi.get(m.kpiId)
+    if (!prev || m.month > prev.month) byKpi.set(m.kpiId, m)
   }
-  const rows = kpis.map((kpi) => evalScorecardRow(kpi, byKpi.get(kpi.id)))
+  const rows = kpis.map((kpi) => {
+    const row = byKpi.get(kpi.id)
+    const evaluated = evalScorecardRow(kpi, row)
+    return {
+      ...evaluated,
+      dataMonth: row?.month ?? null,
+      isCarriedForward: !!row && !!month && row.month !== month,
+    }
+  })
   const summary = summarizeStatuses(rows.map((r) => r.status))
   return { rows, summary }
 }

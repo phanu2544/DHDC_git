@@ -164,5 +164,20 @@ export function computeMoph(
   }
 }
 
+/**
+ * ตารางที่ MOPH Open Data API ปฏิเสธพารามิเตอร์ province (400 "Parameter Invalid")
+ * ต้องดึงทั้งประเทศแล้วกรอง areacode เอง — พบครั้งแรกกับ s_child0_5_pshyche_develop_coverage (3 ส.ค. 69)
+ * ใช้ร่วมกัน 3 จุดที่เรียก MOPH API: app/api/moph/route.ts, lib/mophBatch.ts, lib/monthlyView.ts
+ */
+export const NO_PROVINCE_TABLES = new Set(['s_child0_5_pshyche_develop_coverage'])
+
+/**
+ * ตารางที่รายงานผลระดับ "อำเภอ" เท่านั้น (เอกสาร HDC ไม่รองรับแยกหน่วยบริการ/ตำบล)
+ * hospcode/areacode ที่ติดมากับแถวข้อมูลไม่ใช่ของจริง (พิสูจน์แล้วกับ s_child0_5_pshyche_develop_coverage —
+ * เช็ค hcode.moph.go.th พบ hospcode ที่ตารางติดมาเป็นของหน่วยงานคนละจังหวัด) → ห้ามแยกราย
+ * ตำบล/หน่วยบริการ เพราะไม่มีข้อมูลรองรับจริง (CLAUDE.md ข้อ 5 ห้ามเดา) — โชว์แค่แถวเดียวระดับอำเภอ
+ */
+export const DISTRICT_ONLY_TABLES = new Set(['s_child0_5_pshyche_develop_coverage'])
+
 export { DIMENSION_FIELDS, TIME_FIELDS }
 export type { FieldMode, CalcMode, FieldType, MophMapping, MophResult }

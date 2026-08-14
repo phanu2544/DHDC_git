@@ -131,6 +131,7 @@ export async function POST(req: NextRequest) {
         data_source VARCHAR(50) NOT NULL DEFAULT 'HDC',
         measure_type VARCHAR(10) NOT NULL DEFAULT 'numeric',
         text_options TEXT NULL,
+        report_freq VARCHAR(10) NOT NULL DEFAULT 'monthly',
         owner VARCHAR(255) NOT NULL,
         deadline DATE NOT NULL,
         status ENUM('completed','in_progress','overdue') DEFAULT 'in_progress',
@@ -155,10 +156,19 @@ export async function POST(req: NextRequest) {
       "ALTER TABLE kpi_reports ADD COLUMN IF NOT EXISTS data_source VARCHAR(50) NOT NULL DEFAULT 'HDC'",
       "ALTER TABLE kpi_reports ADD COLUMN IF NOT EXISTS measure_type VARCHAR(10) NOT NULL DEFAULT 'numeric'",
       "ALTER TABLE kpi_reports ADD COLUMN IF NOT EXISTS text_options TEXT NULL",
+      // L4: ความถี่การรายงาน — 'monthly' (เดิม, HDC รายเดือน) | 'quarterly' (ตรวจราชการ กรอก 4 ครั้ง/ปี)
+      "ALTER TABLE kpi_reports ADD COLUMN IF NOT EXISTS report_freq VARCHAR(10) NOT NULL DEFAULT 'monthly'",
+      // ตัวคูณของ A/B ก่อนแสดงผล (manual scope='single' เท่านั้น) — 100=ร้อยละ (default, 79/80 ตัวเดิม)
+      // 100000=อัตราต่อแสนประชากร (เช่น อัตราการฆ่าตัวตายสำเร็จ) — ดู kpi-keyin-plan.md Phase 3
+      "ALTER TABLE kpi_reports ADD COLUMN IF NOT EXISTS rate_per DECIMAL(12,2) NOT NULL DEFAULT 100",
       "ALTER TABLE monthly_data ADD COLUMN IF NOT EXISTS source VARCHAR(10) DEFAULT 'auto'",
       "ALTER TABLE monthly_data ADD COLUMN IF NOT EXISTS entered_by VARCHAR(255) DEFAULT NULL",
       "ALTER TABLE monthly_data ADD COLUMN IF NOT EXISTS entered_at TIMESTAMP NULL DEFAULT NULL",
       "ALTER TABLE monthly_data ADD COLUMN IF NOT EXISTS value_text VARCHAR(255) NULL",
+      // manual_scope='single': ค่า B (กลุ่มเป้าหมาย) / A (ผลงาน) ดิบที่กรอกจริง — ก่อนหน้านี้เก็บแค่ value(%) ทำให้
+      // เปิดฟอร์มแก้ไขซ้ำแล้วต้องเดาค่าคืนจาก % (ผิดเงียบๆ ทุกครั้งที่บันทึกทับ — ดู kpi-hdc-api-checklist.md 6 ส.ค.)
+      "ALTER TABLE monthly_data ADD COLUMN IF NOT EXISTS raw_target DECIMAL(14,2) NULL DEFAULT NULL",
+      "ALTER TABLE monthly_data ADD COLUMN IF NOT EXISTS raw_result DECIMAL(14,2) NULL DEFAULT NULL",
     ]
     for (const sql of alterCols) {
       await conn.execute(sql).catch(() => {})
@@ -294,6 +304,22 @@ export async function POST(req: NextRequest) {
         changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         KEY idx_kpi_month (kpi_id, month)
       ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+    `)
+
+    // ── kpi_period_notes (L2: บันทึกเชิงคุณภาพต่อรอบ — ปัญหา/แนวทาง/แหล่งที่มา) ──
+    // แยกจาก monthly_data เพื่อให้ cron/batch ไม่มีวันทับข้อความที่คนเขียน (docs/kpi-sets-plan.md §11.1)
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS kpi_period_notes (
+        kpi_id VARCHAR(50) NOT NULL,
+        period VARCHAR(7) NOT NULL,
+        problem TEXT NULL,
+        next_action TEXT NULL,
+        data_ref VARCHAR(500) NULL,
+        updated_by VARCHAR(255) NULL,
+        updated_at TIMESTAMP NULL DEFAULT NULL,
+        PRIMARY KEY (kpi_id, period),
+        CONSTRAINT fk_kpn_kpi FOREIGN KEY (kpi_id) REFERENCES kpi_reports(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
     `)
 
     // ── cron_log (ประวัติการรัน full-batch — cron อัตโนมัติ / กดดึงทั้งหมด) ───
