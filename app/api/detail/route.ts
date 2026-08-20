@@ -324,6 +324,24 @@ export async function GET(req: NextRequest) {
       for (const k of fieldList) fieldLabels[k] = k
     }
 
+    // s_stroke_admit_death (#9): ยุบ 48 field ดิบ เหลือเฉพาะ "I60-I64" ตรงนิยามตัวชี้วัด
+    // ตารางนี้มี 2 วิธีแบ่งซ้อนกัน (รวม I60-69 · แยก I60-62/I63/I64-69 · แยก I60-64/I65-69)
+    // ⚠️ ตัวชี้วัดนิยาม I60-I64 → ต้องใช้ *_6064 เท่านั้น · ห้ามใช้ targetqN/resultqN (= I60-I69 กว้างกว่านิยาม)
+    // ตอนนี้ดงเจริญ 2 ชุดนี้ค่าเท่ากันเพราะไม่มีผู้ป่วย I65-69 เลย — "บังเอิญถูก" ไม่ใช่ถูกจริง
+    // ⚠️ ตัวเศษสะกด results (มี s) แต่ตัวหาร target (ไม่มี s) — ชื่อไม่สมมาตร พิมพ์ผิดง่าย
+    if (kpi.moph_table === 's_stroke_admit_death' && !manual) {
+      const collapse = (f: Record<string, number>) => {
+        const discharged = (f.targetq1_6064 ?? 0) + (f.targetq2_6064 ?? 0) + (f.targetq3_6064 ?? 0) + (f.targetq4_6064 ?? 0)
+        const died       = (f.resultsq1_6064 ?? 0) + (f.resultsq2_6064 ?? 0) + (f.resultsq3_6064 ?? 0) + (f.resultsq4_6064 ?? 0)
+        return { 'ผู้ป่วยจำหน่าย (ครั้ง)': discharged, 'เสียชีวิต (ครั้ง)': died }
+      }
+      for (const g of groups) g.fields = collapse(g.fields)
+      total.fields = collapse(total.fields)
+      fieldList = ['ผู้ป่วยจำหน่าย (ครั้ง)', 'เสียชีวิต (ครั้ง)']
+      for (const k of Object.keys(fieldLabels)) delete fieldLabels[k]
+      for (const k of fieldList) fieldLabels[k] = k
+    }
+
     // s_common_diseases_thai_drug (#46): ตารางเทียบ 2 ปีงบ แบบเดียวกับรายงาน HDC
     // (คน/ครั้ง ของทั้ง "วินิจฉัย"=B และ "ได้ยาสมุนไพร"=A + ร้อยละของแต่ละปี + ร้อยละเพิ่มขึ้น)
     //

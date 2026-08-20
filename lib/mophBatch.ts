@@ -1,6 +1,7 @@
 import pool from '@/lib/db'
 import { buildMappingFromLegacy, computeMoph } from './mophEngine'
 import { applyBaselineToMappingPooled, captureBaselineFromDetail } from './baselineYear'
+import { backfillQuarterMonths } from './quarterBackfill'
 import { fetchMophRows } from './mophFetch'
 import { saveMonthlyDetail, logAutoOverwriteIfManual } from './mophDetail'
 import { getTargetsForYear } from './targets'
@@ -257,6 +258,17 @@ export async function runBatchSave(opts: BatchOptions = {}): Promise<BatchResult
         )
       } finally {
         c2.release()
+      }
+
+      // ── ตารางที่ข้อมูลเป็นรายไตรมาสในตัว: เขียนค่าลง "เดือนปิดไตรมาส" ด้วย ─────
+      // ไม่งั้นช่องไตรมาสจะว่างถ้าไม่มีใครกดดึงในเดือน ธ.ค./มี.ค./มิ.ย./ก.ย. พอดี
+      const qb = await backfillQuarterMonths({
+        kpiId: kpi.id, tableName: kpi.moph_table, mapping, rows,
+        fiscalYear: year, target: effTarget,
+      })
+      if (qb.error) r.warnings.push(`เขียนเดือนปิดไตรมาสไม่สำเร็จ: ${qb.error}`)
+      else if (qb.written.length > 0) {
+        r.warnings.push(`เขียนค่าเดือนปิดไตรมาสด้วย: ${qb.written.map((w) => `Q${w.q} ${w.month}=${w.value}`).join(' · ')}`)
       }
 
       results.push({

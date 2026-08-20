@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { buildMappingFromLegacy, classifyFields, computeMoph } from '@/lib/mophEngine'
 import { applyBaselineToMapping } from '@/lib/baselineYear'
+import { backfillQuarterMonths } from '@/lib/quarterBackfill'
 import { fetchMophRows } from '@/lib/mophFetch'
 import { saveMonthlyDetail, logAutoOverwriteIfManual } from '@/lib/mophDetail'
 import { getTargetFor } from '@/lib/targets'
@@ -118,6 +119,15 @@ export async function POST(req: NextRequest) {
          ON DUPLICATE KEY UPDATE value = VALUES(value), target = VALUES(target)`,
         [kpiId, saveMonth, engineResult.calcValue, kpiTarget],
       )
+
+      // เขียนค่าลงเดือนปิดไตรมาสด้วย — ต้องทำเหมือนเส้น batch เป๊ะ (เคยพลาดเพราะมีหลายเส้นเขียน DB แล้วแก้ไม่ครบ)
+      const qb = await backfillQuarterMonths({
+        kpiId, tableName, mapping, rows, fiscalYear: year, target: kpiTarget,
+      })
+      if (qb.error) engineResult.warnings.push(`เขียนเดือนปิดไตรมาสไม่สำเร็จ: ${qb.error}`)
+      else if (qb.written.length > 0) {
+        engineResult.warnings.push(`เขียนค่าเดือนปิดไตรมาสด้วย: ${qb.written.map((w) => `Q${w.q} ${w.month}=${w.value}`).join(' · ')}`)
+      }
       savedMonth = saveMonth
     } finally {
       conn.release()
