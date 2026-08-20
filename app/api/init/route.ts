@@ -291,6 +291,29 @@ export async function POST(req: NextRequest) {
       ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
     `)
 
+    // ── kpi_baseline_year (#46: ยอดรวมทั้งปีงบของ "ปีฐาน" ราย hospcode) ────
+    // ใช้กับ calcMode='percentIncrease' (ตัวชี้วัดแบบ "เพิ่มขึ้นเทียบปีก่อนหน้า")
+    // ทำไมต้องมีตารางแยก ไม่ใช้ moph_monthly_detail: ปีฐานบางปีดึงสดไม่ได้ (Open Data 2568 แช่แข็ง
+    // กลางปี — ดู kpi-hdc-api-checklist.md §46) ต้องคีย์จากภาพ HDC · และเป็น "ยอดทั้งปี" ไม่ใช่ยอดรายเดือน
+    // จึงไม่ควรปนกับ snapshot รายเดือน (จะโผล่เป็นเดือนให้เลือกใน MonthPicker)
+    // รูปแบบ data = JSON ชื่อ field เดียวกับ moph_monthly_detail → จัดกลุ่มตำบล/หน่วยบริการด้วยโค้ดชุดเดียวกัน
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS kpi_baseline_year (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        kpi_id VARCHAR(50) NOT NULL,
+        fiscal_year INT NOT NULL,
+        hospcode VARCHAR(20) NOT NULL,
+        areacode VARCHAR(20) DEFAULT '',
+        data TEXT NOT NULL,
+        source VARCHAR(20) DEFAULT 'manual',
+        note VARCHAR(255) DEFAULT NULL,
+        entered_by VARCHAR(100) DEFAULT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_baseline (kpi_id, fiscal_year, hospcode, areacode),
+        FOREIGN KEY (kpi_id) REFERENCES kpi_reports(id) ON DELETE CASCADE
+      ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+    `)
+
     // ── data_change_log (audit การลบ/ทับค่ารายเดือน — เก็บค่าเก่าไว้กู้คืน) ───
     // ไม่ผูก FK cascade: ต้องเก็บ log ไว้แม้ KPI ถูกลบทิ้ง (ตามรอยย้อนหลังได้)
     await conn.execute(`

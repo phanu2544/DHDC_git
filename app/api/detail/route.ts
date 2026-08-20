@@ -11,6 +11,7 @@ import { reportFreqOf } from '@/lib/fiscalQuarter'
 import { currentMophFiscalYear } from '@/lib/mophBatch'
 import { fetchMophRows } from '@/lib/mophFetch'
 import { filterSummaryFields } from '@/lib/mophDetail'
+import { applyBaselineToMapping, loadBaselineRows, previousFiscalYear } from '@/lib/baselineYear'
 import type { MophMapping, EvalDirection, KpiEvalStatus } from '@/lib/types'
 
 /**
@@ -126,6 +127,9 @@ export async function GET(req: NextRequest) {
         (kpi.moph_value_field as string) || 'result',
         kpi.moph_target_field as string, kpi.moph_calc_mode as string)
     }
+
+    // calcMode='percentIncrease' → เติมยอดปีฐานจาก kpi_baseline_year (ถ้ายังไม่เก็บ = ใช้ค่าคงที่ใน config)
+    mapping = await applyBaselineToMapping(conn, kpiId, mapping, currentMophFiscalYear())
 
     // ── เดือนที่มี detail ──────────────────────────────────────────────────
     const [mRows] = await conn.execute(
@@ -277,6 +281,12 @@ export async function GET(req: NextRequest) {
       const preferred = ['target', 'result'].filter((f) => f in total.fields)
       fieldList = preferred.length > 0 ? preferred : Object.keys(total.fields).sort()
     }
+    // ทศนิยมคงที่ต่อคอลัมน์ (เช่นคอลัมน์ร้อยละ ต้องโชว์ 29.80 ไม่ใช่ 29.8) · ป้ายคอลัมน์ "ผลงาน" เฉพาะ KPI
+    let fieldDecimals: Record<string, number> | undefined
+    let pctLabel: string | undefined
+    let pctDecimals: number | undefined
+    // หัวตาราง 2 ชั้น: กลุ่มคอลัมน์ (เช่น ปีงบ 2568 / 2569) ครอบคอลัมน์ย่อย — ไม่มี = หัวชั้นเดียวแบบเดิม
+    let fieldGroups: { label: string; fields: string[]; sub?: { label: string; fields: string[] }[] }[] | undefined
     const MANUAL_LABELS: Record<string, string> = { target: 'กลุ่มเป้าหมาย (B)', result: 'ผลงาน (A)' }
     const fieldLabels: Record<string, string> = {}
     for (const f of fieldList) fieldLabels[f] = labelMap?.[f] ?? (manual ? MANUAL_LABELS[f] ?? f : f)
@@ -297,6 +307,124 @@ export async function GET(req: NextRequest) {
       fieldList = ['D', 'A', 'B', 'C', 'A+C']
       for (const k of Object.keys(fieldLabels)) delete fieldLabels[k]
       for (const k of fieldList) fieldLabels[k] = k
+    }
+
+    // s_ttm35 (#45): ยุบ op_service/tm_service รายไตรมาส (8 field ดิบ ไม่สื่อความหมาย) เป็นเป้าหมาย/ผลงานสะสมปีงบ
+    // เหมือน sepsis ด้านบน — mapping ก็รวม 4 ไตรมาสแบบเดียวกันอยู่แล้ว (calcMode=percent, sumFields)
+    if (kpi.moph_table === 's_ttm35' && !manual) {
+      const collapse = (f: Record<string, number>) => {
+        const เป้าหมาย = (f.op_service_q1 ?? 0) + (f.op_service_q2 ?? 0) + (f.op_service_q3 ?? 0) + (f.op_service_q4 ?? 0)
+        const ผลงาน = (f.tm_service_q1 ?? 0) + (f.tm_service_q2 ?? 0) + (f.tm_service_q3 ?? 0) + (f.tm_service_q4 ?? 0)
+        return { เป้าหมาย, ผลงาน }
+      }
+      for (const g of groups) g.fields = collapse(g.fields)
+      total.fields = collapse(total.fields)
+      fieldList = ['เป้าหมาย', 'ผลงาน']
+      for (const k of Object.keys(fieldLabels)) delete fieldLabels[k]
+      for (const k of fieldList) fieldLabels[k] = k
+    }
+
+    // s_common_diseases_thai_drug (#46): ตารางเทียบ 2 ปีงบ แบบเดียวกับรายงาน HDC
+    // (คน/ครั้ง ของทั้ง "วินิจฉัย"=B และ "ได้ยาสมุนไพร"=A + ร้อยละของแต่ละปี + ร้อยละเพิ่มขึ้น)
+    //
+    // ปีปัจจุบัน = ดึงสด/snapshot ตามปกติ · ปีฐาน = อ่านจาก kpi_baseline_year (คีย์จากภาพ HDC
+    // เพราะ Open Data ปี 2568 แช่แข็งกลางปี ใช้ไม่ได้ — ดู kpi-hdc-api-checklist.md §46)
+    //
+    // สถานะผ่าน/ไม่ผ่าน: **แถวรวมอำเภอเท่านั้น** (เกณฑ์ทางการตัดสินที่ระดับอำเภอ/ทั้งปีงบ) —
+    // แถวตำบล/หน่วยบริการโชว์ตัวเลขให้ดูประกอบ ไม่ตัดสิน (owner เคาะ 18 ส.ค. 2569)
+    // แถวที่ปีฐาน=0 → หารไม่ได้ โชว์ 0.00 ตาม convention ของ HDC (owner เคาะ)
+    if (kpi.moph_table === 's_common_diseases_thai_drug' && !manual) {
+      const baseFY = previousFiscalYear(currentMophFiscalYear())
+      const baseRows = await loadBaselineRows(conn, kpiId, baseFY)
+
+      if (baseRows.length > 0) {
+        const curFY = Number(currentMophFiscalYear())
+        const LB = {
+          bPerson: `${baseFY} วินิจฉัย (คน)`,   bTimes: `${baseFY} วินิจฉัย (ครั้ง)`,
+          aPerson: `${baseFY} ได้ยาสมุนไพร (คน)`, aTimes: `${baseFY} ได้ยาสมุนไพร (ครั้ง)`,
+          pct:     `${baseFY} ร้อยละ`,
+        }
+        const LC = {
+          bPerson: `${curFY} วินิจฉัย (คน)`,    bTimes: `${curFY} วินิจฉัย (ครั้ง)`,
+          aPerson: `${curFY} ได้ยาสมุนไพร (คน)`,  aTimes: `${curFY} ได้ยาสมุนไพร (ครั้ง)`,
+          pct:     `${curFY} ร้อยละ`,
+        }
+
+        // จัดกลุ่มปีฐานด้วยกฎเดียวกับปีปัจจุบัน (unit → hospcode · area → ตำบลจาก areacode)
+        const baseByGroup = new Map<string, Record<string, number>>()
+        const baseAll: Record<string, number> = {}
+        for (const r of baseRows) {
+          const k = keyOf(r)
+          const acc = baseByGroup.get(k) ?? {}
+          for (const [f, v] of Object.entries(r.data)) {
+            acc[f]     = (acc[f] ?? 0) + num(v)
+            baseAll[f] = (baseAll[f] ?? 0) + num(v)
+          }
+          baseByGroup.set(k, acc)
+        }
+
+        const pct = (a: number, b: number) => (b > 0 ? +((a / b) * 100).toFixed(2) : 0)
+        const build = (b: Record<string, number>, c: Record<string, number>) => ({
+          [LB.bPerson]: b.person_year_diag ?? 0, [LB.bTimes]: b.times_year_diag ?? 0,
+          [LB.aPerson]: b.person_year ?? 0,      [LB.aTimes]: b.times_year ?? 0,
+          [LB.pct]:     pct(b.times_year ?? 0, b.times_year_diag ?? 0),
+          [LC.bPerson]: c.person_year_diag ?? 0, [LC.bTimes]: c.times_year_diag ?? 0,
+          [LC.aPerson]: c.person_year ?? 0,      [LC.aTimes]: c.times_year ?? 0,
+          [LC.pct]:     pct(c.times_year ?? 0, c.times_year_diag ?? 0),
+        })
+
+        for (const g of groups) {
+          const b = baseByGroup.get(g.code) ?? {}
+          const c = g.fields
+          const c1 = pct(b.times_year ?? 0, b.times_year_diag ?? 0)
+          const c2 = pct(c.times_year ?? 0, c.times_year_diag ?? 0)
+          g.fields = build(b, c)
+          g.calcValue = c1 > 0 ? +(((c2 - c1) / c1) * 100).toFixed(2) : 0
+          g.status = null
+        }
+        // total: ตัวเลขคอลัมน์รวมเอง · calcValue/status ปล่อยเป็นค่าจาก engine (แหล่งเดียวกับการ์ดสรุป)
+        total.fields = build(baseAll, total.fields)
+
+        fieldList = [LB.bPerson, LB.bTimes, LB.aPerson, LB.aTimes, LB.pct,
+                     LC.bPerson, LC.bTimes, LC.aPerson, LC.aTimes, LC.pct]
+        for (const k of Object.keys(fieldLabels)) delete fieldLabels[k]
+        // หัวตาราง 3 ชั้นแบบรายงาน HDC: ปีงบ → รายการ → คน/ครั้ง
+        // (หัวคอลัมน์ย่อยเหลือแค่ "คน"/"ครั้ง" → ตารางแคบลงมาก และเทียบข้ามปีด้วยตาเปล่าง่ายขึ้น)
+        const SHORT = ['คน', 'ครั้ง', 'คน', 'ครั้ง', '']
+        fieldList.forEach((k, i) => { fieldLabels[k] = SHORT[i % SHORT.length] })
+        const yearGroup = (label: string, f: string[]) => ({
+          label, fields: f,
+          sub: [
+            { label: 'ได้รับการวินิจฉัย', fields: [f[0], f[1]] },
+            { label: 'ได้รับยาสมุนไพร',   fields: [f[2], f[3]] },
+            { label: 'ร้อยละ',            fields: [f[4]] },
+          ],
+        })
+        fieldGroups = [
+          yearGroup(`ปีงบประมาณ ${baseFY}`, fieldList.slice(0, 5)),
+          yearGroup(`ปีงบประมาณ ${curFY}`,  fieldList.slice(5)),
+        ]
+        fieldDecimals = { [LB.pct]: 2, [LC.pct]: 2 }
+        pctLabel = 'ร้อยละเพิ่มขึ้น (%)'
+        pctDecimals = 2   // 0 → "0.00" ให้เหมือนรายงาน HDC (owner เคาะ 18 ส.ค. 2569)
+      } else {
+        // ยังไม่มีปีฐานเก็บไว้ → ตารางแบบเดิม 2 คอลัมน์ (อัตราปีนี้ดิบ ไม่มีสถานะรายแถว)
+        const raw = (f: Record<string, number>) => ({
+          'วินิจฉัย (ครั้ง)':      f.times_year_diag ?? 0,
+          'ได้ยาสมุนไพร (ครั้ง)': f.times_year ?? 0,
+        })
+        for (const g of groups) {
+          const b2 = g.fields.times_year_diag ?? 0
+          const a2 = g.fields.times_year ?? 0
+          g.fields = raw(g.fields)
+          g.calcValue = b2 > 0 ? +((a2 / b2) * 100).toFixed(2) : null
+          g.status = null
+        }
+        total.fields = raw(total.fields)
+        fieldList = ['วินิจฉัย (ครั้ง)', 'ได้ยาสมุนไพร (ครั้ง)']
+        for (const k of Object.keys(fieldLabels)) delete fieldLabels[k]
+        for (const k of fieldList) fieldLabels[k] = k
+      }
     }
 
     // mapping ใช้ได้จริงไหม (KPI ที่ BLOCK จะ error → UI งดแสดง %)
@@ -320,7 +448,7 @@ export async function GET(req: NextRequest) {
       legend: legendFor(kpi.moph_table as string),
       mappingOk: engineCheck.errors.length === 0,
       mappingErrors: engineCheck.errors,
-      fieldList, fieldLabels, groups, total,
+      fieldList, fieldLabels, fieldDecimals, fieldGroups, pctLabel, pctDecimals, groups, total,
     })
   } catch (err) {
     return NextResponse.json({ ok: false, message: String(err) }, { status: 500 })

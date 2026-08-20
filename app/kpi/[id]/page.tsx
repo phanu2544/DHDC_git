@@ -77,6 +77,11 @@ interface DetailResp {
   mappingErrors?: string[]
   fieldList?: string[]
   fieldLabels?: Record<string, string>
+  fieldDecimals?: Record<string, number>   // คอลัมน์ที่ต้องตรึงทศนิยม (คอลัมน์ร้อยละ → 29.80 ไม่ใช่ 29.8)
+  // หัวตารางหลายชั้น: กลุ่มบนสุด (เช่น ปีงบ 2568/2569) · sub = ชั้นกลาง (เช่น ได้รับการวินิจฉัย/ได้รับยาสมุนไพร)
+  fieldGroups?: { label: string; fields: string[]; sub?: { label: string; fields: string[] }[] }[]
+  pctLabel?: string                        // ป้ายคอลัมน์ "ผลงาน" เฉพาะ KPI (เช่น #46 = ร้อยละเพิ่มขึ้น)
+  pctDecimals?: number                     // ตรึงทศนิยมคอลัมน์ "ผลงาน" (#46 → 0 ต้องเป็น 0.00 ตาม HDC)
   groups?: GroupRow[]
   total?: GroupRow
 }
@@ -365,6 +370,39 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
   const total = data?.total
   const fieldList = data?.fieldList ?? []
   const fieldLabels = data?.fieldLabels ?? {}
+  const fieldDecimals = data?.fieldDecimals ?? {}
+  // ตัวเลขในตาราง: คอลัมน์ทั่วไปใช้คั่นหลักพัน · คอลัมน์ที่กำหนดทศนิยมไว้ตรึงจำนวนตำแหน่ง
+  // ── หัวตาราง 2 ชั้น (ถ้า API ส่ง fieldGroups มา) ──────────────────────────
+  // เทียบปีงบด้วยตาเปล่าให้ง่ายขึ้น: ปีอยู่หัวกลุ่มชั้นบน · บล็อกปีล่าสุดมีพื้นหลังอ่อน ·
+  // มีเส้นคั่นตรงรอยต่อปี · คอลัมน์ "ร้อยละ" ของแต่ละปีเน้นเข้ม (เป็นตัวที่คนกวาดตาเทียบจริง)
+  const fieldGroups = data?.fieldGroups ?? []
+  const groupOf: Record<string, number> = {}
+  fieldGroups.forEach((g, i) => g.fields.forEach((f) => { groupOf[f] = i }))
+  const isGroupStart = (f: string) => fieldGroups.some((g) => g.fields[0] === f)
+  const hasSub = fieldGroups.some((g) => (g.sub?.length ?? 0) > 0)
+  const headLevels = fieldGroups.length > 0 ? (hasSub ? 3 : 2) : 1
+  // ชั้นกลางที่คุมคอลัมน์เดียว (เช่น "ร้อยละ") ให้ป้ายกินสองแถวลงมาเลย ไม่ต้องมีหัวย่อยซ้ำ
+  const subSpansDown = (sub: { fields: string[] }) => sub.fields.length === 1
+  const groupTone = (f: string, i = groupOf[f]) => (i === undefined || i % 2 === 0 ? '' : 'bg-sky-50/60')
+  const cellCls = (f: string) =>
+    [groupTone(f), isGroupStart(f) ? 'border-l border-gray-300' : '',
+     fieldDecimals[f] !== undefined ? 'font-semibold text-gray-900' : ''].filter(Boolean).join(' ')
+  // สีคอลัมน์ "ร้อยละเพิ่มขึ้น" — เพิ่มขึ้นเขียว / ลดลงแดง (ดูปราดเดียวรู้ทิศทาง)
+  const pctTone = (v: number | null) =>
+    v === null || data?.pctDecimals === undefined ? '' : v > 0 ? 'text-emerald-700' : v < 0 ? 'text-rose-700' : 'text-gray-500'
+
+  // คอลัมน์ "ผลงาน" (calcValue) — ตรึงทศนิยมถ้า API กำหนดมา ไม่งั้นโชว์ตามค่าดิบเหมือนเดิม
+  const fmtPct = (v: number | null) => {
+    if (v === null) return '—'
+    const d = data?.pctDecimals
+    return d === undefined ? v : v.toFixed(d)
+  }
+  const fmtField = (v: number, f: string) => {
+    const d = fieldDecimals[f]
+    return d === undefined
+      ? v.toLocaleString()
+      : v.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d })
+  }
   const showPct = !manual && data?.mappingOk && groups.some((g) => g.calcValue !== null)
   const target = data?.kpi?.target ?? 0
   const direction = data?.kpi?.direction
@@ -950,27 +988,63 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead className="bg-gray-50 text-gray-500 text-xs">
-                        <tr>
-                          <th className="text-left px-4 py-2 font-medium sticky left-0 z-10 bg-gray-50">{viewLabel}</th>
-                          {fieldList.map((f) => (
-                            <th key={f} className="text-right px-3 py-2 font-medium whitespace-nowrap">{fieldLabels[f] ?? f}</th>
-                          ))}
-                          {showPct && <th className="text-right px-4 py-2 font-medium">ผลงาน ({data.kpi.unit})</th>}
-                          {showPct && <th className="text-center px-4 py-2 font-medium">สถานะ</th>}
-                        </tr>
+                        {fieldGroups.length > 0 ? (
+                          <>
+                            <tr>
+                              <th rowSpan={headLevels} className="text-left px-4 py-2 font-medium sticky left-0 z-10 bg-gray-50 align-bottom">{viewLabel}</th>
+                              {fieldGroups.map((g, i) => (
+                                <th key={g.label} colSpan={g.fields.length}
+                                    className={`text-center px-3 py-2 font-semibold text-gray-700 border-l border-gray-300 whitespace-nowrap ${i % 2 === 1 ? 'bg-sky-100/70' : 'bg-gray-100'}`}>
+                                  {g.label}
+                                </th>
+                              ))}
+                              {showPct && <th rowSpan={headLevels} className="text-right px-4 py-2 font-semibold text-gray-700 whitespace-nowrap border-l border-gray-300 align-bottom">{data.pctLabel ?? `ผลงาน (${data.kpi.unit})`}</th>}
+                              {showPct && <th rowSpan={headLevels} className="text-center px-4 py-2 font-medium align-bottom">สถานะ</th>}
+                            </tr>
+                            {hasSub && (
+                              <tr>
+                                {fieldGroups.flatMap((g) =>
+                                  (g.sub ?? [{ label: '', fields: g.fields }]).map((sub) => (
+                                    <th key={`${g.label}-${sub.label}`} colSpan={sub.fields.length}
+                                        rowSpan={subSpansDown(sub) ? 2 : 1}
+                                        className={`px-3 py-2 font-medium whitespace-nowrap ${subSpansDown(sub) ? 'text-right align-bottom font-semibold text-gray-700' : 'text-center'} ${cellCls(sub.fields[0])}`}>
+                                      {sub.label}
+                                    </th>
+                                  )),
+                                )}
+                              </tr>
+                            )}
+                            <tr>
+                              {fieldList
+                                .filter((f) => !hasSub || !fieldGroups.some((g) => (g.sub ?? []).some((sub) => subSpansDown(sub) && sub.fields[0] === f)))
+                                .map((f) => (
+                                  <th key={f} className={`text-right px-3 py-2 font-medium whitespace-nowrap ${cellCls(f)}`}>{fieldLabels[f] ?? f}</th>
+                                ))}
+                            </tr>
+                          </>
+                        ) : (
+                          <tr>
+                            <th className="text-left px-4 py-2 font-medium sticky left-0 z-10 bg-gray-50">{viewLabel}</th>
+                            {fieldList.map((f) => (
+                              <th key={f} className="text-right px-3 py-2 font-medium whitespace-nowrap">{fieldLabels[f] ?? f}</th>
+                            ))}
+                            {showPct && <th className="text-right px-4 py-2 font-medium whitespace-nowrap">{data.pctLabel ?? `ผลงาน (${data.kpi.unit})`}</th>}
+                            {showPct && <th className="text-center px-4 py-2 font-medium">สถานะ</th>}
+                          </tr>
+                        )}
                       </thead>
                       <tbody className="divide-y">
                         {groups.map((g) => (
                           <tr key={g.code} className="group hover:bg-gray-50">
                             <td className="px-4 py-2.5 font-medium text-gray-900 sticky left-0 z-10 bg-white group-hover:bg-gray-50">{g.name}</td>
                             {fieldList.map((f) => (
-                              <td key={f} className="px-3 py-2.5 text-right tabular-nums text-gray-700">
-                                {(g.fields[f] ?? 0).toLocaleString()}
+                              <td key={f} className={`px-3 py-2.5 text-right tabular-nums text-gray-700 ${cellCls(f)}`}>
+                                {fmtField(g.fields[f] ?? 0, f)}
                               </td>
                             ))}
                             {showPct && (
-                              <td className="px-4 py-2.5 text-right tabular-nums font-semibold">
-                                {g.calcValue ?? '—'}
+                              <td className={`px-4 py-2.5 text-right tabular-nums font-semibold ${fieldGroups.length > 0 ? 'border-l border-gray-300' : ''} ${pctTone(g.calcValue)}`}>
+                                {fmtPct(g.calcValue)}
                               </td>
                             )}
                             {showPct && (
@@ -989,11 +1063,11 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                           <tr className="bg-gray-100 font-semibold">
                             <td className="px-4 py-2.5 sticky left-0 z-10 bg-gray-100">{total.name}</td>
                             {fieldList.map((f) => (
-                              <td key={f} className="px-3 py-2.5 text-right tabular-nums">
-                                {(total.fields[f] ?? 0).toLocaleString()}
+                              <td key={f} className={`px-3 py-2.5 text-right tabular-nums ${isGroupStart(f) ? 'border-l border-gray-300' : ''}`}>
+                                {fmtField(total.fields[f] ?? 0, f)}
                               </td>
                             ))}
-                            {showPct && <td className="px-4 py-2.5 text-right tabular-nums">{total.calcValue ?? '—'}</td>}
+                            {showPct && <td className={`px-4 py-2.5 text-right tabular-nums ${fieldGroups.length > 0 ? 'border-l border-gray-300' : ''} ${pctTone(total.calcValue)}`}>{fmtPct(total.calcValue)}</td>}
                             {showPct && (
                               <td className="px-4 py-2.5 text-center">
                                 {total.status && (

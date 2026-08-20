@@ -5,12 +5,21 @@ import { isValidDirection, VALID_DIRECTIONS } from '@/lib/kpiStatus'
 import { reportFreqOf } from '@/lib/fiscalQuarter'
 import type { MophMapping } from '@/lib/types'
 
-const VALID_CALC_MODES = new Set(['percent', 'sum', 'raw', 'noTarget'])
+const VALID_CALC_MODES = new Set(['percent', 'sum', 'raw', 'noTarget', 'percentIncrease'])
 
 /** Validate MophMapping ก่อน persist — คืน error message หรือ null ถ้า OK */
 function validateMophConfig(cfg: MophMapping): string | null {
   if (!VALID_CALC_MODES.has(cfg.calcMode)) {
-    return 'calcMode ต้องเป็น percent / sum / raw / noTarget'
+    return 'calcMode ต้องเป็น percent / sum / raw / noTarget / percentIncrease'
+  }
+  // ค่าคงที่ปีฐาน: ไม่บังคับต้องมี (ปกติระบบอ่านจากตาราง kpi_baseline_year) แต่ถ้าจะใส่ ต้องครบชุด 3 ตัว
+  // — ห้ามมีตัวเลขปีฐานลอยๆ ที่ไม่บอกว่าเป็นของปีไหน เพราะพอขึ้นปีงบใหม่จะถูกใช้ต่อเงียบๆ ผิดปี
+  if (cfg.calcMode === 'percentIncrease') {
+    const parts = [cfg.baseNumerator, cfg.baseDenominator, cfg.baseFiscalYear]
+    const given = parts.filter((v) => v !== undefined).length
+    if (given > 0 && given < 3) {
+      return 'ค่าคงที่ปีฐานต้องระบุครบ 3 ตัว: baseNumerator, baseDenominator และ baseFiscalYear (ปีงบของตัวเลขนั้น)'
+    }
   }
   if (!Array.isArray(cfg.valueFields) || cfg.valueFields.length === 0) {
     return 'valueFields ต้องเป็น array ที่ไม่ว่าง'

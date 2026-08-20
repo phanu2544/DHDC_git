@@ -144,6 +144,29 @@ export function computeMoph(
       mapping.aggregate === 'avg'
         ? +(sumValue / rows.length).toFixed(2)
         : +(Number(rows[0][mapping.valueFields[0]]) || 0).toFixed(2)
+  } else if (mapping.calcMode === 'percentIncrease') {
+    // %เพิ่มขึ้นเทียบปีฐานคงที่ — C1 จาก baseNumerator/baseDenominator (ไม่ดึงสด, ปีฐานปิดแล้วไม่เปลี่ยน)
+    // C2 จาก sumValue/sumTarget (ปีปัจจุบัน ดึงสดตามปกติ) แล้ว (C2-C1)/C1×100 — ดู #46 kpi-hdc-api-checklist.md
+    if (mapping.baseYearError) {
+      // ตัวหาปีฐาน (lib/baselineYear.ts) หาไม่เจอ/ไม่ตรงปี → ไม่คำนวณ ปล่อยให้เห็นคำเตือนชัดๆ
+      warnings.push(mapping.baseYearError)
+    } else if (sumTarget === null) {
+      warnings.push('ไม่ระบุ target field — ไม่สามารถคำนวณ % ได้')
+    } else if (sumTarget === 0) {
+      warnings.push('sumTarget = 0 — ไม่สามารถหารได้ (ข้อมูล target อาจว่างหรือไม่มีในช่วงนี้)')
+    } else if (mapping.baseNumerator === undefined || mapping.baseDenominator === undefined) {
+      warnings.push('ไม่ได้ตั้งค่าปีฐาน (baseNumerator/baseDenominator) — ไม่สามารถคำนวณ %เพิ่มขึ้นได้')
+    } else if (mapping.baseDenominator === 0) {
+      warnings.push('baseDenominator ของปีฐาน = 0 — ไม่สามารถคำนวณได้')
+    } else {
+      const c1 = (mapping.baseNumerator / mapping.baseDenominator) * 100
+      if (c1 === 0) {
+        warnings.push('ปีฐาน (C1) = 0 — คำนวณ %เพิ่มขึ้นไม่ได้ (หารด้วย 0)')
+      } else {
+        const c2 = (sumValue / sumTarget) * 100
+        calcValue = +(((c2 - c1) / c1) * 100).toFixed(2)
+      }
+    }
   } else {
     // percent
     if (sumTarget === null) {

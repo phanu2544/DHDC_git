@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { buildMappingFromLegacy, classifyFields, computeMoph } from '@/lib/mophEngine'
+import { applyBaselineToMapping } from '@/lib/baselineYear'
 import { fetchMophRows } from '@/lib/mophFetch'
 import { saveMonthlyDetail, logAutoOverwriteIfManual } from '@/lib/mophDetail'
 import { getTargetFor } from '@/lib/targets'
@@ -68,6 +69,8 @@ export async function POST(req: NextRequest) {
         // ยังไม่มี moph_config → ใช้ legacy fields จาก request body
         mapping = buildMappingFromLegacy(valueField || 'result', targetField, calcMode)
       }
+      // calcMode='percentIncrease' → เติมยอดปีฐานจาก kpi_baseline_year (preview ต้องได้เลขเดียวกับ batch)
+      mapping = await applyBaselineToMapping(conn, kpiId, mapping, year)
     } finally {
       conn.release()
     }

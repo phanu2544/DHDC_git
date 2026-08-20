@@ -1,5 +1,6 @@
 import pool from '@/lib/db'
 import { buildMappingFromLegacy, computeMoph } from './mophEngine'
+import { applyBaselineToMappingPooled, captureBaselineFromDetail } from './baselineYear'
 import { fetchMophRows } from './mophFetch'
 import { saveMonthlyDetail, logAutoOverwriteIfManual } from './mophDetail'
 import { getTargetsForYear } from './targets'
@@ -159,6 +160,10 @@ export async function runBatchSave(opts: BatchOptions = {}): Promise<BatchResult
         )
       }
 
+      // calcMode='percentIncrease' → เติมยอดปีฐาน (ปีงบก่อนหน้าปีที่กำลังดึง) จาก kpi_baseline_year
+      // ยังไม่เก็บปีฐานไว้ → คืน mapping เดิม ใช้ค่าคงที่ใน moph_config เหมือนเดิมทุกประการ
+      mapping = await applyBaselineToMappingPooled(kpi.id, mapping, year)
+
       // ── คำนวณผ่าน engine กลาง — preview/single/batch ใช้ตัวเดียวกัน ────────
       const r = computeMoph(rows, mapping)
 
@@ -183,6 +188,13 @@ export async function runBatchSave(opts: BatchOptions = {}): Promise<BatchResult
       const detail = await saveMonthlyDetail(kpi.id, saveMonth, rows, kpi.moph_table)
       if (detail.error) r.warnings.push(`เก็บ detail ไม่สำเร็จ: ${detail.error}`)
 
+      // ── ปีฐานอัตโนมัติ (เฉพาะ KPI แบบ "เพิ่มขึ้นเทียบปีก่อนหน้า") ─────────
+      // เก็บยอดสะสมล่าสุดของปีงบนี้ไว้ พอปีงบปิด ค่าที่ค้างอยู่ = ยอดสิ้นปี → เป็นปีฐานของปีถัดไปเอง
+      if (mapping.calcMode === 'percentIncrease') {
+        const base = await captureBaselineFromDetail(kpi.id, saveMonth, year)
+        if (base.error) r.warnings.push(`เก็บปีฐานไม่สำเร็จ: ${base.error}`)
+      }
+
       // noTarget → skipped (ไม่ใช่ error) — ตามดีไซน์
       if (mapping.calcMode === 'noTarget') {
         results.push({
@@ -198,7 +210,8 @@ export async function runBatchSave(opts: BatchOptions = {}): Promise<BatchResult
       if (r.calcValue === null) {
         results.push({
           kpiId: kpi.id, kpiName: kpi.name, status: 'skipped',
-          skipReason: 'คำนวณไม่ได้ (sumTarget=0 หรือข้อมูล target ว่าง)',
+          // ปีฐานหาย/ผิดปี → บอกสาเหตุจริงตรงหัวข้อเลย (ไม่งั้นขึ้นว่า "sumTarget=0" ซึ่งไม่ใช่เรื่องเดียวกัน)
+          skipReason: mapping.baseYearError ?? 'คำนวณไม่ได้ (sumTarget=0 หรือข้อมูล target ว่าง)',
           rows: rows.length,
           warnings: r.warnings.length > 0 ? r.warnings : undefined,
         })

@@ -100,7 +100,8 @@ export interface MonthlyData {
 // FieldMode: วิธีรวม value fields — singleField (เดิม) | sumFields (รวมหลาย column) | none
 export type FieldMode = 'singleField' | 'sumFields' | 'none'
 // CalcMode: percent (ตัวเศษ/ตัวส่วน×100) | sum (ผลรวม) | raw (ค่าดิบ) | noTarget (ติดตามเฉยๆ ไม่ประเมิน)
-export type CalcMode = 'percent' | 'sum' | 'raw' | 'noTarget'
+//   | percentIncrease (%เพิ่มขึ้นเทียบปีฐานคงที่ — ดู baseNumerator/baseDenominator)
+export type CalcMode = 'percent' | 'sum' | 'raw' | 'noTarget' | 'percentIncrease'
 // FieldType: ใช้จัดประเภท field จาก MOPH เพื่อ guard การเลือกผิด
 export type FieldType = 'measure' | 'target' | 'dimension' | 'time'
 
@@ -113,6 +114,17 @@ export interface MophMapping {
   constantTarget?: number
   calcMode: CalcMode
   aggregate?: 'sum' | 'avg'          // สำหรับ raw mode
+  // calcMode='percentIncrease' เท่านั้น — A/B ดิบของปีฐาน (คงที่ ไม่ดึงสด) ใช้คำนวณ C1 = baseNumerator/baseDenominator×100
+  // แล้วเทียบกับ C2 (คำนวณสดจาก valueFields/targetFields ของปีปัจจุบัน) → (C2-C1)/C1×100
+  // เก็บเป็นตัวเลขดิบ (ไม่ใช่ % ปัดเศษสำเร็จรูป) ตามบทเรียน HANDOFF §6 — เก็บของจริงดีกว่าเดา/ปัดเศษไว้ก่อน
+  baseNumerator?: number
+  baseDenominator?: number
+  // ปีงบที่ baseNumerator/baseDenominator เป็นตัวเลขของ "ปีนั้น" — ต้องระบุเสมอเมื่อตั้งค่าคงที่ไว้ใน moph_config
+  // ไม่มีป้ายปีกำกับ = ไม่รู้ว่าเลขเป็นของปีไหน → พอขึ้นปีงบใหม่จะเอาเลขปีเก่ามาใช้ต่อเงียบๆ (ผิดปีแบบไม่มีใครรู้)
+  baseFiscalYear?: number
+  // เติมโดย applyBaselineToMapping เท่านั้น (ไม่เก็บลง DB) — หาปีฐานที่ใช้ได้ไม่เจอ พร้อมเหตุผลภาษาไทย
+  // engine เห็นค่านี้ → ไม่คำนวณ + เตือนด้วยข้อความนี้ (พังดังๆ ดีกว่าคำนวณผิดเงียบๆ)
+  baseYearError?: string
 }
 
 /** ผลลัพธ์จาก computeMoph — pure ไม่มี side-effect */
