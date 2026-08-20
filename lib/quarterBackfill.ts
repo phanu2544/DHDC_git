@@ -24,9 +24,12 @@ import type { MophMapping } from './types'
  * เพราะการเปิดให้ตารางใหม่ = เขียนแถวย้อนหลังเข้า monthly_data ของ KPI นั้นทันที
  * ต้องให้ owner รับรองตัวเลขก่อนทีละตัว (กฎ CLAUDE.md — แก้ข้อมูลต้องมี gate + verify)
  *
- * ⏭️ ที่เข้าเกณฑ์แต่ยังไม่เปิด (รอ owner สั่ง): s_kpi_sepsis_septic (#6) · s_ttm35 (#45)
+ * เปิดแล้ว (verify ตัวเลขก่อนเปิดทุกตัว — ดู kpi-hdc-api-checklist.md):
+ *   - s_stroke_admit_death (#9)  เปิด 20 ส.ค. 2569
+ *   - s_kpi_sepsis_septic (#6)   เปิด 20 ส.ค. 2569
+ *   - s_ttm35 (#45)              เปิด 20 ส.ค. 2569
  */
-export const QUARTER_BACKFILL_TABLES = new Set(['s_stroke_admit_death'])
+export const QUARTER_BACKFILL_TABLES = new Set(['s_stroke_admit_death', 's_kpi_sepsis_septic', 's_ttm35'])
 
 /**
  * ตรวจว่า field 4 ตัวนี้คือชุดเดียวกันที่ต่างกันแค่ไตรมาส → คืนเรียงตาม q1..q4
