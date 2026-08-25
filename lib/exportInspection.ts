@@ -53,6 +53,18 @@ function baselineOf(description?: string): string {
 }
 
 /**
+ * ชื่อที่ใช้ในไฟล์ export — บาง KPI ถูกย่อชื่อในระบบให้อ่านง่ายบนหน้าจอ (เช่น #5 MMR2 ตัดคำว่า
+ * "ระดับ จังหวัด" ที่เข้าใจผิดได้ว่าเป็นเลขระดับจังหวัด ทั้งที่ระบบเก็บระดับอำเภอ) แต่ไฟล์ที่ส่งเขต
+ * ต้องคงชื่อเต็มตามต้นฉบับไว้เทียบกับแบบฟอร์มจริงได้ — ถ้า description มีรูปแบบ
+ * `ชื่อเต็มตามไฟล์ตรวจราชการ ... : "<ชื่อเต็ม>"` ให้ดึงชื่อเต็มนั้นมาใช้แทน ไม่มี = ใช้ชื่อในระบบตามเดิม
+ */
+function officialNameOf(name: string, description?: string): string {
+  if (!description) return name
+  const m = /ชื่อเต็มตามไฟล์ตรวจราชการ[^:]*:\s*"([^"]+)"/.exec(description)
+  return m ? m[1].trim() : name
+}
+
+/**
  * ผลงานปัจจุบัน — numeric คืน number (ให้ Excel เก็บเป็นตัวเลขจริง คำนวณต่อได้)
  * text/level คืนข้อความ · ไม่มีข้อมูลคืน '' (ช่องว่างเหมือนต้นฉบับ ไม่ใช่ '—')
  */
@@ -82,7 +94,7 @@ export async function exportInspectionXlsx(
     return [
       setCodeFor(r, summary.set.id) ?? '',
       groupLetter(r.kpi.category),
-      r.kpi.name.trim(),
+      officialNameOf(r.kpi.name.trim(), r.kpi.description),
       r.kpi.owner,
       baselineOf(r.kpi.description),
       tag?.targetRegion ?? '',

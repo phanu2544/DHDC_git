@@ -8,7 +8,9 @@ import type { KPIReport } from '@/lib/types'
 const aged9 = (k: KPIReport) => `/kpi/aged9?table=${k.mophTable}`
 
 const DETAIL_VIEW: Record<string, (kpi: KPIReport) => string> = {
-  s_epi2: () => '/kpi/vaccines',
+  // s_epi2 ใช้ร่วมกันหลาย KPI คนละวัคซีน (เช่น #5 MMR2 กับตัวรายชนิดเดิม DTP4) — ส่ง kpiId
+  // ไปด้วยเสมอ ให้หน้า /kpi/vaccines รู้ว่ากำลังเข้าจาก KPI ตัวไหน แสดงชื่อ/เป้า/สถานะของตัวนั้นถูก
+  s_epi2: (k) => `/kpi/vaccines?kpiId=${k.id}`,
   s_aged9: aged9,
   s_aged9_app: aged9,
   s_dm_screen_risk: () => '/kpi/screen-risk?disease=dm',

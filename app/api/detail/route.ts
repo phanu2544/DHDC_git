@@ -324,6 +324,24 @@ export async function GET(req: NextRequest) {
       for (const k of fieldList) fieldLabels[k] = k
     }
 
+    // s_epi2 (#5 MMR2 + KPI วัคซีนเด็ก 2 ปี): ยุบ 88 field ดิบ (6 วัคซีน × 12 เดือน + เป้า 12 เดือน)
+    // ⚠️ ตารางนี้ใช้ร่วมกัน 2 KPI ที่คนละวัคซีน → **ยุบตาม mapping ของ KPI ตัวนั้นเอง** ห้าม hardcode ชื่อวัคซีน
+    // (ตัว #5 ใช้ mmr2_* · ตัว "ความครอบคลุมรายชนิด" ใช้ dtp4_*) — อ่านจาก mapping จึงถูกทั้งคู่โดยอัตโนมัติ
+    // ดูรายวัคซีนแยกทีละตัวได้ที่หน้า /kpi/vaccines (คำนวณสูตรเดียวกัน)
+    if (kpi.moph_table === 's_epi2' && !manual) {
+      const sumOf = (f: Record<string, number>, fields: string[]) =>
+        fields.reduce((a, k) => a + (f[k] ?? 0), 0)
+      const collapse = (f: Record<string, number>) => ({
+        'เด็กกลุ่มเป้าหมาย (B)': sumOf(f, mapping.targetFields ?? []),
+        'ได้รับวัคซีนครบเกณฑ์ (A)': sumOf(f, mapping.valueFields ?? []),
+      })
+      for (const g of groups) g.fields = collapse(g.fields)
+      total.fields = collapse(total.fields)
+      fieldList = ['เด็กกลุ่มเป้าหมาย (B)', 'ได้รับวัคซีนครบเกณฑ์ (A)']
+      for (const k of Object.keys(fieldLabels)) delete fieldLabels[k]
+      for (const k of fieldList) fieldLabels[k] = k
+    }
+
     // s_stroke_admit_death (#9): ยุบ 48 field ดิบ เหลือเฉพาะ "I60-I64" ตรงนิยามตัวชี้วัด
     // ตารางนี้มี 2 วิธีแบ่งซ้อนกัน (รวม I60-69 · แยก I60-62/I63/I64-69 · แยก I60-64/I65-69)
     // ⚠️ ตัวชี้วัดนิยาม I60-I64 → ต้องใช้ *_6064 เท่านั้น · ห้ามใช้ targetqN/resultqN (= I60-I69 กว้างกว่านิยาม)
