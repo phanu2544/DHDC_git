@@ -1,0 +1,161 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Sarabun', system-ui, sans-serif; background: #f3f4f6; color: #111827; }
+    a { color: #1d4ed8; } a:hover { color: #1e40af; }
+  </style>
+</helmet>
+
+<div style="width: 860px; padding: 32px; box-sizing: border-box; display: flex; gap: 36px; align-items: flex-start">
+
+  <!-- โทรศัพท์ -->
+  <div style="width: 375px; flex-shrink: 0; background: #f9fafb; border: 1px solid #d1d5db; border-radius: 20px; overflow: hidden; box-shadow: 0 8px 24px rgba(16,24,40,0.10)">
+
+    <div style="background: #1e3a8a; color: #ffffff; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between">
+      <div style="font-weight: 700; font-size: 15px">DHDC</div>
+      <div style="display: flex; align-items: center; gap: 5px; font-size: 12px; color: #bfdbfe">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"></path></svg>
+      </div>
+    </div>
+
+    <div style="padding: 14px; display: flex; flex-direction: column; gap: 12px">
+
+      <div style="display: flex; align-items: baseline; justify-content: space-between">
+        <div style="font-size: 16px; font-weight: 700">ภาพรวมตัวชี้วัด</div>
+        <div style="font-size: 11.5px; color: #6b7280">ส.ค. 2569</div>
+      </div>
+
+      <!-- สรุป -->
+      <div style="background: #ffffff; border: 1px solid #e5e7eb; border-radius: 11px; padding: 14px; display: flex; align-items: center; gap: 14px">
+        <div style="text-align: center">
+          <div style="display: flex; align-items: baseline; gap: 2px">
+            <span style="font-size: 30px; font-weight: 700; color: #1d4ed8; line-height: 1; font-variant-numeric: tabular-nums">64.2</span>
+            <span style="font-size: 13px; color: #9ca3af">%</span>
+          </div>
+          <div style="font-size: 10.5px; color: #6b7280; margin-top: 3px">อัตราผ่าน</div>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; flex-grow: 1">
+          <sc-for list="{{chips}}" as="c" hint-placeholder-count="3">
+            <div onClick="{{c.pick}}" style="padding: 7px 4px; border-radius: 8px; background: {{c.bg}}; border: 1.5px solid {{c.br}}; text-align: center; cursor: pointer">
+              <div style="font-size: 16px; font-weight: 700; color: {{c.fg}}; line-height: 1.1; font-variant-numeric: tabular-nums">{{c.n}}</div>
+              <div style="font-size: 10px; color: {{c.fg}}; opacity: 0.9">{{c.label}}</div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <!-- ค้นหา -->
+      <div style="display: flex; align-items: center; gap: 9px; background: #ffffff; border: 1px solid #d1d5db; border-radius: 9px; padding: 9px 12px">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+        <span style="font-size: 13px; color: #9ca3af">ค้นหาตัวชี้วัด</span>
+      </div>
+
+      <!-- การ์ด KPI แทนตาราง -->
+      <div style="display: flex; flex-direction: column; gap: 9px">
+        <sc-for list="{{cards}}" as="k" hint-placeholder-count="4">
+          <div style="background: #ffffff; border: 1px solid #e5e7eb; border-left: 3px solid {{k.dot}}; border-radius: 10px; padding: 12px 13px">
+
+            <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 10px">
+              <div style="min-width: 0; flex-grow: 1">
+                <div style="font-size: 13px; font-weight: 500; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-wrap: pretty">{{k.name}}</div>
+                <div style="font-size: 10.5px; color: #9ca3af; margin-top: 4px">ข้อ {{k.no}} · {{k.owner}}</div>
+              </div>
+              <span style="flex-shrink: 0; display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; background: {{k.bg}}; color: {{k.fg}}">
+                <span style="width: 6px; height: 6px; border-radius: 999px; background: {{k.dot}}"></span>{{k.status}}
+              </span>
+            </div>
+
+            <div style="display: flex; align-items: flex-end; gap: 12px; margin-top: 11px; padding-top: 10px; border-top: 1px solid #f3f4f6">
+              <div style="display: flex; align-items: baseline; gap: 3px">
+                <span style="font-size: 22px; font-weight: 700; color: {{k.valueColor}}; line-height: 1; font-variant-numeric: tabular-nums">{{k.value}}</span>
+                <span style="font-size: 11px; color: #9ca3af">{{k.unit}}</span>
+              </div>
+              <div style="font-size: 11px; color: #6b7280; padding-bottom: 1px">
+                เป้า {{k.target}} · {{k.dirLabel}}
+              </div>
+            </div>
+
+          </div>
+        </sc-for>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- คำอธิบาย -->
+  <div style="flex-grow: 1; padding-top: 8px; display: flex; flex-direction: column; gap: 20px">
+    <div>
+      <div style="font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #6b7280">Mobile</div>
+      <h1 style="margin: 4px 0 8px; font-size: 22px; font-weight: 700; letter-spacing: -0.01em">มุมมองมือถือ — การ์ดแทนตาราง</h1>
+      <p style="margin: 0; font-size: 13.5px; color: #4b5563; line-height: 1.65; text-wrap: pretty">
+        ตารางเดิม 6 คอลัมน์บีบลงจอ 375px ไม่ได้ ต้องเลื่อนซ้ายขวาตลอด — เปลี่ยนเป็นการ์ดที่อ่านจบในแนวตั้ง
+      </p>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 13px">
+      <sc-for list="{{points}}" as="p" hint-placeholder-count="4">
+        <div style="display: flex; gap: 11px; align-items: flex-start">
+          <span style="flex-shrink: 0; width: 21px; height: 21px; border-radius: 999px; background: #eff6ff; color: #1d4ed8; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; margin-top: 1px">{{p.n}}</span>
+          <div>
+            <div style="font-size: 13px; font-weight: 600; color: #111827">{{p.t}}</div>
+            <div style="font-size: 12.5px; color: #6b7280; line-height: 1.6; margin-top: 2px; text-wrap: pretty">{{p.d}}</div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="padding: 13px 15px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; font-size: 12.5px; color: #92400e; line-height: 1.6">
+      แถบสีซ้ายการ์ดทำหน้าที่เดียวกับป้ายสถานะ — กวาดตาหาตัวสีแดงได้โดยไม่ต้องอ่านทุกใบ
+    </div>
+  </div>
+
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { filter: null };
+  }
+
+  renderVals() {
+    const st = this.state;
+    const chipDefs = [
+      { key: 'pass',  label: 'ผ่าน',     n: 34, bg: '#f0fdf4', br: '#bbf7d0', fg: '#15803d' },
+      { key: 'watch', label: 'เฝ้าระวัง', n: 7,  bg: '#fffbeb', br: '#fde68a', fg: '#b45309' },
+      { key: 'fail',  label: 'ไม่ผ่าน',   n: 12, bg: '#fef2f2', br: '#fecaca', fg: '#b91c1c' },
+    ];
+
+    return {
+      chips: chipDefs.map((c) => ({
+        ...c,
+        br: st.filter === c.key ? c.fg : c.br,
+        pick: () => this.setState({ filter: st.filter === c.key ? null : c.key }),
+      })),
+      cards: [
+        { no: 14, name: 'ร้อยละของเด็ก อายุ 0 – 5 ปี ฟันดีไม่มีผุ (Cavity Free)', owner: 'อัณณา', value: 70.54, unit: '%', target: 80, dirLabel: 'ยิ่งมากยิ่งดี', status: 'ไม่ผ่าน', bg: '#fee2e2', fg: '#b91c1c', dot: '#dc2626', valueColor: '#111827' },
+        { no: 45, name: 'ร้อยละของ ปชช.ที่มารับบริการในระดับปฐมภูมิที่ได้รับการรักษาด้วยการแพทย์แผนไทย', owner: 'อริสรา', value: 25.03, unit: '%', target: 27.75, dirLabel: 'ยิ่งมากยิ่งดี', status: 'เฝ้าระวัง', bg: '#fef3c7', fg: '#b45309', dot: '#f59e0b', valueColor: '#111827' },
+        { no: 9,  name: 'อัตราตายของผู้ป่วยโรคหลอดเลือดสมอง (Stroke; I60 - I64)', owner: 'ศุภนิจ', value: 2.08, unit: '%', target: 7, dirLabel: 'ยิ่งน้อยยิ่งดี', status: 'ผ่าน', bg: '#dcfce7', fg: '#15803d', dot: '#16a34a', valueColor: '#111827' },
+        { no: 47, name: 'ร้อยละที่เพิ่มขึ้นของกลุ่มอุตสาหะกรรมการแพทย์ และการท่องเที่ยวเชิงสุขภาพในการแข่งขันในระบบเศรษฐกิจสุขภาพ', owner: 'อริสรา', value: '—', unit: '', target: '—', dirLabel: 'ไม่ประเมิน', status: 'ยังไม่มีข้อมูล', bg: '#f3f4f6', fg: '#4b5563', dot: '#9ca3af', valueColor: '#d1d5db' },
+      ],
+      points: [
+        { n: 1, t: 'ชื่อยาวตัดที่ 2 บรรทัด', d: 'ชื่อยาวสุดในระบบ 186 ตัวอักษร ถ้าไม่ตัดจะดันการ์ดยาวเป็นหน้าจอ' },
+        { n: 2, t: 'ตัวเลขกับเป้าอยู่บรรทัดเดียวกัน', d: 'เห็นพร้อมกันว่าได้เท่าไร เป้าเท่าไร ไม่ต้องเลื่อนหา' },
+        { n: 3, t: 'ปุ่มกรองสถานะแตะได้', d: 'พื้นที่แตะสูงกว่า 44px ตามมาตรฐาน — แตะเลือกดูเฉพาะตัวที่ไม่ผ่านได้ทันที' },
+        { n: 4, t: 'ทิศทางเขียนเป็นคำ', d: 'ยิ่งมาก/ยิ่งน้อยยิ่งดี เขียนชัด เพราะบนมือถือไม่มีที่ให้อธิบายเพิ่ม' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

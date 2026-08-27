@@ -1,0 +1,184 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: 'IBM Plex Sans Thai', 'IBM Plex Sans', system-ui, sans-serif; background: #0f1729; color: #e2e8f0; }
+    a { color: #7dd3fc; } a:hover { color: #bae6fd; }
+    .num { font-variant-numeric: tabular-nums; font-feature-settings: 'tnum'; }
+  </style>
+</helmet>
+
+<div style="width: 1180px; box-sizing: border-box; background: #0f1729">
+
+  <!-- แถบบน -->
+  <div style="padding: 18px 32px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(148,163,184,0.14)">
+    <div style="display: flex; align-items: baseline; gap: 10px">
+      <span style="font-weight: 700; font-size: 15px; letter-spacing: 0.06em; color: #f1f5f9">DHDC</span>
+      <span style="font-size: 12px; color: #64748b">ดงเจริญ · ปีงบ 2569</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 18px; font-size: 12.5px; color: #94a3b8">
+      <span style="color: #e2e8f0; border-bottom: 2px solid #38bdf8; padding-bottom: 3px">ต้องทำ</span>
+      <span>ตัวชี้วัดทั้งหมด</span>
+      <span>ชุดตรวจราชการ</span>
+      <span>รายงาน</span>
+    </div>
+  </div>
+
+  <!-- คำตอบหลัก -->
+  <div style="padding: 40px 32px 32px">
+    <div style="font-size: 12.5px; letter-spacing: 0.14em; text-transform: uppercase; color: #64748b; margin-bottom: 14px">สรุปเดือนสิงหาคม</div>
+
+    <div style="display: flex; align-items: flex-start; gap: 44px">
+      <div>
+        <div style="display: flex; align-items: baseline; gap: 10px">
+          <span class="num" style="font-size: 76px; font-weight: 700; color: #f8fafc; line-height: 0.9; letter-spacing: -0.035em">21</span>
+          <span style="font-size: 21px; color: #94a3b8; font-weight: 500">ตัวต้องจัดการ</span>
+        </div>
+        <div style="font-size: 13.5px; color: #64748b; margin-top: 12px; max-width: 46ch; line-height: 1.6">
+          จาก 37 ตัวที่ประเมินผ่าน/ไม่ผ่านได้ — อีก 43 ตัวเป็นตัวติดตามเฉยๆ หรือรายงานเป็นข้อความ ไม่มีเกณฑ์ตัดสิน
+        </div>
+      </div>
+
+      <div style="flex-grow: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding-top: 6px">
+        <sc-for list="{{buckets}}" as="b" hint-placeholder-count="3">
+          <div onClick="{{b.pick}}" style="padding: 16px 18px; border-radius: 12px; background: {{b.bg}}; border: 1px solid {{b.br}}; cursor: pointer">
+            <div class="num" style="font-size: 30px; font-weight: 700; color: {{b.fg}}; line-height: 1">{{b.n}}</div>
+            <div style="font-size: 12.5px; color: {{b.fg}}; opacity: 0.92; margin-top: 5px; font-weight: 500">{{b.label}}</div>
+            <div style="font-size: 11px; color: #64748b; margin-top: 3px; line-height: 1.5">{{b.hint}}</div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+
+  <!-- รายการที่ต้องจัดการ -->
+  <div style="padding: 0 32px 34px">
+    <div style="display: flex; align-items: baseline; gap: 12px; margin-bottom: 14px">
+      <h2 style="margin: 0; font-size: 15px; font-weight: 600; color: #f1f5f9">{{listTitle}}</h2>
+      <span style="font-size: 12px; color: #64748b">{{listHint}}</span>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 9px">
+      <sc-for list="{{items}}" as="k" hint-placeholder-count="5">
+        <div style="background: #172033; border: 1px solid rgba(148,163,184,0.14); border-left: 3px solid {{k.accent}}; border-radius: 11px; padding: 15px 18px; display: flex; align-items: center; gap: 20px">
+
+          <div style="min-width: 0; flex-grow: 1">
+            <div style="display: flex; align-items: center; gap: 9px; margin-bottom: 5px">
+              <span class="num" style="font-size: 11px; color: #64748b">ข้อ {{k.no}}</span>
+              <span style="padding: 2px 8px; border-radius: 5px; font-size: 10.5px; font-weight: 600; background: {{k.tagBg}}; color: {{k.tagFg}}">{{k.tag}}</span>
+            </div>
+            <div style="font-size: 14px; font-weight: 500; color: #e2e8f0; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden">{{k.name}}</div>
+            <div style="font-size: 12px; color: #94a3b8; margin-top: 6px; line-height: 1.5">{{k.why}}</div>
+          </div>
+
+          <div style="text-align: right; flex-shrink: 0">
+            <div style="display: flex; align-items: baseline; gap: 5px; justify-content: flex-end">
+              <span class="num" style="font-size: 26px; font-weight: 700; color: {{k.valueColor}}; line-height: 1">{{k.value}}</span>
+              <span style="font-size: 12px; color: #64748b">{{k.unit}}</span>
+            </div>
+            <div class="num" style="font-size: 11.5px; color: #64748b; margin-top: 4px">เป้า {{k.target}} · {{k.dir}}</div>
+          </div>
+
+          <div style="flex-shrink: 0; padding: 8px 15px; border-radius: 8px; background: {{k.ctaBg}}; color: {{k.ctaFg}}; font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap">{{k.cta}}</div>
+
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="margin-top: 16px; padding: 15px 18px; border: 1px dashed rgba(148,163,184,0.24); border-radius: 11px; display: flex; align-items: center; gap: 14px">
+      <div style="display: flex; gap: 3px">
+        <sc-for list="{{restDots}}" as="d" hint-placeholder-count="10">
+          <span style="width: 6px; height: 6px; border-radius: 999px; background: {{d.c}}"></span>
+        </sc-for>
+      </div>
+      <span style="font-size: 12.5px; color: #94a3b8">อีก <b style="color: #cbd5e1" class="num">59</b> ตัว — ผ่านแล้ว 16 · ติดตามเฉยๆ 22 · รายงานเป็นข้อความ 17 · ยังไม่ถึงรอบ 4</span>
+      <span style="margin-left: auto; font-size: 12.5px; color: #7dd3fc; font-weight: 500; cursor: pointer">ดูทั้งหมด →</span>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { bucket: 'fail' };
+  }
+
+  renderVals() {
+    const st = this.state;
+
+    const bucketDefs = [
+      { key: 'fail',    n: 13, label: 'ไม่ผ่านเกณฑ์',    hint: 'ห่างจากเป้าเกิน 10%',       bg: 'rgba(220,38,38,0.13)',  br: 'rgba(248,113,113,0.34)', fg: '#fca5a5' },
+      { key: 'watch',   n: 8,  label: 'เฝ้าระวัง',       hint: 'ใกล้เป้าแต่ยังไม่ถึง',       bg: 'rgba(245,158,11,0.12)', br: 'rgba(251,191,36,0.32)',  fg: '#fcd34d' },
+      { key: 'no_data', n: 22, label: 'ยังไม่เคยกรอกเลย', hint: 'ไม่มีข้อมูลสักเดือนตั้งแต่ต้นปีงบ', bg: 'rgba(148,163,184,0.12)', br: 'rgba(203,213,225,0.28)', fg: '#cbd5e1' },
+    ];
+
+    const pools = {
+      fail: [
+        { no: 14, name: 'ร้อยละของเด็ก อายุ 0 – 5 ปี ฟันดีไม่มีผุ (Cavity Free)', tag: 'ตรวจราชการ', value: 70.54, unit: '%', target: 80, dir: 'ยิ่งมากยิ่งดี', why: 'ห่างเป้า 9.5 จุด · ต่ำลงจากไตรมาสก่อน 2.1 จุด', cta: 'ดูรายตำบล' },
+        { no: 23, name: 'ร้อยละของเด็กปฐมวัยที่มีพัฒนาการล่าช้าเข้าถึงบริการ', tag: 'ตรวจราชการ', value: 23.84, unit: '%', target: 30, dir: 'ยิ่งมากยิ่งดี', why: 'ห่างเป้า 6.2 จุด · เหลืออีก 2 ไตรมาสก่อนส่งรอบ 2', cta: 'ดูรายตำบล' },
+        { no: 10, name: 'อัตราตายของผู้ป่วยโรคกล้ามเนื้อหัวใจตายเฉียบพลันชนิด STEMI', tag: 'ตรวจราชการ', value: 12.5, unit: '%', target: 9, dir: 'ยิ่งน้อยยิ่งดี', why: 'เกินเป้า 3.5 จุด · เป็นตัวที่ยิ่งน้อยยิ่งดี', cta: 'ดูรายตำบล' },
+      ],
+      no_data: [
+        { no: 47, name: 'ร้อยละที่เพิ่มขึ้นของกลุ่มอุตสาหกรรมการแพทย์และการท่องเที่ยวเชิงสุขภาพ', tag: 'กรอกมือ', value: '—', unit: '', target: '—', dir: 'ไม่ประเมิน', why: 'ยังไม่เคยกรอกเลยตั้งแต่ต้นปีงบ · อริสรา พุกสุข', cta: 'กรอกเลย' },
+        { no: 2,  name: 'อัตราความรอบรู้ด้านสุขภาพของประชาชนไทย อายุ 15 ปีขึ้นไป', tag: 'กรอกมือ', value: '—', unit: '', target: '—', dir: 'เชิงคุณภาพ', why: 'ค้างมา 2 เดือน · อัมพวัน รีสี', cta: 'กรอกเลย' },
+        { no: 11, name: 'ร้อยละผู้ป่วยไตเรื้อรัง stage 5 รายใหม่ ลดลงจากปีงบก่อน', tag: 'กรอกมือ', value: '—', unit: '', target: '—', dir: 'เชิงคุณภาพ', why: 'ถึงรอบปิดไตรมาสแล้ว · ขวัญยืน กุนนานันท์', cta: 'กรอกเลย' },
+      ],
+      watch: [
+        { no: 45, name: 'ร้อยละของ ปชช.ปฐมภูมิที่ได้รับการรักษาด้วยแพทย์แผนไทยและแพทย์ทางเลือก', tag: 'ตรวจราชการ', value: 25.03, unit: '%', target: 27.75, dir: 'ยิ่งมากยิ่งดี', why: 'ห่างเป้า 2.7 จุด · ลดลงต่อเนื่อง 3 ไตรมาส', cta: 'ดูรายหน่วย' },
+        { no: 1,  name: 'อัตราการเสียชีวิตและบาดเจ็บจากอุบัติเหตุทางถนน', tag: 'กรอกมือ', value: 2.1, unit: '%', target: 3, dir: 'ยิ่งมากยิ่งดี', why: 'ห่างเป้า 0.9 จุด · เหลือ 2 เดือนก่อนปิดปีงบ', cta: 'ดูรายละเอียด' },
+      ],
+    };
+
+    const accentOf = { fail: '#dc2626', watch: '#f59e0b', no_data: '#94a3b8' };
+    const tagStyle = {
+      'ตรวจราชการ': { bg: 'rgba(56,189,248,0.14)', fg: '#7dd3fc' },
+      'กรอกมือ':    { bg: 'rgba(245,158,11,0.14)', fg: '#fcd34d' },
+      'ตั้งค่า':     { bg: 'rgba(168,85,247,0.14)', fg: '#d8b4fe' },
+      'ติดตาม':     { bg: 'rgba(148,163,184,0.14)', fg: '#cbd5e1' },
+    };
+    const ctaStyle = {
+      fail:    { bg: 'rgba(148,163,184,0.14)', fg: '#e2e8f0' },
+      watch:   { bg: 'rgba(245,158,11,0.18)',  fg: '#fcd34d' },
+      no_data: { bg: '#f59e0b',                fg: '#1c1917' },
+    };
+
+    const titles = {
+      fail:    { t: 'ไม่ผ่านเกณฑ์',     h: 'เรียงตามระยะห่างจากเป้า' },
+      watch:   { t: 'เฝ้าระวัง',        h: 'อยู่ในระยะ 10% รอบเป้า' },
+      no_data: { t: 'ยังไม่เคยกรอกเลย', h: 'ไม่มีข้อมูลสักเดือนตั้งแต่ต้นปีงบ' },
+    };
+
+    return {
+      buckets: bucketDefs.map((b) => ({
+        ...b,
+        br: st.bucket === b.key ? b.fg : b.br,
+        pick: () => this.setState({ bucket: b.key }),
+      })),
+      listTitle: titles[st.bucket].t,
+      listHint: titles[st.bucket].h,
+      items: pools[st.bucket].map((k) => ({
+        ...k,
+        accent: accentOf[st.bucket],
+        tagBg: tagStyle[k.tag].bg,
+        tagFg: tagStyle[k.tag].fg,
+        ctaBg: ctaStyle[st.bucket].bg,
+        ctaFg: ctaStyle[st.bucket].fg,
+        valueColor: k.value === '—' ? '#475569' : '#f8fafc',
+      })),
+      restDots: Array.from({ length: 10 }, (_, i) => ({ c: i < 3 ? '#22c55e' : '#475569' })),
+    };
+  }
+}
+</script>
+</body>
+</html>

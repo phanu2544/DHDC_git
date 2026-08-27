@@ -1,0 +1,217 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Sarabun', system-ui, sans-serif; background: #f9fafb; color: #111827; }
+    a { color: #1d4ed8; } a:hover { color: #1e40af; }
+  </style>
+</helmet>
+
+<div style="width: 1280px; box-sizing: border-box">
+
+  <div style="background: #1e3a8a; color: #ffffff; height: 60px; display: flex; align-items: center">
+    <div style="max-width: 1200px; margin: 0 auto; padding: 0 16px; width: 100%; box-sizing: border-box; font-weight: 700; font-size: 17px; display: flex; align-items: baseline; gap: 7px">
+      DHDC <span style="color: #93c5fd; font-size: 13px; font-weight: 400">ระบบติดตาม KPI</span>
+    </div>
+  </div>
+
+  <div style="max-width: 1200px; margin: 0 auto; padding: 20px 16px 40px; display: flex; flex-direction: column; gap: 16px">
+
+    <div style="font-size: 13px; color: #1d4ed8">← ทุกชุดตัวชี้วัด</div>
+
+    <!-- หัวเรื่อง + รอบส่ง -->
+    <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 20px">
+      <div>
+        <div style="display: flex; align-items: center; gap: 9px">
+          <h1 style="margin: 0; font-size: 23px; font-weight: 700; letter-spacing: -0.01em">ตัวชี้วัดตรวจราชการ เขต 3</h1>
+          <span style="padding: 3px 9px; border-radius: 6px; font-size: 11.5px; font-weight: 600; background: #fffbeb; color: #b45309; border: 1px solid #fde68a">ปีงบ 2569</span>
+        </div>
+        <p style="margin: 5px 0 0; font-size: 13px; color: #6b7280">46 ตัวชี้วัด · ส่งเขต 2 รอบต่อปี — รอบ 1 ใช้ผลไตรมาส 2 · รอบ 2 ใช้ผลไตรมาส 4</p>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px">
+        <div style="background: #ffffff; border: 1px solid #d1d5db; border-radius: 8px; padding: 8px 12px; font-size: 13px; display: flex; align-items: center; gap: 8px">
+          มีนาคม 2569 (ไตรมาส 2) <span style="color: #9ca3af; font-size: 10px">▼</span>
+        </div>
+        <div style="background: #16a34a; color: #ffffff; border-radius: 8px; padding: 8px 15px; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 7px">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"></path><path d="M7 11l5 5 5-5"></path><path d="M4 19h16"></path></svg>
+          ส่งออกฟอร์มตรวจราชการ
+        </div>
+      </div>
+    </div>
+
+    <!-- ความพร้อมส่ง -->
+    <div style="background: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 1px 2px rgba(16,24,40,0.04); padding: 17px 20px; display: flex; align-items: center; gap: 22px">
+      <div style="text-align: center; padding-right: 22px; border-right: 1px solid #f3f4f6">
+        <div style="display: flex; align-items: baseline; gap: 3px; justify-content: center">
+          <span style="font-size: 34px; font-weight: 700; color: #1d4ed8; letter-spacing: -0.02em; font-variant-numeric: tabular-nums">{{readyPct}}</span>
+          <span style="font-size: 15px; color: #9ca3af">%</span>
+        </div>
+        <div style="font-size: 11px; color: #6b7280; margin-top: 2px">ความพร้อมส่ง</div>
+        <div style="font-size: 10.5px; color: #9ca3af; margin-top: 2px">{{readyCount}} จาก 46 ตัวมีข้อมูลรอบนี้</div>
+      </div>
+
+      <div style="display: flex; gap: 9px; flex-grow: 1">
+        <sc-for list="{{chips}}" as="c" hint-placeholder-count="4">
+          <div onClick="{{c.pick}}" style="flex-grow: 1; padding: 10px 12px; border-radius: 9px; background: {{c.bg}}; border: 1.5px solid {{c.br}}; cursor: pointer; text-align: center">
+            <div style="font-size: 20px; font-weight: 700; color: {{c.fg}}; font-variant-numeric: tabular-nums; line-height: 1.15">{{c.n}}</div>
+            <div style="font-size: 11px; color: {{c.fg}}; opacity: 0.9; margin-top: 1px">{{c.label}}</div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <!-- เตือนก่อนส่ง -->
+    <div style="display: flex; align-items: flex-start; gap: 11px; padding: 12px 15px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px">
+      <span style="flex-shrink: 0; color: #b45309; margin-top: 1px">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 8v5"></path><path d="M12 17h.01"></path><circle cx="12" cy="12" r="9"></circle></svg>
+      </span>
+      <div style="font-size: 12.5px; color: #92400e; line-height: 1.6">
+        <b>ยังส่งไม่ได้ — ค้าง 5 ตัว</b> · 3 ตัวยังไม่กรอกผลงานรอบนี้ · 2 ตัวยังไม่ได้เขียนบันทึกปัญหา/แนวทาง (ฟอร์มตรวจราชการบังคับทั้ง 2 ช่อง)
+        <span style="text-decoration: underline; font-weight: 600; cursor: pointer">ดูเฉพาะที่ค้าง</span>
+      </div>
+    </div>
+
+    <!-- ตาราง -->
+    <div style="background: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 1px 2px rgba(16,24,40,0.04); overflow: hidden">
+
+      <div style="display: grid; grid-template-columns: 46px 1fr 116px 168px 124px 96px; gap: 12px; padding: 10px 18px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; font-size: 11px; font-weight: 600; color: #6b7280">
+        <div>ข้อ</div>
+        <div>ตัวชี้วัด</div>
+        <div style="text-align: right">ผลงาน</div>
+        <div style="text-align: right">เป้าหมาย</div>
+        <div style="text-align: center">สถานะ</div>
+        <div style="text-align: center">บันทึก</div>
+      </div>
+
+      <sc-for list="{{rows}}" as="r" hint-placeholder-count="6">
+        <div style="display: grid; grid-template-columns: 46px 1fr 116px 168px 124px 96px; gap: 12px; align-items: center; padding: 12px 18px; border-bottom: 1px solid #f3f4f6; background: {{r.rowBg}}">
+
+          <div style="font-size: 12.5px; color: #6b7280; font-variant-numeric: tabular-nums; text-align: center; font-weight: 600">{{r.no}}</div>
+
+          <div style="min-width: 0">
+            <div style="font-size: 13px; font-weight: 500; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-wrap: pretty">{{r.name}}</div>
+            <div style="font-size: 11px; color: #9ca3af; margin-top: 3px; display: flex; align-items: center; gap: 5px; flex-wrap: wrap">
+              <span>{{r.cat}}</span><span style="color: #d1d5db">•</span><span>{{r.owner}}</span><span style="color: #d1d5db">•</span>
+              <span style="color: {{r.srcColor}}">{{r.src}}</span>
+            </div>
+          </div>
+
+          <div style="text-align: right">
+            <div style="font-size: 15px; font-weight: 600; color: {{r.valueColor}}; font-variant-numeric: tabular-nums">{{r.value}}</div>
+            <div style="font-size: 10px; color: #9ca3af">{{r.unit}}</div>
+          </div>
+
+          <div style="text-align: right">
+            <div style="font-size: 13px; color: #374151; font-variant-numeric: tabular-nums; font-weight: 500">{{r.targetHosp}}</div>
+            <div style="font-size: 10px; color: #9ca3af; margin-top: 2px">{{r.refTargets}}</div>
+          </div>
+
+          <div style="text-align: center">
+            <span style="display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 600; background: {{r.bg}}; color: {{r.fg}}">
+              <span style="width: 6px; height: 6px; border-radius: 999px; background: {{r.dot}}"></span>{{r.status}}
+            </span>
+          </div>
+
+          <div style="text-align: center">
+            <span style="display: inline-flex; align-items: center; justify-content: center; gap: 5px; font-size: 11.5px; font-weight: 600; color: {{r.noteColor}}">
+              {{r.noteIcon}} {{r.noteLabel}}
+            </span>
+          </div>
+
+        </div>
+      </sc-for>
+
+      <div style="padding: 11px 18px; background: #f9fafb; font-size: 11.5px; color: #6b7280; text-align: center">
+        แสดง 6 จาก 46 ตัวชี้วัด — ตัวอย่างจากข้อมูลจริง
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 14px; font-size: 11.5px; color: #6b7280; padding: 0 4px">
+      <span><b style="color: #374151">เป้าหมาย</b> — ตัวเลขใหญ่คือเป้าระดับ รพ. ที่ใช้ตัดสิน · บรรทัดล่างคือเป้าเขต/จังหวัดไว้อ้างอิง</span>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { filter: null };
+  }
+
+  meta(s) {
+    const m = {
+      pass:      { label: 'ผ่าน',            bg: '#dcfce7', fg: '#15803d', dot: '#16a34a' },
+      watch:     { label: 'เฝ้าระวัง',        bg: '#fef3c7', fg: '#b45309', dot: '#f59e0b' },
+      fail:      { label: 'ไม่ผ่าน',          bg: '#fee2e2', fg: '#b91c1c', dot: '#dc2626' },
+      no_data:   { label: 'ยังไม่กรอก',       bg: '#f3f4f6', fg: '#4b5563', dot: '#9ca3af' },
+      no_target: { label: 'ติดตาม',           bg: '#f1f5f9', fg: '#475569', dot: '#64748b' },
+    };
+    return m[s] || m.no_data;
+  }
+
+  renderVals() {
+    const st = this.state;
+
+    const all = [
+      { no: 5,  name: 'ร้อยละความครอบคลุมวัคซีน MMR2 ในเด็กอายุต่ำกว่า 3 ปี', cat: 'B (โรคติดต่อ)', owner: 'สุพัตรา', value: 100, unit: '%', targetHosp: 95, ref: 'เขต 95 · จังหวัด 95', status: 'pass', auto: true, note: 'done' },
+      { no: 6,  name: 'อัตราป่วยตายด้วยภาวะติดเชื้อในกระแสเลือดแบบรุนแรงชนิด community-acquired', cat: 'B (โรคติดต่อ)', owner: 'ศุภนิจ', value: 15.38, unit: '%', targetHosp: '< 26', ref: 'เขต 26 · จังหวัด 26', status: 'pass', auto: true, note: 'done' },
+      { no: 9,  name: 'อัตราตายของผู้ป่วยโรคหลอดเลือดสมอง (Stroke; I60 - I64)', cat: 'C (โรค NCD)', owner: 'ศุภนิจ', value: 2.70, unit: '%', targetHosp: '< 7', ref: 'เขต 7 · จังหวัด 7', status: 'pass', auto: true, note: 'done' },
+      { no: 14, name: 'ร้อยละของเด็ก อายุ 0 – 5 ปี ฟันดีไม่มีผุ (Cavity Free)', cat: 'ยังไม่จัดหมวด', owner: 'อัณณา', value: 70.54, unit: '%', targetHosp: 80, ref: 'เขต 80 · จังหวัด 80', status: 'fail', auto: true, note: 'missing' },
+      { no: 45, name: 'ร้อยละของ ปชช.ที่มารับบริการในระดับปฐมภูมิที่ได้รับการรักษาด้วยการแพทย์แผนไทยและแพทย์ทางเลือก', cat: 'G (เศรษฐกิจสุขภาพ)', owner: 'อริสรา', value: 25.39, unit: '%', targetHosp: 27.75, ref: 'เขต 35 · จังหวัด 35', status: 'watch', auto: true, note: 'done' },
+      { no: 47, name: 'ร้อยละที่เพิ่มขึ้นของกลุ่มอุตสาหะกรรมการแพทย์ และการท่องเที่ยวเชิงสุขภาพในการแข่งขันในระบบเศรษฐกิจสุขภาพ', cat: 'G (เศรษฐกิจสุขภาพ)', owner: 'อริสรา', value: null, unit: '', targetHosp: 'N/A', ref: 'เขต N/A · จังหวัด N/A', status: 'no_data', auto: false, note: 'missing' },
+    ];
+
+    const shown = st.filter ? all.filter((r) => r.status === st.filter) : all;
+
+    const chipDefs = [
+      { key: 'pass',    label: 'ผ่าน',      n: 28, bg: '#f0fdf4', br: '#bbf7d0', fg: '#15803d' },
+      { key: 'watch',   label: 'เฝ้าระวัง',  n: 5,  bg: '#fffbeb', br: '#fde68a', fg: '#b45309' },
+      { key: 'fail',    label: 'ไม่ผ่าน',    n: 8,  bg: '#fef2f2', br: '#fecaca', fg: '#b91c1c' },
+      { key: 'no_data', label: 'ยังไม่กรอก', n: 5,  bg: '#f9fafb', br: '#e5e7eb', fg: '#4b5563' },
+    ];
+
+    return {
+      readyPct: 89.1,
+      readyCount: 41,
+      chips: chipDefs.map((c) => ({
+        ...c,
+        br: st.filter === c.key ? c.fg : c.br,
+        pick: () => this.setState({ filter: st.filter === c.key ? null : c.key }),
+      })),
+      rows: shown.map((r) => {
+        const m = this.meta(r.status);
+        return {
+          no: r.no,
+          name: r.name,
+          cat: r.cat,
+          owner: r.owner,
+          src: r.auto ? 'ดึงอัตโนมัติ' : 'กรอกมือ',
+          srcColor: r.auto ? '#15803d' : '#1d4ed8',
+          value: r.value === null ? '—' : r.value,
+          unit: r.value === null ? '' : r.unit,
+          valueColor: r.value === null ? '#d1d5db' : '#111827',
+          targetHosp: r.targetHosp,
+          refTargets: r.ref,
+          status: m.label, bg: m.bg, fg: m.fg, dot: m.dot,
+          noteIcon: r.note === 'done' ? '✓' : '!',
+          noteLabel: r.note === 'done' ? 'เขียนแล้ว' : 'ยังไม่เขียน',
+          noteColor: r.note === 'done' ? '#15803d' : '#b45309',
+          rowBg: (r.status === 'no_data' || r.note === 'missing') ? '#fffdf7' : '#ffffff',
+        };
+      }),
+    };
+  }
+}
+</script>
+</body>
+</html>

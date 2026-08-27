@@ -1,0 +1,185 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anuphan:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Anuphan', system-ui, sans-serif; background: #ffffff; color: #18181b; }
+    a { color: #0d9488; } a:hover { color: #0f766e; }
+    .num { font-family: 'JetBrains Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  </style>
+</helmet>
+
+<div style="width: 1400px; box-sizing: border-box">
+
+  <!-- แถบเครื่องมือ -->
+  <div style="border-bottom: 1px solid #e4e4e7; padding: 12px 22px; display: flex; align-items: center; gap: 14px; background: #fafafa">
+    <span style="font-size: 13.5px; font-weight: 700; letter-spacing: -0.01em">ตัวชี้วัดทั้งหมด</span>
+    <span class="num" style="font-size: 11.5px; color: #71717a">80 รายการ · ส.ค. 2569</span>
+
+    <div style="display: flex; gap: 5px; margin-left: 12px">
+      <sc-for list="{{filters}}" as="f" hint-placeholder-count="6">
+        <div onClick="{{f.pick}}" style="display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 5px; border: 1px solid {{f.br}}; background: {{f.bg}}; cursor: pointer">
+          <span style="width: 7px; height: 7px; border-radius: 2px; background: {{f.dot}}"></span>
+          <span style="font-size: 11.5px; font-weight: 500; color: {{f.fg}}">{{f.label}}</span>
+          <span class="num" style="font-size: 11px; color: {{f.fg}}; opacity: 0.65">{{f.n}}</span>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="margin-left: auto; display: flex; align-items: center; gap: 8px">
+      <div style="display: flex; align-items: center; gap: 7px; padding: 5px 11px; border: 1px solid #e4e4e7; border-radius: 6px; background: #ffffff">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#a1a1aa" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+        <span style="font-size: 11.5px; color: #a1a1aa">ค้นหา</span>
+      </div>
+      <div style="padding: 5px 11px; border: 1px solid #e4e4e7; border-radius: 6px; font-size: 11.5px; background: #ffffff">ส่งออก</div>
+    </div>
+  </div>
+
+  <!-- หัวตาราง -->
+  <div style="display: grid; grid-template-columns: 38px 1fr 96px 74px 82px 132px 84px; gap: 0; padding: 7px 22px; border-bottom: 1px solid #e4e4e7; background: #ffffff; position: sticky; top: 0">
+    <sc-for list="{{headers}}" as="h" hint-placeholder-count="7">
+      <div style="font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #a1a1aa; text-align: {{h.align}}">{{h.label}}</div>
+    </sc-for>
+  </div>
+
+  <!-- แถว -->
+  <div>
+    <sc-for list="{{rows}}" as="r" hint-placeholder-count="16">
+      <div style="display: grid; grid-template-columns: 38px 1fr 96px 74px 82px 132px 84px; gap: 0; padding: 0 22px; height: 38px; align-items: center; border-bottom: 1px solid #f4f4f5; background: {{r.rowBg}}">
+
+        <div class="num" style="font-size: 11px; color: #a1a1aa">{{r.no}}</div>
+
+        <div style="min-width: 0; display: flex; align-items: baseline; gap: 9px; padding-right: 14px">
+          <span style="font-size: 13px; color: #18181b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.name}}</span>
+          <span style="font-size: 10.5px; color: #d4d4d8; white-space: nowrap; flex-shrink: 0">{{r.cat}}</span>
+        </div>
+
+        <div class="num" style="text-align: right; padding-right: 12px; font-size: 13px; font-weight: 500; color: {{r.valueColor}}">{{r.value}}</div>
+
+        <div class="num" style="text-align: right; padding-right: 12px; font-size: 12px; color: #71717a">{{r.target}}</div>
+
+        <div style="text-align: center; font-size: 15px; color: {{r.dirColor}}" title="{{r.dirLabel}}">{{r.dirIcon}}</div>
+
+        <!-- แนวโน้ม 4 ไตรมาส -->
+        <div style="display: flex; align-items: flex-end; gap: 3px; height: 20px; padding: 0 12px">
+          <sc-for list="{{r.spark}}" as="s" hint-placeholder-count="4">
+            <div style="flex-grow: 1; border-radius: 1px; background: {{s.c}}; height: {{s.h}}"></div>
+          </sc-for>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end">
+          <span style="display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; background: {{r.bg}}; color: {{r.fg}}">
+            <span style="width: 6px; height: 6px; border-radius: 2px; background: {{r.dot}}"></span>{{r.status}}
+          </span>
+        </div>
+
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="padding: 11px 22px; font-size: 11.5px; color: #a1a1aa; border-bottom: 1px solid #f4f4f5">
+    แสดง 16 จาก 80 — แถวสูง 38px ทำให้ทั้ง 80 ตัวจบใน 2.4 จอ (ของเดิม 9.7 จอ) · <b>39 ตัวเป็นตัวติดตาม/เชิงคุณภาพ ไม่มีกราฟแนวโน้ม</b>
+  </div>
+
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { filter: null };
+  }
+
+  renderVals() {
+    const st = this.state;
+
+    const meta = {
+      pass:      { label: 'ผ่าน',       bg: '#dcfce7', fg: '#15803d', dot: '#16a34a' },
+      watch:     { label: 'เฝ้าระวัง',   bg: '#fef3c7', fg: '#a16207', dot: '#eab308' },
+      fail:      { label: 'ไม่ผ่าน',     bg: '#fee2e2', fg: '#b91c1c', dot: '#dc2626' },
+      no_data:   { label: 'ไม่มีข้อมูล', bg: '#f4f4f5', fg: '#71717a', dot: '#a1a1aa' },
+      no_target: { label: 'ติดตาม',     bg: '#f0fdfa', fg: '#0f766e', dot: '#14b8a6' },
+      narrative: { label: 'เชิงคุณภาพ', bg: '#f8fafc', fg: '#475569', dot: '#94a3b8' },
+    };
+
+    const raw = [
+      { no: 5,  name: 'ร้อยละความครอบคลุมวัคซีน MMR2 ในเด็กอายุต่ำกว่า 3 ปี', cat: 'โรคติดต่อ', value: 100, target: 95, dir: 'gte', s: 'pass', spark: [92, 96, 98, 100] },
+      { no: 6,  name: 'อัตราป่วยตายภาวะติดเชื้อในกระแสเลือดชนิด community-acquired', cat: 'โรคติดต่อ', value: 15.38, target: 26, dir: 'lte', s: 'pass', spark: [0, 33, 15, 15] },
+      { no: 9,  name: 'อัตราตายของผู้ป่วยโรคหลอดเลือดสมอง (Stroke; I60-I64)', cat: 'โรค NCD', value: 2.08, target: 7, dir: 'lte', s: 'pass', spark: [0, 2.7, 2.08, 0] },
+      { no: 10, name: 'อัตราตายผู้ป่วยกล้ามเนื้อหัวใจตายเฉียบพลันชนิด STEMI', cat: 'โรค NCD', value: 12.5, target: 9, dir: 'lte', s: 'fail', spark: [8, 10, 12.5, 0] },
+      { no: 12, name: 'อัตราส่วนการตายมารดาไทยต่อการเกิดมีชีพแสนคน', cat: 'แม่และเด็ก', value: 0, target: 15, dir: 'lte', s: 'pass', spark: [0, 0, 0, 0] },
+      { no: 14, name: 'ร้อยละของเด็ก อายุ 0 – 5 ปี ฟันดีไม่มีผุ (Cavity Free)', cat: 'ยังไม่จัดหมวด', value: 70.54, target: 80, dir: 'gte', s: 'fail', spark: [74, 72.6, 70.5, 0] },
+      { no: 23, name: 'ร้อยละของเด็กปฐมวัยที่มีพัฒนาการล่าช้าเข้าถึงบริการ', cat: 'ยังไม่จัดหมวด', value: 23.84, target: 30, dir: 'gte', s: 'fail', spark: [18, 21, 23.8, 0] },
+      { no: 26, name: 'มูลค่าการใช้ยาสมุนไพรในสิทธิ UC', cat: 'ยังไม่จัดหมวด', value: 3.86, target: null, dir: 'none', s: 'no_target', spark: [1.4, 3.0, 3.9, 0] },
+      { no: 45, name: 'ร้อยละ ปชช.ปฐมภูมิที่ได้รับการรักษาด้วยแพทย์แผนไทยและแพทย์ทางเลือก', cat: 'เศรษฐกิจสุขภาพ', value: 25.03, target: 27.75, dir: 'gte', s: 'watch', spark: [26.8, 25.4, 25.2, 25 ] },
+      { no: 46, name: 'ร้อยละผู้ป่วย Common Diseases ได้รับยาสมุนไพรเพิ่มขึ้น', cat: 'เศรษฐกิจสุขภาพ', value: 41.95, target: 15, dir: 'gte', s: 'pass', spark: [0, 38, 41.9, 0] },
+      { no: 47, name: 'ร้อยละที่เพิ่มขึ้นของกลุ่มอุตสาหกรรมการแพทย์และการท่องเที่ยวเชิงสุขภาพ', cat: 'เศรษฐกิจสุขภาพ', value: null, target: null, dir: 'none', s: 'no_data', spark: [0, 0, 0, 0] },
+      { no: 1,  name: 'อัตราการเสียชีวิตและบาดเจ็บจากอุบัติเหตุทางถนน', cat: 'ส่งเสริมป้องกัน', value: 2.1, target: 3, dir: 'gte', s: 'watch', spark: [1.8, 2.0, 2.1, 0] },
+      { no: 3,  name: 'ร้อยละของชุมชนมีการดำเนินการจัดการสุขภาพที่เหมาะสม', cat: 'ส่งเสริมป้องกัน', value: 44, target: 50, dir: 'gte', s: 'fail', spark: [30, 38, 44, 0] },
+      { no: 7,  name: 'การค้นหาและรักษาวัณโรค — อัตราความสำเร็จการรักษา', cat: 'โรคติดต่อ', value: 91.2, target: 88, dir: 'gte', s: 'pass', spark: [86, 89, 91.2, 0] },
+      { no: 2,  name: 'อัตราความรอบรู้ด้านสุขภาพของประชาชนไทย อายุ 15 ปีขึ้นไป', cat: 'ส่งเสริมป้องกัน', value: null, target: null, dir: 'none', s: 'narrative', spark: [0, 0, 0, 0], text: 'ดำเนินการแล้ว' },
+      { no: 4,  name: 'ร้อยละของโรงพยาบาลที่พัฒนาอนามัยสิ่งแวดล้อมได้ตามเกณฑ์ GREEN & CLEAN', cat: 'ส่งเสริมป้องกัน', value: null, target: null, dir: 'none', s: 'narrative', spark: [0, 0, 0, 0], text: 'ระดับดีมาก' },
+    ];
+
+    const filterDefs = [
+      { key: 'fail',      label: 'ไม่ผ่าน',    n: 13, dot: '#dc2626' },
+      { key: 'watch',     label: 'เฝ้าระวัง',  n: 8,  dot: '#eab308' },
+      { key: 'pass',      label: 'ผ่าน',      n: 16, dot: '#16a34a' },
+      { key: 'no_target', label: 'ติดตาม',    n: 22, dot: '#14b8a6' },
+      { key: 'narrative', label: 'เชิงคุณภาพ', n: 17, dot: '#94a3b8' },
+      { key: 'no_data',   label: 'ไม่มีข้อมูล', n: 4,  dot: '#a1a1aa' },
+    ];
+
+    const shown = st.filter ? raw.filter((r) => r.s === st.filter) : raw;
+    const peak = 100;
+
+    return {
+      filters: filterDefs.map((f) => ({
+        ...f,
+        bg: st.filter === f.key ? '#18181b' : '#ffffff',
+        fg: st.filter === f.key ? '#fafafa' : '#3f3f46',
+        br: st.filter === f.key ? '#18181b' : '#e4e4e7',
+        pick: () => this.setState({ filter: st.filter === f.key ? null : f.key }),
+      })),
+      headers: [
+        { label: '#',        align: 'left' },
+        { label: 'ตัวชี้วัด', align: 'left' },
+        { label: 'ผลงาน',    align: 'right' },
+        { label: 'เป้า',      align: 'right' },
+        { label: 'ทิศทาง',    align: 'center' },
+        { label: 'แนวโน้ม 4 ไตรมาส', align: 'center' },
+        { label: 'สถานะ',    align: 'right' },
+      ],
+      rows: shown.map((r, i) => {
+        const m = meta[r.s];
+        return {
+          no: r.no,
+          name: r.name,
+          cat: r.cat,
+          value: r.text ? r.text : (r.value === null ? '—' : r.value.toFixed(2)),
+          valueColor: r.text ? '#52525b' : (r.value === null ? '#d4d4d8' : '#18181b'),
+          target: r.target === null ? '—' : r.target,
+          dirIcon: r.dir === 'gte' ? '↑' : r.dir === 'lte' ? '↓' : '·',
+          dirColor: r.dir === 'none' ? '#d4d4d8' : '#a1a1aa',
+          dirLabel: r.dir === 'gte' ? 'ยิ่งมากยิ่งดี' : r.dir === 'lte' ? 'ยิ่งน้อยยิ่งดี' : 'ไม่ประเมิน',
+          spark: r.spark.map((v) => ({
+            h: v === 0 ? '2px' : Math.max(3, (v / peak) * 20) + 'px',
+            c: v === 0 ? '#e4e4e7' : m.dot,
+          })),
+          status: m.label, bg: m.bg, fg: m.fg, dot: m.dot,
+          rowBg: i % 2 === 1 ? '#fcfcfc' : '#ffffff',
+        };
+      }),
+    };
+  }
+}
+</script>
+</body>
+</html>
