@@ -45,6 +45,15 @@ export async function POST(req: NextRequest) {
     clean.push({ hospcode, target, result })
   }
 
+  // กันบันทึก "ข้อมูลปลอม" ตอนกดบันทึกทั้งที่ยังไม่กรอกอะไรสักหน่วย — ΣB=0 คือไม่มีตัวหาร
+  // ค่าที่ได้จะเป็น 0 ซึ่งไม่ใช่ผลงานจริงแต่ถูกประเมินจริง (KPI แบบ "ยิ่งน้อยยิ่งดี" จะกลายเป็น "ผ่าน" ทันที)
+  // — บั๊กชนิดเดียวกับแถว placeholder ที่ต้องตามลบทีหลัง (ดู kpi-hdc-api-checklist.md)
+  if (clean.reduce((s, r) => s + r.target, 0) === 0) {
+    return NextResponse.json({
+      message: 'กรุณากรอก "กลุ่มเป้าหมาย" อย่างน้อย 1 หน่วยบริการให้มากกว่า 0 ก่อนบันทึก — ถ้ายังไม่มีข้อมูลเดือนนี้ ให้ปล่อยว่างไว้ ไม่ต้องกดบันทึก',
+    }, { status: 400 })
+  }
+
   // audit: ผู้กรอกจาก session (ไม่เชื่อ client) — middleware ยืนยัน login แล้ว แต่ route ตรวจซ้ำเอง (ตาม pattern เดิม)
   const token = req.cookies.get(COOKIE_NAME)?.value
   const session = token ? await verifySession(token) : null

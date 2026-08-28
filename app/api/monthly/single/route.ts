@@ -58,6 +58,14 @@ export async function POST(req: NextRequest) {
       }
       if (t < 0 || r < 0) return NextResponse.json({ message: 'ค่าต้องไม่ติดลบ' }, { status: 400 })
       if (r > t) return NextResponse.json({ message: 'ผลงาน (A) ต้องไม่เกินกลุ่มเป้าหมาย (B)' }, { status: 400 })
+      // กันบันทึก "ข้อมูลปลอม" ตอนกดบันทึกทั้งที่ยังไม่กรอกอะไร — B=0 คือไม่มีตัวหาร
+      // ค่าที่ได้จะเป็น 0 ซึ่งไม่ใช่ผลงานจริงแต่ถูกประเมินจริง (KPI แบบ "ยิ่งน้อยยิ่งดี" จะกลายเป็น "ผ่าน" ทันที)
+      // — บั๊กชนิดเดียวกับแถว placeholder ที่ต้องตามลบทีหลัง (ดู kpi-hdc-api-checklist.md)
+      if (t === 0) {
+        return NextResponse.json({
+          message: 'กรุณากรอก "กลุ่มเป้าหมาย (B)" ให้มากกว่า 0 ก่อนบันทึก — ถ้ายังไม่มีข้อมูลเดือนนี้ ให้ปล่อยว่างไว้ ไม่ต้องกดบันทึก',
+        }, { status: 400 })
+      }
     }
     // ownership: admin แก้ได้ทุกตัว / staff เฉพาะ KPI ที่กลุ่มงานตัวเองรับผิดชอบ (kpi_work_groups)
     if (!(await canEditManualKpi(conn, session, kpiId))) {

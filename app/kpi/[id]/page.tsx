@@ -35,8 +35,11 @@ const BAR_COLOR: Record<string, string> = {
 const hospcodeEntries = () =>
   Object.entries(HOSPCODE_NAMES).sort(([a], [b]) => a.localeCompare(b))
 
-// ป้ายแถวเดียวสำหรับ manualScope='single' (ค่าเดียว ไม่แยกราย รพ.สต. — เช่น ตัวชี้วัดเฉพาะโรงพยาบาล)
-const SINGLE_MODE_UNIT_NAME = 'โรงพยาบาลดงเจริญ'
+// ป้ายแถวเดียวสำหรับ manualScope='single' (ค่าเดียว ไม่แยกราย รพ.สต.)
+// ⚠️ ต้องเป็น "อำเภอดงเจริญ" ไม่ใช่ "โรงพยาบาลดงเจริญ" — ตัวชี้วัดโหมดนี้หลายตัวเป็นระดับอำเภอ/เขต
+// ไม่ใช่ระดับ รพ. (เช่น RDU ราย "อำเภอ" · ฆ่าตัวตายต่อแสนประชากร · หน่วยบริการปฐมภูมิเป็น "ทีม"
+// · อุบัติเหตุเด็กที่ข้อมูลมาจาก THAIRSC ระดับจังหวัด) — ป้าย รพ. ทำให้เข้าใจผิดว่าเป็นเลขเฉพาะ รพ.
+const SINGLE_MODE_UNIT_NAME = DISTRICT_NAME
 
 interface GroupRow {
   code: string
@@ -260,6 +263,11 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
       const t = Number(r.target) || 0, a = Number(r.result) || 0
       if (a > t) { setMMsg(`⚠️ ${r.name}: ผลงาน (A) ต้องไม่เกินฐาน (B)`); return }
     }
+    // กันกดบันทึกทั้งที่ยังไม่กรอกอะไร → จะได้ 0% ปลอมที่ถูกประเมินจริง (เซิร์ฟเวอร์กันซ้ำอีกชั้น)
+    if (tRows.reduce((s, r) => s + (Number(r.target) || 0), 0) === 0) {
+      setMMsg('⚠️ ยังไม่ได้กรอก "กลุ่มเป้าหมาย" สักหน่วย — ถ้ายังไม่มีข้อมูลเดือนนี้ ปล่อยว่างไว้ ไม่ต้องกดบันทึก')
+      return
+    }
     setMSaving(true); setMMsg('')
     try {
       const res = await fetch('/api/monthly/detail', {
@@ -288,6 +296,11 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
       return
     }
     if (r > t) { setMMsg('⚠️ ผลงาน (A) ต้องไม่เกินฐาน (B)'); return }
+    // กันกดบันทึกทั้งที่ยังไม่กรอกอะไร → จะได้ 0 ปลอมที่ถูกประเมินจริง (เซิร์ฟเวอร์กันซ้ำอีกชั้น)
+    if (t === 0) {
+      setMMsg('⚠️ ยังไม่ได้กรอก "กลุ่มเป้าหมาย (B)" — ถ้ายังไม่มีข้อมูลเดือนนี้ ปล่อยว่างไว้ ไม่ต้องกดบันทึก')
+      return
+    }
     setMSaving(true); setMMsg('')
     try {
       const res = await fetch('/api/monthly/single', {
@@ -666,7 +679,7 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                     <table className="w-full text-sm">
                       <thead className="bg-gray-50 text-gray-500 text-xs">
                         <tr>
-                          <th className="text-left px-4 py-2 font-medium">หน่วยบริการ</th>
+                          <th className="text-left px-4 py-2 font-medium">พื้นที่</th>
                           <th className="text-right px-3 py-2 font-medium">กลุ่มเป้าหมาย (B)</th>
                           <th className="text-right px-3 py-2 font-medium">ผลงาน (A)</th>
                           <th className="text-right px-4 py-2 font-medium">{ratePer === 100 ? '% (A/B)' : `${data?.kpi.unit ?? ''} (A/B×${ratePer.toLocaleString()})`}</th>
@@ -975,8 +988,10 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
             )}
 
             {/* L4: ตาราง+กราฟสรุปทั้งปีงบ — สลับดู "รายไตรมาส ↔ รายเดือน" ได้ทุกตัวชี้วัด
-                (พื้นฐานเก็บรายเดือน · ไตรมาสเป็นมุมมอง/รอบส่งเท่านั้น) */}
-            {allMonths.length > 0 && (
+                (พื้นฐานเก็บรายเดือน · ไตรมาสเป็นมุมมอง/รอบส่งเท่านั้น)
+                ⚠️ ต้องแสดงเสมอ แม้ยังไม่มีข้อมูลสักเดือน — เดิมซ่อนทั้งอันเมื่อ allMonths ว่าง
+                ซึ่งคือตอนที่ต้องใช้มากที่สุด (ตัวที่ยังไม่เคยกรอกเลย มองไม่เห็นว่าต้องกรอกเดือนไหน) */}
+            {(
               <QuarterSummary
                 fiscalYear={fiscalYearOfMonth(entryMonth) || currentQuarter().fiscalYear}
                 values={allMonths}
@@ -1120,7 +1135,7 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                   <table className="w-full text-sm border rounded-lg overflow-hidden">
                     <thead className="bg-gray-50 text-gray-500 text-xs">
                       <tr>
-                        <th className="text-left px-3 py-2 font-medium">หน่วยบริการ</th>
+                        <th className="text-left px-3 py-2 font-medium">พื้นที่</th>
                         <th className="text-right px-3 py-2 font-medium">กลุ่มเป้าหมาย (B)</th>
                         <th className="text-right px-3 py-2 font-medium">ผลงาน (A)</th>
                         <th className="text-right px-3 py-2 font-medium">{ratePer === 100 ? '% (A/B)' : `${data.kpi.unit} (A/B×${ratePer.toLocaleString()})`}</th>

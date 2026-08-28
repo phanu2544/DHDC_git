@@ -62,7 +62,13 @@ export default function QuarterSummary({
   const byMonth = new Map(values.map((v) => [v.month, v]))
   const cur = currentQuarter()
 
-  const build = (month: string, label: string, sub: string, isQuarterEnd: boolean): Row => {
+  // เดือนปฏิทินปัจจุบันจริง (YYYY-MM) — ต่างจาก cur.month ซึ่งเป็น "เดือนปิดไตรมาสปัจจุบัน"
+  // มุมรายเดือนต้องใช้เดือนจริง ไม่งั้นเดือนที่ยังมาไม่ถึงในไตรมาสนี้ (เช่น ก.ย. ตอนนี้ ส.ค.)
+  // จะถูกนับว่า "ถึงกำหนดแล้วแต่ยังไม่กรอก" = ขึ้นเตือนผิด
+  const now = new Date()
+  const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+
+  const build = (month: string, label: string, sub: string, isQuarterEnd: boolean, cutoff: string): Row => {
     const v = byMonth.get(month)
     const hasNum = !isText && v?.value !== null && v?.value !== undefined
     return {
@@ -70,16 +76,16 @@ export default function QuarterSummary({
       value: hasNum ? Number(v!.value) : null,
       text: v?.valueText ?? null,
       status: hasNum ? evaluateKpiStatus(Number(v!.value), target, direction).status : null,
-      isFuture: month > cur.month,
+      isFuture: month > cutoff,
       filled: !!v && (hasNum || !!v.valueText),
       isQuarterEnd,
     }
   }
 
   const rows: Row[] = view === 'quarter'
-    ? quartersOfFiscalYear(fiscalYear).map((q) => build(q.month, `ไตรมาส ${q.q}`, q.range, true))
+    ? quartersOfFiscalYear(fiscalYear).map((q) => build(q.month, `ไตรมาส ${q.q}`, q.range, true, cur.month))
     : monthsOfFiscalYear(fiscalYear).map((m) =>
-        build(m.month, formatThaiMonth(m.month), m.isQuarterEnd ? `ปิดไตรมาส ${m.q}` : '', m.isQuarterEnd))
+        build(m.month, formatThaiMonth(m.month), m.isQuarterEnd ? `ปิดไตรมาส ${m.q}` : '', m.isQuarterEnd, thisMonth))
 
   const chartData = rows.map((r) => ({
     name: view === 'quarter' ? r.label : r.label.replace(/\s*25\d\d$/, ''),
@@ -89,10 +95,28 @@ export default function QuarterSummary({
   const showChart = !isText && rows.some((r) => r.value !== null)
   const viewLabel = view === 'quarter' ? 'รายไตรมาส' : 'รายเดือน'
 
+  // ความคืบหน้าการกรอก — นับเฉพาะรอบที่ "ถึงกำหนดแล้ว" (อนาคตยังไม่นับว่าขาด)
+  const due = rows.filter((r) => !r.isFuture)
+  const doneCount = due.filter((r) => r.filled).length
+  const unitWord = view === 'quarter' ? 'ไตรมาส' : 'เดือน'
+  const allDone = due.length > 0 && doneCount === due.length
+
   return (
     <>
       <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
-        <h2 className="font-semibold text-gray-800 text-sm">สรุปผลงาน{viewLabel} — ปีงบ {fiscalYear}</h2>
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <h2 className="font-semibold text-gray-800 text-sm">สรุปผลงาน{viewLabel} — ปีงบ {fiscalYear}</h2>
+          {/* กรอกครบแค่ไหนแล้ว — ดูปราดเดียวรู้ ไม่ต้องไล่นับในตาราง */}
+          {due.length > 0 && (
+            <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+              allDone ? 'bg-green-100 text-green-700'
+                : doneCount === 0 ? 'bg-red-100 text-red-700'
+                : 'bg-amber-100 text-amber-700'}`}>
+              กรอกแล้ว {doneCount}/{due.length} {unitWord}
+              {!allDone && ` · ขาด ${due.length - doneCount}`}
+            </span>
+          )}
+        </div>
         <div className="inline-flex rounded-lg border overflow-hidden text-sm">
           <button onClick={() => setView('quarter')}
             className={`px-3 py-1.5 ${view === 'quarter' ? 'bg-blue-700 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
@@ -140,8 +164,9 @@ export default function QuarterSummary({
               </tr>
             </thead>
             <tbody className="divide-y">
+              {/* ไฮไลต์แถวปัจจุบัน — มุมไตรมาสใช้ไตรมาสนี้ · มุมรายเดือนใช้เดือนจริง */}
               {rows.map((r) => (
-                <tr key={r.key} className={r.month === cur.month ? 'bg-blue-50' : ''}>
+                <tr key={r.key} className={r.month === (view === 'quarter' ? cur.month : thisMonth) ? 'bg-blue-50' : ''}>
                   <td className="px-4 py-2.5 font-medium text-gray-900 whitespace-nowrap">{r.label}</td>
                   <td className="px-4 py-2.5 text-gray-400 text-xs whitespace-nowrap">{r.sub}</td>
                   {!isText && (
@@ -157,9 +182,14 @@ export default function QuarterSummary({
                       <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${BADGE[r.status]}`}>
                         {STATUS_META[r.status].label}
                       </span>
+                    ) : r.isFuture ? (
+                      <span className="text-xs text-gray-400">ยังไม่ถึงรอบ</span>
+                    ) : r.filled ? (
+                      <span className="text-xs text-gray-400">เชิงคุณภาพ</span>
                     ) : (
-                      <span className="text-xs text-gray-400">
-                        {r.isFuture ? 'ยังไม่ถึงรอบ' : r.filled ? 'เชิงคุณภาพ' : 'ยังไม่กรอก'}
+                      /* ถึงกำหนดแล้วแต่ยังไม่กรอก = ต้องสะดุดตา (เดิมเป็นเทาจางเหมือน "ยังไม่ถึงรอบ" แยกไม่ออก) */
+                      <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-600 border border-red-200">
+                        ยังไม่กรอก
                       </span>
                     )}
                   </td>
