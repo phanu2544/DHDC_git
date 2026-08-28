@@ -116,6 +116,8 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
   const [nMsg, setNMsg] = useState('')
   // L4: ค่าทุกเดือนของ KPI นี้ (ใช้สร้างตาราง/กราฟ 4 ไตรมาส) — /api/monthly มีอยู่แล้ว ไม่ต้องทำ API ใหม่
   const [allMonths, setAllMonths] = useState<MonthValue[]>([])
+  // แยกหน้า "ดู" กับ "กรอก" — หน้าหลักดูได้อย่างเดียว กดปุ่มนี้เปิดป็อปอัพกรอกข้อมูล/บันทึกการดำเนินงาน
+  const [showModal, setShowModal] = useState(false)
 
   const load = useCallback(async (month?: string, v?: 'area' | 'unit') => {
     setLoading(true)
@@ -407,6 +409,13 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
   const target = data?.kpi?.target ?? 0
   const direction = data?.kpi?.direction
   const manualSaved = data?.savedMonthly ?? null
+  // เปิดป็อปอัพกรอกข้อมูล/บันทึกการดำเนินงาน — มีข้อมูลอยู่แล้ว = ล็อกไว้ก่อน (กันมือลั่น) ต้องกด "แก้ไข" ในป็อปอัพเอง
+  function openEntryModal() {
+    setEditing(!manualSaved)
+    setNEditing(!nSavedBy?.by)
+    setMMsg('')
+    setShowModal(true)
+  }
 
   // manual: คำนวณสดจากตารางที่กรอก (อัปเดต % + กราฟ ทันทีที่พิมพ์)
   const liveRows = tRows.map((r) => {
@@ -533,6 +542,13 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                   </select>
                 </div>
               )}
+              {/* หน้านี้ดูได้อย่างเดียว — กรอกข้อมูล/บันทึกการดำเนินงานทำในป็อปอัพ */}
+              {(canEdit || canEditNotes) && (
+                <button onClick={openEntryModal}
+                  className="inline-flex items-center gap-1.5 bg-blue-800 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg font-medium shrink-0">
+                  ✏️ {manual ? 'กรอกข้อมูล / บันทึกการดำเนินงาน' : 'บันทึกการดำเนินงาน'}
+                </button>
+              )}
             </div>
 
             {textMode ? (
@@ -543,79 +559,21 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                     ? <>ℹ️ KPI นี้ <b>เลือกระดับ</b> — ระบบตัดสินผ่าน/ไม่ผ่านตามระดับเป้าหมายที่ตั้งไว้ · เลือกระดับที่ทำได้จากรายการ</>
                     : <>ℹ️ KPI นี้ <b>กรอกผลงานเป็นข้อความ</b> (ไม่คิดเป็น % ไม่ประเมินผ่าน/ไม่ผ่าน) — พิมพ์สถานะ/ความคืบหน้า เช่น &quot;อยู่ระหว่างดำเนินการ&quot;, &quot;ท้าทาย&quot;, &quot;2 ทีม&quot;</>}
                 </div>
-                <div className="bg-white rounded-xl shadow-sm border overflow-hidden mb-3">
+                <div className="bg-white rounded-xl shadow-sm border overflow-hidden mb-6">
                   <div className="px-5 py-3 border-b flex items-center justify-between gap-3">
-                    <h2 className="font-semibold text-gray-800 text-sm">ผลงาน — {periodLabel} {canEdit && (editing
-                      ? <span className="text-xs font-normal text-blue-600">(กำลังแก้ไข)</span>
-                      : <span className="text-xs font-normal text-gray-400">🔒 ล็อก</span>)}</h2>
+                    <h2 className="font-semibold text-gray-800 text-sm">ผลงาน — {periodLabel}</h2>
                     <span className="shrink-0 inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-700">{levelMode ? 'ระดับ' : 'เชิงคุณภาพ'}</span>
                   </div>
                   <div className="px-5 py-4">
-                    {canEdit && editing ? (() => {
-                      const opts = (data.textOptions ?? '').split('\n').map((s) => s.trim()).filter(Boolean)
-                      // มีตัวเลือก → dropdown + "อื่นๆ" · ไม่มี → พิมพ์เองล้วน (เหมือนเดิม)
-                      if (opts.length === 0) {
-                        return <textarea value={sText} onChange={(e) => setSText(e.target.value)} maxLength={255} rows={3}
-                          placeholder="เช่น อยู่ระหว่างดำเนินการ / ท้าทาย / ผ่านเกณฑ์"
-                          className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                      }
-                      const showCustom = sTextCustom || (sText !== '' && !opts.includes(sText))
-                      return (
-                        <>
-                          <select
-                            value={sText === '' && !sTextCustom ? '' : (opts.includes(sText) ? sText : '__custom__')}
-                            onChange={(e) => {
-                              if (e.target.value === '__custom__') { setSTextCustom(true); setSText('') }
-                              else { setSTextCustom(false); setSText(e.target.value) }
-                            }}
-                            className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <option value="" disabled>— เลือกผลงาน —</option>
-                            {opts.map((o) => <option key={o} value={o}>{o}</option>)}
-                            <option value="__custom__">อื่นๆ (พิมพ์เอง)…</option>
-                          </select>
-                          {showCustom && (
-                            <textarea value={sText} onChange={(e) => setSText(e.target.value)} maxLength={255} rows={2}
-                              placeholder="พิมพ์ผลงาน"
-                              className="w-full border rounded-lg px-3 py-2 text-sm mt-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                          )}
-                        </>
-                      )
-                    })()
-                      : <p className="text-gray-800 text-sm whitespace-pre-wrap">{data.savedMonthly?.valueText || <span className="text-gray-400">— ยังไม่ได้กรอกเดือนนี้ —</span>}</p>}
+                    <p className="text-gray-800 text-sm whitespace-pre-wrap">{data.savedMonthly?.valueText || <span className="text-gray-400">— ยังไม่ได้กรอกเดือนนี้ —</span>}</p>
                   </div>
-                  {canEdit && (
-                    <div className="px-5 py-4 border-t flex flex-wrap items-center gap-3">
-                      {editing ? (
-                        <>
-                          <button onClick={saveTextValue} disabled={mSaving}
-                            className="bg-blue-800 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm px-5 py-2 rounded-lg font-medium">
-                            {mSaving ? 'กำลังบันทึก...' : 'บันทึกผลงาน'}
-                          </button>
-                          {manualSaved && (
-                            <button onClick={() => { setEditing(false); setMMsg(''); load(entryMonth) }} disabled={mSaving}
-                              className="border text-gray-600 hover:bg-gray-50 text-sm px-4 py-2 rounded-lg">
-                              ยกเลิก
-                            </button>
-                          )}
-                          {mMsg && <span className="text-sm">{mMsg}</span>}
-                        </>
-                      ) : (
-                        <>
-                          <span className="text-sm text-gray-600">
-                            🔒 บันทึกแล้ว{manualSaved?.enteredBy ? ` โดย ${manualSaved.enteredBy}` : ''}
-                            {manualSaved?.enteredAt ? ` · ${new Date(manualSaved.enteredAt).toLocaleString('th-TH')}` : ''}
-                          </span>
-                          <button onClick={() => { setEditing(true); setMMsg('') }}
-                            className="bg-amber-500 hover:bg-amber-600 text-white text-sm px-4 py-2 rounded-lg font-medium">
-                            ✏️ แก้ไข
-                          </button>
-                          {mMsg && <span className="text-sm">{mMsg}</span>}
-                        </>
-                      )}
+                  {manualSaved?.enteredBy && (
+                    <div className="px-5 py-3 border-t text-xs text-gray-500">
+                      🔒 บันทึกแล้วโดย {manualSaved.enteredBy}
+                      {manualSaved.enteredAt ? ` · ${new Date(manualSaved.enteredAt).toLocaleString('th-TH')}` : ''}
                     </div>
                   )}
                 </div>
-                {!canEdit && <p className="text-xs text-gray-400 mb-6">* เฉพาะผู้ดูแลระบบ หรือเจ้าหน้าที่กลุ่มงานที่รับผิดชอบ กรอก/แก้ค่าได้</p>}
               </>
             ) : singleMode ? (
               <>
@@ -653,7 +611,7 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                 {data.stale && (
                   <div className="mb-6 bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg text-sm">
                     ⚠️ ยังไม่ได้กรอกข้อมูล<b>เดือนนี้</b>
-                    {data.lastMonth ? ` — ค่าที่แสดงเป็นของเดือนล่าสุด (${formatThaiMonth(data.lastMonth)})` : ''} · กรุณากรอกด้านล่าง
+                    {data.lastMonth ? ` — ค่าที่แสดงเป็นของเดือนล่าสุด (${formatThaiMonth(data.lastMonth)})` : ''} · กด &quot;กรอกข้อมูล&quot; ด้านบนเพื่อกรอก
                   </div>
                 )}
 
@@ -699,12 +657,10 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                   </ResponsiveContainer>
                 </div>
 
-                {/* ตารางกรอกค่าเดียว */}
-                <div className="bg-white rounded-xl shadow-sm border overflow-hidden mb-3">
-                  <div className="px-5 py-3 border-b flex items-center justify-between">
-                    <h2 className="font-semibold text-gray-800 text-sm">ตาราง — {periodLabel} {canEdit && (editing
-                      ? <span className="text-xs font-normal text-blue-600">(กำลังแก้ไข)</span>
-                      : <span className="text-xs font-normal text-gray-400">🔒 ล็อก</span>)}</h2>
+                {/* ตาราง — อ่านอย่างเดียว (กรอก/แก้ไขในป็อปอัพ) */}
+                <div className="bg-white rounded-xl shadow-sm border overflow-hidden mb-6">
+                  <div className="px-5 py-3 border-b">
+                    <h2 className="font-semibold text-gray-800 text-sm">ตาราง — {periodLabel}</h2>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
@@ -719,56 +675,20 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                       <tbody className="divide-y">
                         <tr className="hover:bg-gray-50">
                           <td className="px-4 py-2 font-medium text-gray-900">{SINGLE_MODE_UNIT_NAME}</td>
-                          <td className="px-3 py-2 text-right">
-                            {canEdit && editing
-                              ? <input type="number" min="0" value={sTarget} onChange={(e) => setSTarget(e.target.value)}
-                                  className="border rounded px-2 py-1 text-sm w-24 text-right" />
-                              : <span className="tabular-nums text-gray-700">{sTargetNum > 0 ? sTargetNum.toLocaleString() : '—'}</span>}
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            {canEdit && editing
-                              ? <input type="number" min="0" value={sResult} onChange={(e) => setSResult(e.target.value)}
-                                  className="border rounded px-2 py-1 text-sm w-24 text-right" />
-                              : <span className="tabular-nums text-gray-700">{sTargetNum > 0 ? sResultNum.toLocaleString() : '—'}</span>}
-                          </td>
+                          <td className="px-3 py-2 text-right tabular-nums text-gray-700">{sTargetNum > 0 ? sTargetNum.toLocaleString() : '—'}</td>
+                          <td className="px-3 py-2 text-right tabular-nums text-gray-700">{sTargetNum > 0 ? sResultNum.toLocaleString() : '—'}</td>
                           <td className="px-4 py-2 text-right tabular-nums font-semibold">{sTargetNum > 0 ? sPct : '—'}</td>
                         </tr>
                       </tbody>
                     </table>
                   </div>
-                  {canEdit && (
-                    <div className="px-5 py-4 border-t flex flex-wrap items-center gap-3">
-                      {editing ? (
-                        <>
-                          <button onClick={saveSingleValue} disabled={mSaving}
-                            className="bg-blue-800 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm px-5 py-2 rounded-lg font-medium">
-                            {mSaving ? 'กำลังบันทึก...' : 'บันทึกผลงาน'}
-                          </button>
-                          {manualSaved && (
-                            <button onClick={() => { setEditing(false); setMMsg(''); load(entryMonth) }} disabled={mSaving}
-                              className="border text-gray-600 hover:bg-gray-50 text-sm px-4 py-2 rounded-lg">
-                              ยกเลิก
-                            </button>
-                          )}
-                          {mMsg && <span className="text-sm">{mMsg}</span>}
-                        </>
-                      ) : (
-                        <>
-                          <span className="text-sm text-gray-600">
-                            🔒 บันทึกแล้ว{manualSaved?.enteredBy ? ` โดย ${manualSaved.enteredBy}` : ''}
-                            {manualSaved?.enteredAt ? ` · ${new Date(manualSaved.enteredAt).toLocaleString('th-TH')}` : ''}
-                          </span>
-                          <button onClick={() => { setEditing(true); setMMsg('') }}
-                            className="bg-amber-500 hover:bg-amber-600 text-white text-sm px-4 py-2 rounded-lg font-medium">
-                            ✏️ แก้ไข
-                          </button>
-                          {mMsg && <span className="text-sm">{mMsg}</span>}
-                        </>
-                      )}
+                  {manualSaved?.enteredBy && (
+                    <div className="px-5 py-3 border-t text-xs text-gray-500">
+                      🔒 บันทึกแล้วโดย {manualSaved.enteredBy}
+                      {manualSaved.enteredAt ? ` · ${new Date(manualSaved.enteredAt).toLocaleString('th-TH')}` : ''}
                     </div>
                   )}
                 </div>
-                {!canEdit && <p className="text-xs text-gray-400 mb-6">* เฉพาะผู้ดูแลระบบ หรือเจ้าหน้าที่กลุ่มงานที่รับผิดชอบ กรอก/แก้ค่าได้</p>}
               </>
             ) : manual ? (
               <>
@@ -800,7 +720,7 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                 {data.stale && (
                   <div className="mb-6 bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg text-sm">
                     ⚠️ ยังไม่ได้กรอกข้อมูล<b>เดือนนี้</b>
-                    {data.lastMonth ? ` — ค่าที่แสดงเป็นของเดือนล่าสุด (${formatThaiMonth(data.lastMonth)})` : ''} · กรุณากรอกรายหน่วยบริการด้านล่าง
+                    {data.lastMonth ? ` — ค่าที่แสดงเป็นของเดือนล่าสุด (${formatThaiMonth(data.lastMonth)})` : ''} · กด &quot;กรอกข้อมูล&quot; ด้านบนเพื่อกรอกรายหน่วยบริการ
                   </div>
                 )}
 
@@ -828,12 +748,10 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                   </ResponsiveContainer>
                 </div>
 
-                {/* ตารางกรอกรายหน่วยบริการ */}
-                <div className="bg-white rounded-xl shadow-sm border overflow-hidden mb-3">
-                  <div className="px-5 py-3 border-b flex items-center justify-between">
-                    <h2 className="font-semibold text-gray-800 text-sm">ตารางรายหน่วยบริการ — {periodLabel} {canEdit && (editing
-                      ? <span className="text-xs font-normal text-blue-600">(กำลังแก้ไข)</span>
-                      : <span className="text-xs font-normal text-gray-400">🔒 ล็อก</span>)}</h2>
+                {/* ตารางรายหน่วยบริการ — อ่านอย่างเดียว (กรอก/แก้ไขในป็อปอัพ) */}
+                <div className="bg-white rounded-xl shadow-sm border overflow-hidden mb-6">
+                  <div className="px-5 py-3 border-b">
+                    <h2 className="font-semibold text-gray-800 text-sm">ตารางรายหน่วยบริการ — {periodLabel}</h2>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
@@ -849,18 +767,8 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                         {liveRows.map((r) => (
                           <tr key={r.code} className="hover:bg-gray-50">
                             <td className="px-4 py-2 font-medium text-gray-900">{r.name}</td>
-                            <td className="px-3 py-2 text-right">
-                              {canEdit && editing
-                                ? <input type="number" min="0" value={r.target} onChange={(e) => setRow(r.code, 'target', e.target.value)}
-                                    className="border rounded px-2 py-1 text-sm w-24 text-right" />
-                                : <span className="tabular-nums text-gray-700">{r.t.toLocaleString()}</span>}
-                            </td>
-                            <td className="px-3 py-2 text-right">
-                              {canEdit && editing
-                                ? <input type="number" min="0" value={r.result} onChange={(e) => setRow(r.code, 'result', e.target.value)}
-                                    className="border rounded px-2 py-1 text-sm w-24 text-right" />
-                                : <span className="tabular-nums text-gray-700">{r.a.toLocaleString()}</span>}
-                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums text-gray-700">{r.t.toLocaleString()}</td>
+                            <td className="px-3 py-2 text-right tabular-nums text-gray-700">{r.a.toLocaleString()}</td>
                             <td className="px-4 py-2 text-right tabular-nums font-semibold">{r.pct ?? '—'}</td>
                           </tr>
                         ))}
@@ -873,41 +781,13 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                       </tbody>
                     </table>
                   </div>
-                  {canEdit && (
-                    <div className="px-5 py-4 border-t flex flex-wrap items-center gap-3">
-                      {editing ? (
-                        <>
-                          <button onClick={saveManualDetail} disabled={mSaving}
-                            className="bg-blue-800 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm px-5 py-2 rounded-lg font-medium">
-                            {mSaving ? 'กำลังบันทึก...' : 'บันทึกรายหน่วยบริการ'}
-                          </button>
-                          {/* ยกเลิก: คืนค่ากลับเป็นที่บันทึกไว้ (เฉพาะเดือนที่มีข้อมูลเดิม) */}
-                          {manualSaved && (
-                            <button onClick={() => { setEditing(false); setMMsg(''); load(entryMonth) }} disabled={mSaving}
-                              className="border text-gray-600 hover:bg-gray-50 text-sm px-4 py-2 rounded-lg">
-                              ยกเลิก
-                            </button>
-                          )}
-                          {mMsg && <span className="text-sm">{mMsg}</span>}
-                          <span className="text-xs text-gray-400">เปิด HDC (รายหน่วยบริการ) → คัดลอก B (เป้าหมาย) / A (ผลงาน) แต่ละหน่วยมากรอก</span>
-                        </>
-                      ) : (
-                        <>
-                          <span className="text-sm text-gray-600">
-                            🔒 บันทึกแล้ว{manualSaved?.enteredBy ? ` โดย ${manualSaved.enteredBy}` : ''}
-                            {manualSaved?.enteredAt ? ` · ${new Date(manualSaved.enteredAt).toLocaleString('th-TH')}` : ''}
-                          </span>
-                          <button onClick={() => { setEditing(true); setMMsg('') }}
-                            className="bg-amber-500 hover:bg-amber-600 text-white text-sm px-4 py-2 rounded-lg font-medium">
-                            ✏️ แก้ไข
-                          </button>
-                          {mMsg && <span className="text-sm">{mMsg}</span>}
-                        </>
-                      )}
+                  {manualSaved?.enteredBy && (
+                    <div className="px-5 py-3 border-t text-xs text-gray-500">
+                      🔒 บันทึกแล้วโดย {manualSaved.enteredBy}
+                      {manualSaved.enteredAt ? ` · ${new Date(manualSaved.enteredAt).toLocaleString('th-TH')}` : ''}
                     </div>
                   )}
                 </div>
-                {!canEdit && <p className="text-xs text-gray-400 mb-6">* เฉพาะผู้ดูแลระบบ หรือเจ้าหน้าที่กลุ่มงานที่รับผิดชอบ กรอก/แก้ค่าได้</p>}
               </>
             ) : data.months.length === 0 ? (
               <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg text-sm">
@@ -1107,78 +987,38 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
               />
             )}
 
-            {/* ── L2: บันทึกเชิงคุณภาพต่อรอบ (ปัญหา/แนวทาง/แหล่งที่มา) — แสดงทั้ง KPI auto และ manual ── */}
+            {/* ── L2: บันทึกเชิงคุณภาพต่อรอบ (ปัญหา/แนวทาง/แหล่งที่มา) — อ่านอย่างเดียว กรอก/แก้ไขในป็อปอัพ ── */}
             {notesPeriod && (
               <div className="bg-white rounded-xl shadow-sm border overflow-hidden mt-6">
-                <div className="px-5 py-3 border-b flex items-center justify-between gap-3 flex-wrap">
+                <div className="px-5 py-3 border-b">
                   <h2 className="font-semibold text-gray-800 text-sm">
                     📝 บันทึกการดำเนินงาน — {notesPeriodLabel}
                   </h2>
-                  {canEditNotes && !nEditing && (
-                    <button
-                      onClick={() => { setNEditing(true); setNMsg('') }}
-                      className="text-xs px-3 py-1.5 rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50">
-                      ✏️ แก้ไข
-                    </button>
-                  )}
                 </div>
                 <div className="p-5 space-y-4">
-                  {nSavedBy?.by && !nEditing && (
+                  {nSavedBy?.by && (
                     <p className="text-xs text-gray-500 bg-gray-50 border rounded-lg px-3 py-2">
                       🔒 บันทึกแล้วโดย {nSavedBy.by}{nSavedBy.at ? ` · ${nSavedBy.at}` : ''}
                     </p>
                   )}
-                  {[
-                    { label: 'ปัญหา/อุปสรรค', value: nProblem, set: setNProblem, rows: 3,
-                      ph: 'อุปสรรคที่พบในรอบนี้ (ถ้าไม่มี ปล่อยว่างได้)' },
-                    { label: 'แนวทางการดำเนินงานต่อไป', value: nNextAction, set: setNNextAction, rows: 3,
-                      ph: 'แผน/สิ่งที่จะทำต่อในรอบถัดไป' },
-                  ].map((f) => (
-                    <div key={f.label}>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">{f.label}</label>
-                      {canEditNotes && nEditing ? (
-                        <textarea
-                          value={f.value} onChange={(e) => f.set(e.target.value)} rows={f.rows}
-                          placeholder={f.ph}
-                          className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                      ) : (
-                        <p className="text-sm text-gray-700 whitespace-pre-line min-h-[1.5rem]">
-                          {f.value || <span className="text-gray-400 italic">— ยังไม่ได้บันทึก —</span>}
-                        </p>
-                      )}
-                    </div>
-                  ))}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">ปัญหา/อุปสรรค</label>
+                    <p className="text-sm text-gray-700 whitespace-pre-line min-h-[1.5rem]">
+                      {nProblem || <span className="text-gray-400 italic">— ยังไม่ได้บันทึก —</span>}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">แนวทางการดำเนินงานต่อไป</label>
+                    <p className="text-sm text-gray-700 whitespace-pre-line min-h-[1.5rem]">
+                      {nNextAction || <span className="text-gray-400 italic">— ยังไม่ได้บันทึก —</span>}
+                    </p>
+                  </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">แหล่งที่มาข้อมูล</label>
-                    {canEditNotes && nEditing ? (
-                      <input
-                        value={nDataRef} onChange={(e) => setNDataRef(e.target.value)}
-                        placeholder="ลิงก์รายงาน หรือระบุช่องทาง/ผู้รับผิดชอบ"
-                        className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    ) : (
-                      <p className="text-sm text-gray-700 break-all min-h-[1.5rem]">
-                        {nDataRef || <span className="text-gray-400 italic">— ยังไม่ได้บันทึก —</span>}
-                      </p>
-                    )}
+                    <p className="text-sm text-gray-700 break-all min-h-[1.5rem]">
+                      {nDataRef || <span className="text-gray-400 italic">— ยังไม่ได้บันทึก —</span>}
+                    </p>
                   </div>
-
-                  {canEditNotes && nEditing && (
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <button
-                        onClick={() => saveNotes(notesPeriod)} disabled={nSaving}
-                        className="px-4 py-2 rounded-lg bg-blue-700 text-white text-sm font-medium hover:bg-blue-800 disabled:opacity-50">
-                        {nSaving ? 'กำลังบันทึก…' : '💾 บันทึกหมายเหตุ'}
-                      </button>
-                      {nSavedBy && (
-                        <button
-                          onClick={() => { loadNotes(notesPeriod) }} disabled={nSaving}
-                          className="px-4 py-2 rounded-lg border text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50">
-                          ยกเลิก
-                        </button>
-                      )}
-                    </div>
-                  )}
-                  {nMsg && <p className="text-sm text-gray-700">{nMsg}</p>}
                   {!canEditNotes && (
                     <p className="text-xs text-gray-400">
                       * เฉพาะผู้ดูแลระบบ หรือเจ้าหน้าที่กลุ่มงานที่รับผิดชอบ บันทึก/แก้ไขได้
@@ -1190,6 +1030,283 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
           </>
         )}
       </div>
+
+      {/* ══ ป็อปอัพ กรอกข้อมูล/บันทึกการดำเนินงาน — เดือน/รอบที่กำลังดูอยู่ ══ */}
+      {showModal && data && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto"
+          onClick={() => setShowModal(false)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl my-8" onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b flex items-center justify-between gap-3 sticky top-0 bg-white rounded-t-xl">
+              <h2 className="font-semibold text-gray-900">✏️ กรอกข้อมูล — {periodLabel}</h2>
+              <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none px-1">✕</button>
+            </div>
+
+            <div className="p-5 space-y-6">
+              {/* ── ส่วนกรอกผลงาน (เฉพาะ KPI กรอกเอง) ── */}
+              {!manual ? (
+                <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-lg text-sm">
+                  📊 KPI นี้ดึงผลงานอัตโนมัติจาก HDC — ไม่ต้องกรอก กรอกได้แค่บันทึกการดำเนินงานด้านล่าง
+                </div>
+              ) : textMode ? (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-medium text-gray-700">ผลงาน — {periodLabel}</label>
+                    {!editing && canEdit && (
+                      <button onClick={() => { setEditing(true); setMMsg('') }}
+                        className="text-xs px-3 py-1.5 rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50">✏️ แก้ไข</button>
+                    )}
+                  </div>
+                  {canEdit && editing ? (() => {
+                    const opts = (data.textOptions ?? '').split('\n').map((s) => s.trim()).filter(Boolean)
+                    if (opts.length === 0) {
+                      return <textarea value={sText} onChange={(e) => setSText(e.target.value)} maxLength={255} rows={3}
+                        placeholder="เช่น อยู่ระหว่างดำเนินการ / ท้าทาย / ผ่านเกณฑ์"
+                        className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    }
+                    const showCustom = sTextCustom || (sText !== '' && !opts.includes(sText))
+                    return (
+                      <>
+                        <select
+                          value={sText === '' && !sTextCustom ? '' : (opts.includes(sText) ? sText : '__custom__')}
+                          onChange={(e) => {
+                            if (e.target.value === '__custom__') { setSTextCustom(true); setSText('') }
+                            else { setSTextCustom(false); setSText(e.target.value) }
+                          }}
+                          className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                          <option value="" disabled>— เลือกผลงาน —</option>
+                          {opts.map((o) => <option key={o} value={o}>{o}</option>)}
+                          <option value="__custom__">อื่นๆ (พิมพ์เอง)…</option>
+                        </select>
+                        {showCustom && (
+                          <textarea value={sText} onChange={(e) => setSText(e.target.value)} maxLength={255} rows={2}
+                            placeholder="พิมพ์ผลงาน"
+                            className="w-full border rounded-lg px-3 py-2 text-sm mt-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        )}
+                      </>
+                    )
+                  })() : (
+                    <p className="text-gray-800 text-sm whitespace-pre-wrap bg-gray-50 border rounded-lg px-3 py-2">
+                      {data.savedMonthly?.valueText || <span className="text-gray-400">— ยังไม่ได้กรอกเดือนนี้ —</span>}
+                    </p>
+                  )}
+                  {canEdit && editing && (
+                    <div className="flex flex-wrap items-center gap-3 mt-3">
+                      <button onClick={saveTextValue} disabled={mSaving}
+                        className="bg-blue-800 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm px-5 py-2 rounded-lg font-medium">
+                        {mSaving ? 'กำลังบันทึก...' : 'บันทึกผลงาน'}
+                      </button>
+                      {manualSaved && (
+                        <button onClick={() => { setEditing(false); setMMsg(''); load(entryMonth) }} disabled={mSaving}
+                          className="border text-gray-600 hover:bg-gray-50 text-sm px-4 py-2 rounded-lg">ยกเลิก</button>
+                      )}
+                      {mMsg && <span className="text-sm">{mMsg}</span>}
+                    </div>
+                  )}
+                </div>
+              ) : singleMode ? (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-medium text-gray-700">ตาราง — {periodLabel}</label>
+                    {!editing && canEdit && (
+                      <button onClick={() => { setEditing(true); setMMsg('') }}
+                        className="text-xs px-3 py-1.5 rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50">✏️ แก้ไข</button>
+                    )}
+                  </div>
+                  {legacyNoRaw && (
+                    <div className="mb-3 bg-amber-50 border border-amber-200 text-amber-800 px-3 py-2 rounded-lg text-xs">
+                      ⚠️ เดือนนี้บันทึกไว้เป็น <b>{committedPct}{data.kpi.unit}</b> ก่อนระบบเก็บ B/A ดิบ — ต้องกรอกทั้ง 2 ช่องใหม่ทั้งคู่
+                    </div>
+                  )}
+                  <table className="w-full text-sm border rounded-lg overflow-hidden">
+                    <thead className="bg-gray-50 text-gray-500 text-xs">
+                      <tr>
+                        <th className="text-left px-3 py-2 font-medium">หน่วยบริการ</th>
+                        <th className="text-right px-3 py-2 font-medium">กลุ่มเป้าหมาย (B)</th>
+                        <th className="text-right px-3 py-2 font-medium">ผลงาน (A)</th>
+                        <th className="text-right px-3 py-2 font-medium">{ratePer === 100 ? '% (A/B)' : `${data.kpi.unit} (A/B×${ratePer.toLocaleString()})`}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      <tr>
+                        <td className="px-3 py-2 font-medium text-gray-900">{SINGLE_MODE_UNIT_NAME}</td>
+                        <td className="px-3 py-2 text-right">
+                          {canEdit && editing
+                            ? <input type="number" min="0" value={sTarget} onChange={(e) => setSTarget(e.target.value)}
+                                className="border rounded px-2 py-1 text-sm w-24 text-right" />
+                            : <span className="tabular-nums text-gray-700">{sTargetNum > 0 ? sTargetNum.toLocaleString() : '—'}</span>}
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          {canEdit && editing
+                            ? <input type="number" min="0" value={sResult} onChange={(e) => setSResult(e.target.value)}
+                                className="border rounded px-2 py-1 text-sm w-24 text-right" />
+                            : <span className="tabular-nums text-gray-700">{sTargetNum > 0 ? sResultNum.toLocaleString() : '—'}</span>}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums font-semibold">{sTargetNum > 0 ? sPct : '—'}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  {canEdit && editing && (
+                    <div className="flex flex-wrap items-center gap-3 mt-3">
+                      <button onClick={saveSingleValue} disabled={mSaving}
+                        className="bg-blue-800 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm px-5 py-2 rounded-lg font-medium">
+                        {mSaving ? 'กำลังบันทึก...' : 'บันทึกผลงาน'}
+                      </button>
+                      {manualSaved && (
+                        <button onClick={() => { setEditing(false); setMMsg(''); load(entryMonth) }} disabled={mSaving}
+                          className="border text-gray-600 hover:bg-gray-50 text-sm px-4 py-2 rounded-lg">ยกเลิก</button>
+                      )}
+                      {mMsg && <span className="text-sm">{mMsg}</span>}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-medium text-gray-700">ตารางรายหน่วยบริการ — {periodLabel}</label>
+                    {!editing && canEdit && (
+                      <button onClick={() => { setEditing(true); setMMsg('') }}
+                        className="text-xs px-3 py-1.5 rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50">✏️ แก้ไข</button>
+                    )}
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm border rounded-lg overflow-hidden">
+                      <thead className="bg-gray-50 text-gray-500 text-xs">
+                        <tr>
+                          <th className="text-left px-3 py-2 font-medium">หน่วยบริการ</th>
+                          <th className="text-right px-3 py-2 font-medium">กลุ่มเป้าหมาย</th>
+                          <th className="text-right px-3 py-2 font-medium">ผลงาน (A)</th>
+                          <th className="text-right px-3 py-2 font-medium">% (A/B)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {liveRows.map((r) => (
+                          <tr key={r.code}>
+                            <td className="px-3 py-2 font-medium text-gray-900">{r.name}</td>
+                            <td className="px-3 py-2 text-right">
+                              {canEdit && editing
+                                ? <input type="number" min="0" value={r.target} onChange={(e) => setRow(r.code, 'target', e.target.value)}
+                                    className="border rounded px-2 py-1 text-sm w-24 text-right" />
+                                : <span className="tabular-nums text-gray-700">{r.t.toLocaleString()}</span>}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              {canEdit && editing
+                                ? <input type="number" min="0" value={r.result} onChange={(e) => setRow(r.code, 'result', e.target.value)}
+                                    className="border rounded px-2 py-1 text-sm w-24 text-right" />
+                                : <span className="tabular-nums text-gray-700">{r.a.toLocaleString()}</span>}
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums font-semibold">{r.pct ?? '—'}</td>
+                          </tr>
+                        ))}
+                        <tr className="bg-gray-100 font-semibold">
+                          <td className="px-3 py-2">รวมอำเภอ</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{liveSumT.toLocaleString()}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{liveSumA.toLocaleString()}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{liveSumT > 0 ? liveTotalPct : '—'}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  {canEdit && editing && (
+                    <div className="flex flex-wrap items-center gap-3 mt-3">
+                      <button onClick={saveManualDetail} disabled={mSaving}
+                        className="bg-blue-800 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm px-5 py-2 rounded-lg font-medium">
+                        {mSaving ? 'กำลังบันทึก...' : 'บันทึกรายหน่วยบริการ'}
+                      </button>
+                      {manualSaved && (
+                        <button onClick={() => { setEditing(false); setMMsg(''); load(entryMonth) }} disabled={mSaving}
+                          className="border text-gray-600 hover:bg-gray-50 text-sm px-4 py-2 rounded-lg">ยกเลิก</button>
+                      )}
+                      {mMsg && <span className="text-sm">{mMsg}</span>}
+                    </div>
+                  )}
+                  <p className="text-xs text-gray-400 mt-2">เปิด HDC (รายหน่วยบริการ) → คัดลอก B (เป้าหมาย) / A (ผลงาน) แต่ละหน่วยมากรอก</p>
+                </div>
+              )}
+
+              <hr />
+
+              {/* ── ส่วนบันทึกการดำเนินงาน — ทุก KPI ── */}
+              {notesPeriod && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-medium text-gray-700">📝 บันทึกการดำเนินงาน — {notesPeriodLabel}</label>
+                    {canEditNotes && !nEditing && (
+                      <button onClick={() => { setNEditing(true); setNMsg('') }}
+                        className="text-xs px-3 py-1.5 rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50">✏️ แก้ไข</button>
+                    )}
+                  </div>
+                  {nSavedBy?.by && !nEditing && (
+                    <p className="text-xs text-gray-500 bg-gray-50 border rounded-lg px-3 py-2 mb-3">
+                      🔒 บันทึกแล้วโดย {nSavedBy.by}{nSavedBy.at ? ` · ${nSavedBy.at}` : ''}
+                    </p>
+                  )}
+                  <div className="space-y-3">
+                    {[
+                      { label: 'ปัญหา/อุปสรรค', value: nProblem, set: setNProblem, rows: 3,
+                        ph: 'อุปสรรคที่พบในรอบนี้ (ถ้าไม่มี ปล่อยว่างได้)' },
+                      { label: 'แนวทางการดำเนินงานต่อไป', value: nNextAction, set: setNNextAction, rows: 3,
+                        ph: 'แผน/สิ่งที่จะทำต่อในรอบถัดไป' },
+                    ].map((f) => (
+                      <div key={f.label}>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">{f.label}</label>
+                        {canEditNotes && nEditing ? (
+                          <textarea
+                            value={f.value} onChange={(e) => f.set(e.target.value)} rows={f.rows}
+                            placeholder={f.ph}
+                            className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        ) : (
+                          <p className="text-sm text-gray-700 whitespace-pre-line min-h-[1.5rem] bg-gray-50 border rounded-lg px-3 py-2">
+                            {f.value || <span className="text-gray-400 italic">— ยังไม่ได้บันทึก —</span>}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">แหล่งที่มาข้อมูล</label>
+                      {canEditNotes && nEditing ? (
+                        <input
+                          value={nDataRef} onChange={(e) => setNDataRef(e.target.value)}
+                          placeholder="ลิงก์รายงาน หรือระบุช่องทาง/ผู้รับผิดชอบ"
+                          className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      ) : (
+                        <p className="text-sm text-gray-700 break-all min-h-[1.5rem] bg-gray-50 border rounded-lg px-3 py-2">
+                          {nDataRef || <span className="text-gray-400 italic">— ยังไม่ได้บันทึก —</span>}
+                        </p>
+                      )}
+                    </div>
+                    {canEditNotes && nEditing && (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                          onClick={() => saveNotes(notesPeriod)} disabled={nSaving}
+                          className="px-4 py-2 rounded-lg bg-blue-700 text-white text-sm font-medium hover:bg-blue-800 disabled:opacity-50">
+                          {nSaving ? 'กำลังบันทึก…' : '💾 บันทึกหมายเหตุ'}
+                        </button>
+                        {nSavedBy && (
+                          <button
+                            onClick={() => { loadNotes(notesPeriod) }} disabled={nSaving}
+                            className="px-4 py-2 rounded-lg border text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50">
+                            ยกเลิก
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    {nMsg && <p className="text-sm text-gray-700">{nMsg}</p>}
+                  </div>
+                </div>
+              )}
+              {!canEdit && !canEditNotes && (
+                <p className="text-xs text-gray-400">* เฉพาะผู้ดูแลระบบ หรือเจ้าหน้าที่กลุ่มงานที่รับผิดชอบ กรอก/แก้ไขได้</p>
+              )}
+            </div>
+
+            <div className="px-5 py-3 border-t flex justify-end">
+              <button onClick={() => setShowModal(false)} className="text-sm px-4 py-2 rounded-lg border text-gray-600 hover:bg-gray-50">
+                ปิด
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
