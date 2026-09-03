@@ -63,8 +63,8 @@ export async function POST(req: NextRequest) {
   const conn = await pool.getConnection()
   try {
     // target รวมของ KPI + ตรวจว่าเป็น manual จริง (กันเรียก save ผิดตัว → cron จะมาทับทีหลัง)
-    const [kr] = await conn.execute('SELECT target, manual_entry FROM kpi_reports WHERE id = ?', [kpiId])
-    const krow = (kr as { target: number; manual_entry: number }[])[0]
+    const [kr] = await conn.execute('SELECT target, manual_entry, rate_per FROM kpi_reports WHERE id = ?', [kpiId])
+    const krow = (kr as { target: number; manual_entry: number; rate_per: number }[])[0]
     if (!krow) return NextResponse.json({ message: 'ไม่พบ KPI' }, { status: 404 })
     if (!isManualEntry(krow.manual_entry)) {
       return NextResponse.json({ message: 'KPI นี้ไม่ได้ตั้งเป็น "กรอกค่าเอง" (manual) — ติ๊กในหน้า /admin ก่อน' }, { status: 400 })
@@ -116,7 +116,12 @@ export async function POST(req: NextRequest) {
         [kpiId, month, r.hospcode, JSON.stringify({ target: r.target, result: r.result })],
       )
     }
-    const value = sumT > 0 ? +((sumR / sumT) * 100).toFixed(2) : 0
+    // ⚠️ ต้องใช้ rate_per ของ KPI ไม่ใช่ฝัง 100 ตายตัว — ตัวชี้วัดบางตัวไม่ใช่ "ร้อยละ"
+    // (เช่น อัตราส่วนการตายมารดา = ต่อการเกิดมีชีพแสนคน → ×100,000)
+    // เดิมฝัง ×100 ไว้ ทำให้ตัวที่เป็น "ต่อแสน" คำนวณต่ำกว่าจริง 1,000 เท่า
+    // → KPI แนว "ยิ่งน้อยยิ่งดี" จะขึ้น "ผ่าน" ปลอมทันที (โหมดค่าเดียวทำถูกอยู่แล้ว ดู /api/monthly/single)
+    const ratePer = Number(krow.rate_per) || 100
+    const value = sumT > 0 ? +((sumR / sumT) * ratePer).toFixed(2) : 0
 
     // รวมอำเภอ → monthly_data (+ audit)
     await conn.execute(

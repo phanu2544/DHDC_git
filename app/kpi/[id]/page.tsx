@@ -12,6 +12,7 @@ import { STATUS_META, evaluateKpiStatus } from '@/lib/kpiStatus'
 import { DIRECTION_LABEL } from '@/lib/scorecard'
 import { DISTRICT_NAME, HOSPCODE_NAMES } from '@/lib/areaRef'
 import { formatThaiMonth } from '@/lib/formatMonth'
+import { ratePerMismatch } from '@/lib/ratePerCheck'
 import type { KpiEvalStatus, EvalDirection } from '@/lib/types'
 
 // สี badge สถานะ (presentation เฉพาะหน้านี้ — ชุดเดียวกับ Dashboard)
@@ -430,19 +431,21 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
     setShowModal(true)
   }
 
-  // manual: คำนวณสดจากตารางที่กรอก (อัปเดต % + กราฟ ทันทีที่พิมพ์)
+  // ตัวคูณ A/B ของ KPI นี้ — 100=ร้อยละ (ส่วนใหญ่) · 100000=ต่อแสนประชากร ฯลฯ
+  // ⚠️ ใช้ทั้ง 2 โหมด (ค่าเดียว + รายหน่วย) — ห้ามฝัง 100 ตายตัวในโหมดใดโหมดหนึ่ง
+  // (เดิมโหมดรายหน่วยฝัง ×100 ไว้ ทำให้ตัวที่เป็น "ต่อแสน" ต่ำกว่าจริง 1,000 เท่า → "ผ่าน" ปลอม)
+  const ratePer = data?.kpi.ratePer || 100
+
+  // manual: คำนวณสดจากตารางที่กรอก (อัปเดตค่า + กราฟ ทันทีที่พิมพ์)
   const liveRows = tRows.map((r) => {
     const t = Number(r.target) || 0, a = Number(r.result) || 0
-    return { ...r, t, a, pct: t > 0 ? +((a / t) * 100).toFixed(2) : null }
+    return { ...r, t, a, pct: t > 0 ? +((a / t) * ratePer).toFixed(2) : null }
   })
   const liveSumT = liveRows.reduce((s, r) => s + r.t, 0)
   const liveSumA = liveRows.reduce((s, r) => s + r.a, 0)
-  const liveTotalPct = liveSumT > 0 ? +((liveSumA / liveSumT) * 100).toFixed(2) : 0
+  const liveTotalPct = liveSumT > 0 ? +((liveSumA / liveSumT) * ratePer).toFixed(2) : 0
   const liveTotalStatus = manual ? evaluateKpiStatus(liveTotalPct, target, direction ?? 'none').status : null
   const manualStatus = liveTotalStatus
-
-  // manualScope='single': คำนวณสดจากช่องกรอกค่าเดียว (ใช้กับตารางกรอก/แถวที่กำลังแก้ — ไม่ใช่แหล่งความจริง)
-  const ratePer = data?.kpi.ratePer || 100  // 100=ร้อยละ (ส่วนใหญ่) · 100000=ต่อแสนประชากร ฯลฯ
   const sTargetNum = Number(sTarget) || 0
   const sResultNum = Number(sResult) || 0
   const sPct = sTargetNum > 0 ? +((sResultNum / sTargetNum) * ratePer).toFixed(2) : 0
@@ -563,6 +566,22 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                 </button>
               )}
             </div>
+
+            {/* เตือน "หน่วยกับวิธีคิดไม่ตรงกัน" — ต้องขึ้นที่หน้านี้ด้วย ไม่ใช่แค่ฟอร์ม /admin
+                เพราะคนที่ "รู้" ว่าตัวชี้วัดนี้คิดยังไง คือเจ้าหน้าที่ผู้รับผิดชอบที่เข้าหน้านี้
+                แต่คนที่ "แก้ได้" คือ admin (หน้า /admin เจ้าหน้าที่เข้าไม่ได้)
+                → ให้คนที่รู้เห็นปัญหา แล้วแจ้งคนที่แก้ได้ (ดู lib/ratePerCheck.ts) */}
+            {manual && !textMode && (() => {
+              const mm = ratePerMismatch(data.kpi.unit, ratePer)
+              return mm ? (
+                <div className="mb-6 bg-orange-50 border border-orange-300 text-orange-900 px-4 py-3 rounded-lg text-sm leading-relaxed">
+                  ⚠️ <b>หน่วยกับวิธีคิดของตัวชี้วัดนี้ไม่ตรงกัน</b> — {mm.message}
+                  <div className="mt-1 text-xs text-orange-700">
+                    ตัวเลขที่คำนวณออกมาอาจผิด · <b>กรุณาแจ้งผู้ดูแลระบบ</b> ให้แก้ &quot;วิธีคิดค่าที่กรอก&quot; ในหน้าจัดการระบบ (เจ้าหน้าที่แก้เองไม่ได้)
+                  </div>
+                </div>
+              ) : null
+            })()}
 
             {textMode ? (
               <>
@@ -738,7 +757,9 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                 )}
 
                 <div className="mb-6 bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-lg text-sm leading-relaxed">
-                  ℹ️ KPI นี้ <b>กรอกค่าเอง รายหน่วยบริการ</b> — เปิดแหล่งข้อมูลต้นทางของแต่ละหน่วย (ดูวิธีกรอกด้านล่าง) แล้วกรอก <b>กลุ่มเป้าหมาย</b> และ <b>ผลงาน (A)</b> ของแต่ละหน่วย · ระบบคำนวณ % = A/B ให้อัตโนมัติ · ไม่ดึง/ทับค่าจาก MOPH
+                  ℹ️ KPI นี้ <b>กรอกค่าเอง รายหน่วยบริการ</b> — เปิดแหล่งข้อมูลต้นทางของแต่ละหน่วย (ดูวิธีกรอกด้านล่าง) แล้วกรอก <b>กลุ่มเป้าหมาย</b> และ <b>ผลงาน (A)</b> ของแต่ละหน่วย · ระบบคำนวณ{' '}
+                  {ratePer === 100 ? '% = A/B ให้อัตโนมัติ' : `${data.kpi.unit} = A/B × ${ratePer.toLocaleString()} ให้อัตโนมัติ`}
+                  {' '}· ไม่ดึง/ทับค่าจาก MOPH
                 </div>
 
                 {/* นิยาม/วิธีกรอก — เดิมมีแค่โหมดค่าเดียว โหมดรายหน่วยไม่มี ทั้งที่จำเป็นไม่แพ้กัน
@@ -782,7 +803,7 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                           <th className="text-left px-4 py-2 font-medium">หน่วยบริการ</th>
                           <th className="text-right px-3 py-2 font-medium">กลุ่มเป้าหมาย</th>
                           <th className="text-right px-3 py-2 font-medium">ผลงาน (A)</th>
-                          <th className="text-right px-4 py-2 font-medium">% (A/B)</th>
+                          <th className="text-right px-4 py-2 font-medium">{ratePer === 100 ? '% (A/B)' : `${data?.kpi.unit ?? ''} (A/B×${ratePer.toLocaleString()})`}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y">
@@ -1199,7 +1220,7 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                           <th className="text-left px-3 py-2 font-medium">หน่วยบริการ</th>
                           <th className="text-right px-3 py-2 font-medium">กลุ่มเป้าหมาย</th>
                           <th className="text-right px-3 py-2 font-medium">ผลงาน (A)</th>
-                          <th className="text-right px-3 py-2 font-medium">% (A/B)</th>
+                          <th className="text-right px-3 py-2 font-medium">{ratePer === 100 ? '% (A/B)' : `${data.kpi.unit} (A/B×${ratePer.toLocaleString()})`}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y">

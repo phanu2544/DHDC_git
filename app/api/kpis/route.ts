@@ -102,13 +102,15 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const body = await req.json()
   const { name, category, mophUrl, mophTable, mophValueField, mophTargetField, mophCalcMode,
-          direction, owner, deadline, status, target, unit, description, manualEntry, manualScope, dataSource, measureType, textOptions, reportFreq } = body
+          direction, owner, deadline, status, target, unit, description, manualEntry, manualScope, dataSource, measureType, textOptions, reportFreq, ratePer } = body
   // ชนิด text/level = กรอกมือเสมอ + ค่าเดียว (single) — ดึง MOPH/แยกราย รพ.สต. ไม่ได้
   const measureVal = (measureType === 'text' || measureType === 'level') ? measureType : 'numeric'
   const isTextBased = measureVal === 'text' || measureVal === 'level'
   const manualVal = (isTextBased || manualEntry) ? 1 : 0
   const scopeVal = isTextBased ? 'single' : (manualScope === 'single' ? 'single' : 'unit')
   const sourceVal = (typeof dataSource === 'string' && dataSource.trim()) ? dataSource.trim() : 'HDC'
+  // ตัวคูณ A/B — ไม่ส่งมา/ค่าพัง → 100 (ร้อยละ) · กันค่าติดลบ/ศูนย์ที่ทำให้คำนวณเพี้ยน
+  const rateVal = Math.abs(Number(ratePer)) || 100
   // ตัวเลือก/ระดับ เก็บเฉพาะ text/level (numeric ไม่ใช้) · ว่าง → NULL
   const textOptsVal = isTextBased && typeof textOptions === 'string' && textOptions.trim() ? textOptions.trim() : null
   // L4: ความถี่รายงาน — 'quarterly' = กรอก 4 ครั้ง/ปี (ตรวจราชการ) · อื่นๆ = รายเดือนตามเดิม
@@ -133,11 +135,11 @@ export async function POST(req: NextRequest) {
     await conn.execute(
       `INSERT INTO kpi_reports
         (id, name, category, moph_url, moph_table, moph_value_field, moph_target_field, moph_calc_mode,
-         evaluation_direction, manual_entry, manual_scope, data_source, measure_type, text_options, report_freq, owner, deadline, status, target, unit, description)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         evaluation_direction, manual_entry, manual_scope, data_source, measure_type, text_options, report_freq, rate_per, owner, deadline, status, target, unit, description)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [id, name, category,
        mophUrl ?? null, mophTable ?? null, mophValueField ?? null, mophTargetField ?? null, mophCalcMode ?? 'percent',
-       evalDirection, manualVal, scopeVal, sourceVal, measureVal, textOptsVal, freqVal, owner, deadline, status ?? 'in_progress', target ?? 0, unit ?? '%', description ?? null],
+       evalDirection, manualVal, scopeVal, sourceVal, measureVal, textOptsVal, freqVal, rateVal, owner, deadline, status ?? 'in_progress', target ?? 0, unit ?? '%', description ?? null],
     )
     return NextResponse.json({ id, message: 'เพิ่ม KPI สำเร็จ' })
   } catch (err) {

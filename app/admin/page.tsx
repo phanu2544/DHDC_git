@@ -11,6 +11,7 @@ import KpiSetPicker from '@/components/KpiSetPicker'
 import ThaiMonthInput from '@/components/ThaiMonthInput'
 import { useAuth } from '@/lib/useAuth'
 import { formatThaiMonth } from '@/lib/formatMonth'
+import { ratePerMismatch } from '@/lib/ratePerCheck'
 import type { User, UserTitle, KPIReport, KPIStatus, KPICategory, MophMapping, CalcMode, EvalDirection } from '@/lib/types'
 
 // หมวดหมู่จะถูกโหลดจาก DB ผ่าน /api/categories (ดูใน state)
@@ -1591,8 +1592,10 @@ export default function AdminPage() {
                     )}
                   </Field>
 
-                  {/* Phase 3: ตัวคูณ A/B — เฉพาะโหมด "กรอกค่าเดียว" เท่านั้น (ราย รพ.สต. ยังคำนวณเป็นร้อยละเสมอ) */}
-                  {form.manualEntry && form.manualScope === 'single' && (
+                  {/* ตัวคูณ A/B — แสดงทั้ง 2 โหมด (เดิมโชว์เฉพาะ "ค่าเดียว" เพราะโหมดรายหน่วยฝัง ×100 ตายตัว
+                      แก้ 3 ก.ย. 69 ให้โหมดรายหน่วยอ่าน rate_per แล้ว → ต้องเปิดให้ตั้งค่าได้ด้วย
+                      ไม่งั้นตัวชี้วัด "ต่อแสน" ที่เป็นโหมดรายหน่วยจะแก้ผ่านหน้าเว็บไม่ได้เลย) */}
+                  {form.manualEntry && (
                     <Field label="วิธีคิดค่าที่กรอก (กลุ่มเป้าหมาย/ผลงาน)">
                       <select value={form.ratePer ?? 100} onChange={(e) => setForm({ ...form, ratePer: +e.target.value })}
                         className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -1602,7 +1605,24 @@ export default function AdminPage() {
                         <option value={100000}>ต่อแสนประชากร (A/B×100,000) — เช่น อัตราตาย/เกิด</option>
                         <option value={1000000}>ต่อล้าน (A/B×1,000,000)</option>
                       </select>
-                      <p className="mt-1 text-xs text-gray-400">ต้องตั้ง &quot;หน่วย&quot; ด้านบนให้ตรงกัน (เช่น &quot;ต่อแสนประชากร&quot;) — ไม่งั้นตัวเลขจะโชว์ถูกแต่ป้ายหน่วยผิด</p>
+                      {/* เตือนอัตโนมัติเมื่อหน่วยกับวิธีคิดไม่ตรงกัน (ดู lib/ratePerCheck.ts) */}
+                      {(() => {
+                        const mm = ratePerMismatch(form.unit, form.ratePer)
+                        return mm ? (
+                          <p className="mt-1.5 text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded-lg px-2.5 py-1.5">
+                            ⚠️ {mm.message}
+                          </p>
+                        ) : (
+                          <p className="mt-1 text-xs text-gray-400">ต้องตั้ง &quot;หน่วย&quot; ด้านบนให้ตรงกัน (เช่น &quot;ต่อแสนประชากร&quot;) — ไม่งั้นตัวเลขจะโชว์ถูกแต่ป้ายหน่วยผิด</p>
+                        )
+                      })()}
+                      {/* เปลี่ยนตัวคูณ = ค่าที่บันทึกไว้แล้วไม่ถูกคำนวณใหม่ (เก็บเป็นตัวเลขตายตัวตอนกดบันทึก) */}
+                      {editKPI && form.ratePer !== (Number(editKPI.ratePer) || 100) && (
+                        <p className="mt-1.5 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-2.5 py-1.5">
+                          🔴 เปลี่ยนวิธีคิดแล้ว <b>ข้อมูลเดือนที่บันทึกไว้ก่อนหน้าจะไม่ถูกคำนวณใหม่</b> (ยังเป็นค่าคูณแบบเดิม)
+                          — ถ้าตัวชี้วัดนี้มีข้อมูลอยู่แล้ว ต้องเข้าไปกรอกเดือนนั้นซ้ำเพื่อให้ตัวเลขตรงกันทั้งชุด
+                        </p>
+                      )}
                     </Field>
                   )}
                 </>

@@ -139,7 +139,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({
         ok: true, kpiId, months: [], manual, manualScope, canEdit, canEditNotes, reportFreq,
         kpi: { name: kpi.name, category: kpi.category, owner: kpi.owner, unit: kpi.unit,
-               direction: kpi.direction, description: kpi.description, target: Number(kpi.target ?? 0) },
+               direction: kpi.direction, description: kpi.description, target: Number(kpi.target ?? 0),
+               ratePer: Number(kpi.rate_per) || 100 },
         savedMonthly: null, stale: manual, lastMonth: null,
         message: manual
           ? 'KPI นี้กรอกค่าเอง — ยังไม่มีข้อมูล (กรอกรายหน่วยบริการได้ด้านล่าง)'
@@ -472,6 +473,9 @@ export async function GET(req: NextRequest) {
         name: kpi.name, category: kpi.category, owner: kpi.owner, unit: kpi.unit,
         direction, description: kpi.description,
         target: evalTarget,
+        // ⚠️ ต้องส่งไปด้วยเสมอ — หน้าจอโหมดกรอกรายหน่วยใช้คูณ A/B (100=ร้อยละ · 100000=ต่อแสน)
+        // เดิมส่งเฉพาะ branch โหมดค่าเดียว ทำให้โหมดรายหน่วยได้ 100 เสมอ → ตัวที่เป็น "ต่อแสน" โชว์ต่ำกว่าจริง 1,000 เท่า
+        ratePer: Number(kpi.rate_per) || 100,
       },
       savedMonthly: md
         ? { value: Number(md.value), target: Number(md.target), enteredBy: md.entered_by, enteredAt: md.entered_at }
