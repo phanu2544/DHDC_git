@@ -569,7 +569,7 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                 {/* L1/L1b: ชนิดข้อความ (ไม่ประเมิน) / ระดับ (ตัดสินผ่าน-ไม่ผ่านตามระดับ) */}
                 <div className="mb-6 bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-lg text-sm leading-relaxed">
                   {levelMode
-                    ? <>ℹ️ KPI นี้ <b>เลือกระดับ</b> — ระบบตัดสินผ่าน/ไม่ผ่านตามระดับเป้าหมายที่ตั้งไว้ · เลือกระดับที่ทำได้จากรายการ</>
+                    ? <>ℹ️ KPI นี้ <b>เลือกระดับ</b> — ระบบตัดสินผ่าน/ไม่ผ่านตามระดับเกณฑ์การประเมินที่ตั้งไว้ · เลือกระดับที่ทำได้จากรายการ</>
                     : <>ℹ️ KPI นี้ <b>กรอกผลงานเป็นข้อความ</b> (ไม่คิดเป็น % ไม่ประเมินผ่าน/ไม่ผ่าน) — พิมพ์สถานะ/ความคืบหน้า เช่น &quot;อยู่ระหว่างดำเนินการ&quot;, &quot;ท้าทาย&quot;, &quot;2 ทีม&quot;</>}
                 </div>
                 <div className="bg-white rounded-xl shadow-sm border overflow-hidden mb-6">
@@ -606,7 +606,7 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                     </p>
                   </div>
                   <div className="text-sm text-gray-600 space-y-1">
-                    <p>เป้าหมาย: <b>{target}</b> {data.kpi.unit} ({direction && DIRECTION_LABEL[direction]})</p>
+                    <p>เกณฑ์การประเมิน: <b>{target}</b> {data.kpi.unit} ({direction && DIRECTION_LABEL[direction]})</p>
                     {committedStatus && (
                       <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${BADGE[committedStatus]}`}>
                         {STATUS_META[committedStatus].label}
@@ -661,7 +661,7 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                       <Tooltip formatter={(v) => [`${v} ${data.kpi.unit}`]} />
                       {target > 0 && direction !== 'none' && (
                         <ReferenceLine y={target} stroke="#dc2626" strokeDasharray="6 4"
-                          label={{ value: `เป้าหมาย ${target}`, fill: '#dc2626', fontSize: 12, position: 'insideTopRight' }} />
+                          label={{ value: `เกณฑ์การประเมิน ${target}`, fill: '#dc2626', fontSize: 12, position: 'insideTopRight' }} />
                       )}
                       <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={80}>
                         <Cell fill={committedStatus ? (BAR_COLOR[committedStatus] ?? '#3b82f6') : '#9ca3af'} />
@@ -715,7 +715,7 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                     <p className="text-gray-500 text-xs mt-1">รวมอำเภอ ({liveSumA.toLocaleString()}/{liveSumT.toLocaleString()}) — {qInfo ? qInfo.label : formatThaiMonth(entryMonth)}</p>
                   </div>
                   <div className="text-sm text-gray-600 space-y-1">
-                    <p>เป้าหมาย: <b>{target}</b> {data.kpi.unit} ({direction && DIRECTION_LABEL[direction]})</p>
+                    <p>เกณฑ์การประเมิน: <b>{target}</b> {data.kpi.unit} ({direction && DIRECTION_LABEL[direction]})</p>
                     {liveSumT > 0 && manualStatus && (
                       <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${BADGE[manualStatus]}`}>
                         {STATUS_META[manualStatus].label}
@@ -738,8 +738,17 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                 )}
 
                 <div className="mb-6 bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-lg text-sm leading-relaxed">
-                  ℹ️ KPI นี้ <b>กรอกค่าเอง รายหน่วยบริการ</b> — เปิด HDC (มุมมองรายหน่วยบริการ) แล้วกรอก <b>กลุ่มเป้าหมาย</b> และ <b>ผลงาน (A)</b> ของแต่ละหน่วย · ระบบคำนวณ % = A/B ให้อัตโนมัติ · ไม่ดึง/ทับค่าจาก MOPH
+                  ℹ️ KPI นี้ <b>กรอกค่าเอง รายหน่วยบริการ</b> — เปิดแหล่งข้อมูลต้นทางของแต่ละหน่วย (ดูวิธีกรอกด้านล่าง) แล้วกรอก <b>กลุ่มเป้าหมาย</b> และ <b>ผลงาน (A)</b> ของแต่ละหน่วย · ระบบคำนวณ % = A/B ให้อัตโนมัติ · ไม่ดึง/ทับค่าจาก MOPH
                 </div>
+
+                {/* นิยาม/วิธีกรอก — เดิมมีแค่โหมดค่าเดียว โหมดรายหน่วยไม่มี ทั้งที่จำเป็นไม่แพ้กัน
+                    (แหล่งข้อมูลกอง B ต่างกันทุกตัว ไม่ใช่ HDC เสมอไป — คำอธิบายเฉพาะตัวจึงสำคัญ) */}
+                {data.kpi.description && (
+                  <div className="mb-6 bg-white rounded-xl shadow-sm border p-5 text-sm text-gray-600">
+                    <h3 className="font-semibold text-gray-800 mb-2 text-sm">นิยาม / วิธีกรอก</h3>
+                    <p className="whitespace-pre-line">{data.kpi.description}</p>
+                  </div>
+                )}
 
                 {/* กราฟแท่ง %รายหน่วยบริการ (สด) */}
                 <div className="bg-white rounded-xl shadow-sm border p-5 mb-6">
@@ -752,7 +761,7 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                       <Tooltip formatter={(v) => [`${v} ${data.kpi.unit}`]} />
                       {target > 0 && direction !== 'none' && (
                         <ReferenceLine y={target} stroke="#dc2626" strokeDasharray="6 4"
-                          label={{ value: `เป้าหมาย ${target}`, fill: '#dc2626', fontSize: 12, position: 'insideTopRight' }} />
+                          label={{ value: `เกณฑ์การประเมิน ${target}`, fill: '#dc2626', fontSize: 12, position: 'insideTopRight' }} />
                       )}
                       <Bar dataKey="value" radius={[4, 4, 0, 0]}>
                         {chartData.map((d, i) => <Cell key={i} fill={BAR_COLOR[d.status] ?? '#3b82f6'} />)}
@@ -818,7 +827,7 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                     <p className="text-gray-500 text-xs mt-1">รวมอำเภอ (คำนวณจาก detail)</p>
                   </div>
                   <div className="text-sm text-gray-600 space-y-1">
-                    <p>เป้าหมาย: <b>{target}</b> {data.kpi.unit} ({direction && DIRECTION_LABEL[direction]})</p>
+                    <p>เกณฑ์การประเมิน: <b>{target}</b> {data.kpi.unit} ({direction && DIRECTION_LABEL[direction]})</p>
                     {data.savedMonthly && (
                       <p className="text-xs text-gray-400">
                         ค่าที่บันทึกบน Scorecard เดือนนี้: {data.savedMonthly.value} {data.kpi.unit}
@@ -863,7 +872,7 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                         <Tooltip formatter={(v) => [`${v} ${data.kpi.unit}`]} />
                         {target > 0 && direction !== 'none' && (
                           <ReferenceLine y={target} stroke="#dc2626" strokeDasharray="6 4"
-                            label={{ value: `เป้าหมาย ${target}`, fill: '#dc2626', fontSize: 12, position: 'insideTopRight' }} />
+                            label={{ value: `เกณฑ์การประเมิน ${target}`, fill: '#dc2626', fontSize: 12, position: 'insideTopRight' }} />
                         )}
                         <Bar dataKey="value" radius={[4, 4, 0, 0]}>
                           {chartData.map((d, i) => <Cell key={i} fill={BAR_COLOR[d.status] ?? '#3b82f6'} />)}
@@ -1234,7 +1243,7 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                       {mMsg && <span className="text-sm">{mMsg}</span>}
                     </div>
                   )}
-                  <p className="text-xs text-gray-400 mt-2">เปิด HDC (รายหน่วยบริการ) → คัดลอก B (เป้าหมาย) / A (ผลงาน) แต่ละหน่วยมากรอก</p>
+                  <p className="text-xs text-gray-400 mt-2">เปิดแหล่งข้อมูลต้นทางของแต่ละหน่วย → คัดลอก B (เป้าหมาย) / A (ผลงาน) มากรอก (ดูวิธีกรอกเฉพาะตัวชี้วัดนี้ในหน้าหลัก)</p>
                 </div>
               )}
 

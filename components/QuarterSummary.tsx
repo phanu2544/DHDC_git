@@ -141,7 +141,7 @@ export default function QuarterSummary({
               <Tooltip formatter={(v) => [`${v} ${unit}`]} />
               {target > 0 && direction !== 'none' && (
                 <ReferenceLine y={target} stroke="#dc2626" strokeDasharray="6 4"
-                  label={{ value: `เป้าหมาย ${target}`, fill: '#dc2626', fontSize: 12, position: 'insideTopRight' }} />
+                  label={{ value: `เกณฑ์การประเมิน ${target}`, fill: '#dc2626', fontSize: 12, position: 'insideTopRight' }} />
               )}
               <Bar dataKey="value" radius={[4, 4, 0, 0]}>
                 {chartData.map((d, i) => <Cell key={i} fill={BAR_COLOR[d.status] ?? '#3b82f6'} />)}
@@ -158,7 +158,7 @@ export default function QuarterSummary({
               <tr>
                 <th className="text-left px-4 py-2 font-medium">{view === 'quarter' ? 'ไตรมาส' : 'เดือน'}</th>
                 <th className="text-left px-4 py-2 font-medium">{view === 'quarter' ? 'ช่วงเวลา' : ''}</th>
-                {!isText && <th className="text-right px-4 py-2 font-medium">เป้าหมาย</th>}
+                {!isText && <th className="text-right px-4 py-2 font-medium">เกณฑ์การประเมิน</th>}
                 <th className="text-right px-4 py-2 font-medium">ผลงาน</th>
                 <th className="text-center px-4 py-2 font-medium">สถานะ</th>
               </tr>
