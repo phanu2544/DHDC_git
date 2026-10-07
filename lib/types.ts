@@ -126,6 +126,10 @@ export interface MophMapping {
   // เติมโดย applyBaselineToMapping เท่านั้น (ไม่เก็บลง DB) — หาปีฐานที่ใช้ได้ไม่เจอ พร้อมเหตุผลภาษาไทย
   // engine เห็นค่านี้ → ไม่คำนวณ + เตือนด้วยข้อความนี้ (พังดังๆ ดีกว่าคำนวณผิดเงียบๆ)
   baseYearError?: string
+  // ตัวคูณของ calcMode='percent' (100=ร้อยละ · 1000=ต่อพัน · 100000=ต่อแสน) — **ไม่เก็บใน moph_config**
+  // เติมจาก kpi_reports.rate_per ตอนโหลด mapping (withRatePer) ช่องเดียวกับที่ใช้ตอนกรอกมือ → แหล่งเดียว
+  // เดิม engine ฝัง ×100 ตายตัว → KPI "ต่อพัน/ต่อแสน" ที่ดึงอัตโนมัติจะต่ำกว่าจริง 10/1,000 เท่า
+  ratePer?: number
 }
 
 /** ผลลัพธ์จาก computeMoph — pure ไม่มี side-effect */

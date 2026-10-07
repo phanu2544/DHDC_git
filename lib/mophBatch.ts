@@ -1,5 +1,5 @@
 import pool from '@/lib/db'
-import { buildMappingFromLegacy, computeMoph } from './mophEngine'
+import { buildMappingFromLegacy, computeMoph, withRatePer } from './mophEngine'
 import { applyBaselineToMappingPooled, captureBaselineFromDetail } from './baselineYear'
 import { backfillQuarterMonths } from './quarterBackfill'
 import { fetchMophRows } from './mophFetch'
@@ -88,13 +88,14 @@ export async function runBatchSave(opts: BatchOptions = {}): Promise<BatchResult
     target: number | null
     moph_config: string | null
     manual_entry: number
+    rate_per: number | null
   }[] = []
   // Phase 7A: เป้ารายปีงบ (kpi_targets) — fallback kpi_reports.target ถ้าไม่มี
   let targetMap = new Map<string, number>()
   try {
     const [rows] = await conn.execute(
       `SELECT id, name, moph_table, moph_value_field, moph_target_field, moph_calc_mode,
-              target, moph_config, manual_entry
+              target, moph_config, manual_entry, rate_per
        FROM kpi_reports
        WHERE moph_table IS NOT NULL AND moph_table <> ''
          ${kpiId ? 'AND id = ?' : ''}
@@ -164,6 +165,7 @@ export async function runBatchSave(opts: BatchOptions = {}): Promise<BatchResult
       // calcMode='percentIncrease' → เติมยอดปีฐาน (ปีงบก่อนหน้าปีที่กำลังดึง) จาก kpi_baseline_year
       // ยังไม่เก็บปีฐานไว้ → คืน mapping เดิม ใช้ค่าคงที่ใน moph_config เหมือนเดิมทุกประการ
       mapping = await applyBaselineToMappingPooled(kpi.id, mapping, year)
+      mapping = withRatePer(mapping, kpi.rate_per)
 
       // ── คำนวณผ่าน engine กลาง — preview/single/batch ใช้ตัวเดียวกัน ────────
       const r = computeMoph(rows, mapping)

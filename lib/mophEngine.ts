@@ -23,6 +23,11 @@ export function classifyField(name: string): FieldType {
   return 'measure'
 }
 
+/** เติมตัวคูณจาก kpi_reports.rate_per ให้ mapping (ทุกจุดที่โหลด mapping ไปเข้า computeMoph ต้องเรียก) */
+export function withRatePer(mapping: MophMapping, ratePer: unknown): MophMapping {
+  return { ...mapping, ratePer: Number(ratePer) || 100 }
+}
+
 /** จัดประเภททุก field จาก sample row หนึ่งแถว */
 export function classifyFields(sampleRow: Record<string, unknown>): Record<string, FieldType> {
   return Object.fromEntries(Object.keys(sampleRow).map((k) => [k, classifyField(k)]))
@@ -184,7 +189,7 @@ export function computeMoph(
     } else if (sumTarget === 0) {
       warnings.push('sumTarget = 0 — ไม่สามารถหารได้ (ข้อมูล target อาจว่างหรือไม่มีในช่วงนี้)')
     } else {
-      calcValue = +((sumValue / sumTarget) * 100).toFixed(2)
+      calcValue = +((sumValue / sumTarget) * (mapping.ratePer || 100)).toFixed(2)
     }
   }
 

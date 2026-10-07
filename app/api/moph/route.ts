@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
-import { buildMappingFromLegacy, classifyFields, computeMoph } from '@/lib/mophEngine'
+import { buildMappingFromLegacy, classifyFields, computeMoph, withRatePer } from '@/lib/mophEngine'
 import { applyBaselineToMapping } from '@/lib/baselineYear'
 import { backfillQuarterMonths } from '@/lib/quarterBackfill'
 import { fetchMophRows } from '@/lib/mophFetch'
@@ -51,10 +51,10 @@ export async function POST(req: NextRequest) {
     const conn = await pool.getConnection()
     try {
       const [kpiRows] = await conn.execute(
-        'SELECT target, moph_config FROM kpi_reports WHERE id = ?',
+        'SELECT target, moph_config, rate_per FROM kpi_reports WHERE id = ?',
         [kpiId],
       )
-      const kpiRow = (kpiRows as { target: number; moph_config: string | null }[])[0]
+      const kpiRow = (kpiRows as { target: number; moph_config: string | null; rate_per: number | null }[])[0]
       // Phase 7A: เป้ารายปีงบ (kpi_targets) ก่อน → fallback kpi_reports.target
       const yearTarget = await getTargetFor(conn, kpiId, year)
       kpiTarget = yearTarget ?? Number(kpiRow?.target ?? 0)
@@ -72,6 +72,7 @@ export async function POST(req: NextRequest) {
       }
       // calcMode='percentIncrease' → เติมยอดปีฐานจาก kpi_baseline_year (preview ต้องได้เลขเดียวกับ batch)
       mapping = await applyBaselineToMapping(conn, kpiId, mapping, year)
+      mapping = withRatePer(mapping, kpiRow?.rate_per)
     } finally {
       conn.release()
     }

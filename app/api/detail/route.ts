@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
-import { buildMappingFromLegacy, computeMoph, DISTRICT_ONLY_TABLES } from '@/lib/mophEngine'
+import { buildMappingFromLegacy, computeMoph, DISTRICT_ONLY_TABLES, withRatePer } from '@/lib/mophEngine'
 import { evaluateKpiStatus } from '@/lib/kpiStatus'
 import { tambonCodeOf, tambonNameOf, hospcodeNameOf, HOSPCODE_NAMES, TAMBON_NAMES, DISTRICT_NAME } from '@/lib/areaRef'
 import { fieldLabelsFor, legendFor } from '@/lib/detailLabels'
@@ -130,6 +130,7 @@ export async function GET(req: NextRequest) {
 
     // calcMode='percentIncrease' → เติมยอดปีฐานจาก kpi_baseline_year (ถ้ายังไม่เก็บ = ใช้ค่าคงที่ใน config)
     mapping = await applyBaselineToMapping(conn, kpiId, mapping, currentMophFiscalYear())
+    mapping = withRatePer(mapping, kpi.rate_per)
 
     // ── เดือนที่มี detail ──────────────────────────────────────────────────
     const [mRows] = await conn.execute(
