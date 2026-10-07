@@ -5,12 +5,15 @@ import { isValidDirection, VALID_DIRECTIONS } from '@/lib/kpiStatus'
 import { reportFreqOf } from '@/lib/fiscalQuarter'
 import type { MophMapping } from '@/lib/types'
 
-const VALID_CALC_MODES = new Set(['percent', 'sum', 'raw', 'noTarget', 'percentIncrease'])
+const VALID_CALC_MODES = new Set(['percent', 'sum', 'raw', 'noTarget', 'percentIncrease', 'percentDecrease'])
 
 /** Validate MophMapping ก่อน persist — คืน error message หรือ null ถ้า OK */
 function validateMophConfig(cfg: MophMapping): string | null {
   if (!VALID_CALC_MODES.has(cfg.calcMode)) {
-    return 'calcMode ต้องเป็น percent / sum / raw / noTarget / percentIncrease'
+    return 'calcMode ต้องเป็น percent / sum / raw / noTarget / percentIncrease / percentDecrease'
+  }
+  if (cfg.calcMode === 'percentDecrease' && (cfg.targetMode !== 'field' || !(cfg.targetFields?.length))) {
+    return 'percentDecrease ต้องระบุ targetFields (ค่าปีก่อน B) และ targetMode="field"'
   }
   // ค่าคงที่ปีฐาน: ไม่บังคับต้องมี (ปกติระบบอ่านจากตาราง kpi_baseline_year) แต่ถ้าจะใส่ ต้องครบชุด 3 ตัว
   // — ห้ามมีตัวเลขปีฐานลอยๆ ที่ไม่บอกว่าเป็นของปีไหน เพราะพอขึ้นปีงบใหม่จะถูกใช้ต่อเงียบๆ ผิดปี

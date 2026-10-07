@@ -26,7 +26,10 @@ const CALC_MODES = [
   { value: 'sum', label: 'ผลรวม (sum valueField)' },
   { value: 'raw', label: 'ค่าดิบ (ค่าแรกที่พบ)' },
   { value: 'noTarget', label: 'ติดตามเฉยๆ (ไม่ประเมินผ่าน/ไม่ผ่าน)' },
+  { value: 'percentDecrease', label: 'ร้อยละที่ลดลง ((ตัวส่วน B ปีก่อน − ตัวเศษ A ปีนี้) / B × 100)' },
 ]
+// โหมดที่ต้องมีตัวส่วน (targetFields) — percentDecrease ใช้ตัวส่วนเป็นค่าปีก่อน (B)
+const usesDenom = (cm: string) => cm === 'percent' || cm === 'percentDecrease'
 
 // Phase 4: ทิศทางการประเมิน KPI (evaluation_direction)
 const DIRECTIONS: { value: EvalDirection; label: string }[] = [
@@ -514,15 +517,15 @@ export default function AdminPage() {
     if (!mophKpiId) { showMsg('กรุณาเลือก KPI ก่อน', 'error'); return false }
     const trimmedVF = mophValueFields.map((f) => f.trim()).filter(Boolean)
     if (trimmedVF.length === 0) { showMsg('กรุณาระบุ Value Field อย่างน้อย 1 field', 'error'); return false }
-    if (mophCalcMode === 'percent' && mophDenomFields.filter((f) => f.trim()).length === 0) {
+    if (usesDenom(mophCalcMode) && mophDenomFields.filter((f) => f.trim()).length === 0) {
       showMsg('Calc Mode = percent ต้องระบุ Denominator Field อย่างน้อย 1 field', 'error'); return false
     }
 
     const mapping: MophMapping = {
       fieldMode:    mophFieldMode,
       valueFields:  trimmedVF,
-      targetMode:   mophCalcMode === 'percent' ? 'field' : 'none',
-      targetFields: mophCalcMode === 'percent' ? mophDenomFields.map((f) => f.trim()).filter(Boolean) : undefined,
+      targetMode:   usesDenom(mophCalcMode) ? 'field' : 'none',
+      targetFields: usesDenom(mophCalcMode) ? mophDenomFields.map((f) => f.trim()).filter(Boolean) : undefined,
       calcMode:     mophCalcMode as CalcMode,
       aggregate:    'sum',
     }
@@ -964,8 +967,8 @@ export default function AdminPage() {
                     />
                   </div>
 
-                  {/* Denominator — only percent */}
-                  {mophCalcMode === 'percent' && (
+                  {/* Denominator — percent / percentDecrease */}
+                  {usesDenom(mophCalcMode) && (
                     <div>
                       <label className="text-xs font-medium text-gray-600 mb-2 block">
                         ตัวส่วน (Denominator){' '}

@@ -464,6 +464,8 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    if (mapping.calcMode === 'percentDecrease' && !manual && !pctLabel) pctLabel = 'ร้อยละที่ลดลง (%)'
+
     // mapping ใช้ได้จริงไหม (KPI ที่ BLOCK จะ error → UI งดแสดง %)
     const engineCheck = computeMoph(allRows, mapping)
 

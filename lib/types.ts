@@ -101,7 +101,8 @@ export interface MonthlyData {
 export type FieldMode = 'singleField' | 'sumFields' | 'none'
 // CalcMode: percent (ตัวเศษ/ตัวส่วน×100) | sum (ผลรวม) | raw (ค่าดิบ) | noTarget (ติดตามเฉยๆ ไม่ประเมิน)
 //   | percentIncrease (%เพิ่มขึ้นเทียบปีฐานคงที่ — ดู baseNumerator/baseDenominator)
-export type CalcMode = 'percent' | 'sum' | 'raw' | 'noTarget' | 'percentIncrease'
+//   | percentDecrease (ร้อยละที่ลดลง = (ΣB−ΣA)/ΣB×100 · B=targetFields=ค่าปีก่อน · A=valueFields=ค่าปีนี้ อยู่ในแถวเดียวกัน)
+export type CalcMode = 'percent' | 'sum' | 'raw' | 'noTarget' | 'percentIncrease' | 'percentDecrease'
 // FieldType: ใช้จัดประเภท field จาก MOPH เพื่อ guard การเลือกผิด
 export type FieldType = 'measure' | 'target' | 'dimension' | 'time'
 

@@ -167,6 +167,16 @@ export function computeMoph(
         calcValue = +(((c2 - c1) / c1) * 100).toFixed(2)
       }
     }
+  } else if (mapping.calcMode === 'percentDecrease') {
+    // ร้อยละที่ลดลงจากปีก่อน — ตารางให้ทั้ง 2 ปีมาในแถวเดียวกัน (เช่น s_new_ckd5: b=รายใหม่ปีงบก่อน, a=รายใหม่ปีงบนี้)
+    // สูตรตามหน้ารายงาน HDC: ((B − A) / B) × 100 → ติดลบ = เพิ่มขึ้น
+    if (sumTarget === null) {
+      warnings.push('ไม่ระบุ target field (ค่าปีก่อน B) — ไม่สามารถคำนวณร้อยละที่ลดลงได้')
+    } else if (sumTarget === 0) {
+      warnings.push('ค่าปีก่อน (B) = 0 — คำนวณร้อยละที่ลดลงไม่ได้ (หารด้วย 0)')
+    } else {
+      calcValue = +(((sumTarget - sumValue) / sumTarget) * 100).toFixed(2)
+    }
   } else {
     // percent
     if (sumTarget === null) {
