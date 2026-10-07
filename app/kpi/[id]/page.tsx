@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, Cell } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, Cell, LabelList } from 'recharts'
 import Navbar from '@/components/Navbar'
 import ThaiMonthInput from '@/components/ThaiMonthInput'
 import QuarterSummary, { type MonthValue } from '@/components/QuarterSummary'
@@ -262,6 +262,8 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
   async function saveManualDetail() {
     for (const r of tRows) {
       const t = Number(r.target) || 0, a = Number(r.result) || 0
+      // เช็คติดลบก่อน — ไม่งั้น B ติดลบจะได้ข้อความ "A ต้องไม่เกิน B" ที่ชี้ผิดเรื่อง
+      if (t < 0 || a < 0) { setMMsg(`⚠️ ${r.name}: ค่าต้องไม่ติดลบ`); return }
       if (a > t) { setMMsg(`⚠️ ${r.name}: ผลงาน (A) ต้องไม่เกินฐาน (B)`); return }
     }
     // กันกดบันทึกทั้งที่ยังไม่กรอกอะไร → จะได้ 0% ปลอมที่ถูกประเมินจริง (เซิร์ฟเวอร์กันซ้ำอีกชั้น)
@@ -296,6 +298,7 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
       setMMsg(`⚠️ กรุณากรอกกลุ่มเป้าหมาย (B) และผลงาน (A) ใหม่ทั้งคู่ก่อนบันทึก — ค่าเดิม ${committedPct}${data?.kpi.unit} จะไม่ถูกนำมาใช้ต่ออัตโนมัติ`)
       return
     }
+    if (t < 0 || r < 0) { setMMsg('⚠️ ค่าต้องไม่ติดลบ'); return }
     if (r > t) { setMMsg('⚠️ ผลงาน (A) ต้องไม่เกินฐาน (B)'); return }
     // กันกดบันทึกทั้งที่ยังไม่กรอกอะไร → จะได้ 0 ปลอมที่ถูกประเมินจริง (เซิร์ฟเวอร์กันซ้ำอีกชั้น)
     if (t === 0) {
@@ -462,7 +465,15 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
 
   const chartData = manual
     ? liveRows.map((r) => ({ name: r.name, value: r.pct ?? 0, status: evaluateKpiStatus(r.pct ?? 0, target, direction ?? 'none').status }))
-    : groups.map((g) => ({ name: g.name, value: g.calcValue ?? 0, status: g.status ?? 'no_data' }))
+    : [
+        // แท่ง "รวม" นำหน้าแบบหน้ารายงาน HDC (groups.length===1 = KPI ระดับอำเภอล้วน แถวเดียวคือยอดรวมอยู่แล้ว)
+        ...(total && groups.length > 1 ? [{ name: 'รวม', value: total.calcValue, status: total.status ?? 'no_data' }] : []),
+        // ไม่มีข้อมูล = null (ไม่วาดแท่ง) — เดิมแปลงเป็น 0 ทำให้ "ไม่มีข้อมูล" กับ "ได้ 0%" หน้าตาเหมือนกัน
+        ...groups.map((g) => ({ name: g.name, value: g.calcValue, status: g.status ?? 'no_data' })),
+      ]
+  // ป้ายตัวเลขบนแท่ง — แท่งที่เป็น 0 จะได้มีตัวเลขบอก ไม่ดูเหมือนข้อมูลหาย
+  const barLabel = (v: unknown) => (v === null || v === undefined ? '' : `${Number(v).toFixed(2)}${data?.kpi.unit === '%' ? '%' : ''}`)
+  const chartHasNegative = chartData.some((d) => (d.value ?? 0) < 0)
 
   function setRow(code: string, field: 'target' | 'result', val: string) {
     setTRows((prev) => prev.map((r) => (r.code === code ? { ...r, [field]: val } : r)))
@@ -889,14 +900,19 @@ export default function KpiDetailPage({ params }: { params: { id: string } }) {
                       <BarChart data={chartData} margin={{ top: 16, right: 16, bottom: 4, left: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} />
                         <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                        <YAxis tick={{ fontSize: 12 }} />
+                        {/* เผื่อขอบบน/ล่าง ~15% ให้ป้ายตัวเลขของแท่งสูงสุด/ต่ำสุดไม่ถูกตัด */}
+                        <YAxis tick={{ fontSize: 12 }}
+                          tickCount={5}
+                          domain={[(min: number) => Math.min(0, Math.floor((min * 1.15) / 20) * 20), (max: number) => Math.max(0, Math.ceil((max * 1.15) / 20) * 20)]} />
                         <Tooltip formatter={(v) => [`${v} ${data.kpi.unit}`]} />
                         {target > 0 && direction !== 'none' && (
                           <ReferenceLine y={target} stroke="#dc2626" strokeDasharray="6 4"
                             label={{ value: `เกณฑ์การประเมิน ${target}`, fill: '#dc2626', fontSize: 12, position: 'insideTopRight' }} />
                         )}
-                        <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                          {chartData.map((d, i) => <Cell key={i} fill={BAR_COLOR[d.status] ?? '#3b82f6'} />)}
+                        {chartHasNegative && <ReferenceLine y={0} stroke="#6b7280" />}
+                        <Bar dataKey="value" maxBarSize={90}>
+                          {chartData.map((d, i) => <Cell key={i} fill={BAR_COLOR[d.status] ?? '#3b82f6'} fillOpacity={d.name === 'รวม' ? 1 : 0.85} />)}
+                          <LabelList dataKey="value" position="top" formatter={barLabel} style={{ fontSize: 11, fill: '#374151' }} />
                         </Bar>
                       </BarChart>
                     </ResponsiveContainer>

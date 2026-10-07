@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { COOKIE_NAME, verifySession } from '@/lib/auth'
-import { canEditManualKpi, isEditableMonth, monthLockMessage } from '@/lib/kpiOwnership'
+import { canEditManualKpi, isEditableMonth, isValidMonth, monthLockMessage } from '@/lib/kpiOwnership'
 
 /**
  * L2 — บันทึกเชิงคุณภาพต่อรอบ (ปัญหาอุปสรรค / แนวทางดำเนินงานต่อไป / แหล่งที่มาข้อมูล)
@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
   if (!kpiId || !period) {
     return NextResponse.json({ message: 'ต้องระบุ kpiId และ period' }, { status: 400 })
   }
-  if (!/^\d{4}-\d{2}$/.test(String(period))) {
+  if (!isValidMonth(period)) {
     return NextResponse.json({ message: 'period ต้องอยู่ในรูปแบบ YYYY-MM' }, { status: 400 })
   }
 

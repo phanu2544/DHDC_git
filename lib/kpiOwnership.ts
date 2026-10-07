@@ -36,6 +36,15 @@ export function monthLockMessage(): string {
 }
 
 /**
+ * รูปแบบเดือน YYYY-MM ที่ถูกต้อง (เดือน 01-12) — ใช้กับทุกเส้นที่เขียนข้อมูลรายเดือน
+ * admin ข้ามล็อกเดือนได้ (isEditableMonth คืน true เสมอ) จึงต้องตรวจรูปแบบแยก
+ * ไม่งั้นส่ง "2026-13"/"abc" แล้วได้แถวขยะลง DB (เจอจากการทดสอบ 7 ต.ค. 2569)
+ */
+export function isValidMonth(month: unknown): boolean {
+  return typeof month === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(month)
+}
+
+/**
  * เดือนนี้แก้ไขได้ไหม — เวลาปัจจุบันคำนวณจากเซิร์ฟเวอร์เอง ไม่เชื่อ client
  * admin ทุกเดือน (รวมย้อนหลัง) · staff เฉพาะเดือนปัจจุบัน (owner ขอ 2026-07-20)
  */

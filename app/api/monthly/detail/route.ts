@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { COOKIE_NAME, verifySession } from '@/lib/auth'
 import { isManualEntry, parseManualNumber } from '@/lib/manualKpi'
-import { canEditManualKpi, isEditableMonth, monthLockMessage } from '@/lib/kpiOwnership'
+import { canEditManualKpi, isEditableMonth, isValidMonth, monthLockMessage } from '@/lib/kpiOwnership'
 import { HOSPCODE_NAMES, hospcodeNameOf } from '@/lib/areaRef'
 
 /**
@@ -25,14 +25,23 @@ export async function POST(req: NextRequest) {
   if (!kpiId || !month || !Array.isArray(rows)) {
     return NextResponse.json({ message: 'ต้องระบุ kpiId, month, rows' }, { status: 400 })
   }
+  if (!isValidMonth(month)) {
+    return NextResponse.json({ message: `เดือนไม่ถูกต้อง: "${month}" — ต้องเป็นรูปแบบ YYYY-MM` }, { status: 400 })
+  }
 
   // validate แต่ละหน่วย: hospcode รู้จัก (ในเขต 6611), ตัวเลข ≥0, result ≤ target
   const clean: { hospcode: string; target: number; result: number }[] = []
+  const seen = new Set<string>()
   for (const r of rows) {
     const hospcode = String(r.hospcode ?? '').trim()
     if (!Object.prototype.hasOwnProperty.call(HOSPCODE_NAMES, hospcode)) {
       return NextResponse.json({ message: `หน่วยบริการไม่ถูกต้อง: "${hospcode}" — รับเฉพาะหน่วยในอำเภอดงเจริญ` }, { status: 400 })
     }
+    // หน่วยซ้ำ → เดิมพังเป็น 500 (unique key ของ moph_monthly_detail) พร้อมข้อความ DB ดิบ
+    if (seen.has(hospcode)) {
+      return NextResponse.json({ message: `${hospcodeNameOf(hospcode)} ถูกส่งมาซ้ำ — กรอกได้หน่วยละ 1 แถว` }, { status: 400 })
+    }
+    seen.add(hospcode)
     let target: number, result: number
     try {
       target = parseManualNumber(r.target, `${hospcodeNameOf(hospcode)}: ฐาน (B)`)

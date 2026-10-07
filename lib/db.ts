@@ -26,6 +26,16 @@ const createPool = () => mysql.createPool({
  */
 const g = globalThis as typeof globalThis & { __dhdcPool?: ReturnType<typeof createPool> }
 const pool = g.__dhdcPool ?? createPool()
+if (!g.__dhdcPool) {
+  // ⚠️ บังคับ time_zone ของทุก connection ให้ตรงกับเวลาที่ Node ใช้แปลงค่า (mysql2 default = local)
+  // คอลัมน์ TIMESTAMP ทั้งหมด (entered_at/changed_at/run_at/...) DB เก็บเป็น UTC แล้วคืนค่าตาม time_zone ของ session
+  // dev MariaDB ตั้ง global time_zone='+00:00' → คืนเวลา UTC แต่ mysql2 อ่านเป็นเวลาไทย
+  // → "บันทึกแล้วโดย…" แสดงเร็วกว่าจริง 7 ชม. (เจอจากการทดสอบ 7 ต.ค. 2569)
+  // ตั้งที่ session = ถูกต้องไม่ว่า server จะตั้ง global ไว้แบบไหน · ข้อมูลเดิมไม่ต้องย้าย (TIMESTAMP เก็บ UTC อยู่แล้ว)
+  // คอลัมน์ DATE (เช่น deadline) ไม่มีการแปลง time zone ฝั่ง DB → ไม่กระทบ
+  const tz = process.env.DB_TIMEZONE || '+07:00'
+  pool.pool.on('connection', (conn) => { conn.query(`SET time_zone = '${tz.replace(/'/g, '')}'`) })
+}
 if (process.env.NODE_ENV !== 'production') g.__dhdcPool = pool
 
 export default pool

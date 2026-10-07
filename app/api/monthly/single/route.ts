@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { COOKIE_NAME, verifySession } from '@/lib/auth'
 import { isManualEntry, manualScopeOf, parseManualNumber } from '@/lib/manualKpi'
-import { canEditManualKpi, isEditableMonth, monthLockMessage } from '@/lib/kpiOwnership'
+import { canEditManualKpi, isEditableMonth, isValidMonth, monthLockMessage } from '@/lib/kpiOwnership'
 
 /**
  * POST /api/monthly/single — บันทึกค่า manual แบบ "ค่าเดียว" (ไม่แยกราย รพ.สต.)
@@ -20,6 +20,9 @@ export async function POST(req: NextRequest) {
   const { kpiId, month, target, result, valueText } = await req.json()
   if (!kpiId || !month) {
     return NextResponse.json({ message: 'ต้องระบุ kpiId, month' }, { status: 400 })
+  }
+  if (!isValidMonth(month)) {
+    return NextResponse.json({ message: `เดือนไม่ถูกต้อง: "${month}" — ต้องเป็นรูปแบบ YYYY-MM` }, { status: 400 })
   }
 
   // audit: ผู้กรอกจาก session (ไม่เชื่อ client)
