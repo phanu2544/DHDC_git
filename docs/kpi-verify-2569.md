@@ -89,6 +89,7 @@
 - **(2) DELETE (kpi,month) ก่อน insert ใน transaction** — กัน orphan row จาก batch ก่อน (พื้นที่ที่ MOPH เลิกคืน/เปลี่ยน key) ค้างสะสม → detail = batch ล่าสุดเป๊ะ
 - **ผล (re-batch 3 ตัว scope 6611, backup `_resync_backup/detail-aggregate-fix-2026-06-30/`):**
   - `s_childdev_specialpp` (DSPM): Scorecard **62.42** = drilldown 62.42 ✅ (เดิม 60.00, multi-row)
+    - 🔴 **แก้ 9 ต.ค. 69:** 62.42 คือ **ร้อยละการคัดกรอง** ไม่ใช่สมวัย (mapping `result_*/target_*`) → สูตรที่ถูก = (`1b260_1_*` + `1b260_2_*`) / `target_*` = **59.01** (มิ.ย./ก.ค.) · **79.44** (ก.ย.) — ดู HANDOFF
   - `s_cervix_screen_n66`: Scorecard 153 = drilldown 153 ✅ (เดิม drilldown 306, orphan 2→1 row) · ⚠️ ค่า 153% ยังเป็น % เสีย (ไม่มีตัวหารประชากร) — รอ owner ตัดสินใจ count ราย (packet ข้อ 8)
   - `s_ncd_bp`: Scorecard **53.24** = drilldown 53.24 ✅ (เดิม 55.09, orphan 23→12 row) · ⚠️ ค่าขยับ 54.96→53.24 (re-batch ดึง MOPH ปัจจุบัน, mapping a1/b1 ที่ owner รับรองไม่เปลี่ยน)
 - **verify:** full scan 36/36 OK 0 DIFF · control (anemia/colon/epi2/…) ไม่เปลี่ยน (1 row/พื้นที่ = no-op) · KPI ปกติ 34 ตัว detail เดิมถูกอยู่แล้ว (cron รอบหน้าจะ apply logic ใหม่เอง)
