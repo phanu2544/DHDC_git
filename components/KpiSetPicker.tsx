@@ -1,6 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import ScoreBandsEditor from './ScoreBandsEditor'
+import type { ScoreBands } from '@/lib/rankingScore'
 
 /**
  * KpiSetPicker — เลือกว่า KPI นี้อยู่ชุด/ประเภทไหน (docs/kpi-sets-plan.md K3)
@@ -8,17 +10,21 @@ import { useEffect, useState } from 'react'
  * ต่างจาก WorkGroupPicker: ติ๊กแล้วมีช่องกรอก "เลขข้อ" (set_code) ต่อชุด เช่น ตรวจราชการ "1.5"
  * value = { setId, setCode }[] — ส่งเข้า PUT /api/kpis/[id] field `sets`
  */
-type PickItem = { setId: number; setCode: string; targetRegion?: string; targetProvince?: string; targetHospital?: string }
+// weight/scoreBands = ระบบคะแนน Ranking (L7) · ส่ง null = ล้างคะแนนของชุดนั้น · ไม่มี key = คงค่าเดิม (ดู PUT /api/kpis/[id])
+type PickItem = { setId: number; setCode: string; targetRegion?: string; targetProvince?: string; targetHospital?: string; weight?: number | null; scoreBands?: ScoreBands | null }
 type ApiSet = { id: number; name: string; slug: string; fiscalYear: string | null }
 
 export default function KpiSetPicker({
-  value, onChange,
+  value, onChange, kpiOptions,
 }: {
   value: PickItem[]
   onChange: (items: PickItem[]) => void
+  kpiOptions?: string[]   // ตัวเลือกผลงานของ KPI (ชนิดระดับ/ข้อความ) — ให้ตัวแก้เกณฑ์เตือนเมื่อไม่ตรง
 }) {
   const [sets, setSets] = useState<ApiSet[]>([])
   const [loading, setLoading] = useState(true)
+  // ชุดที่เปิดส่วน "ให้คะแนน" ไว้ (แม้ยังไม่ได้กรอกอะไร) — ชุดที่มีน้ำหนัก/เกณฑ์อยู่แล้วเปิดให้เสมอ
+  const [scoringOpen, setScoringOpen] = useState<Set<number>>(new Set())
 
   useEffect(() => {
     fetch('/api/kpi-sets')
@@ -35,6 +41,13 @@ export default function KpiSetPicker({
   }
   function patch(id: number, field: keyof PickItem, val: string) {
     onChange(value.map((v) => (v.setId === id ? { ...v, [field]: val } : v)))
+  }
+  function patchScore(id: number, weight: number | null, scoreBands: ScoreBands | null) {
+    onChange(value.map((v) => (v.setId === id ? { ...v, weight, scoreBands } : v)))
+  }
+  function toggleScoring(id: number, on: boolean) {
+    setScoringOpen((prev) => { const n = new Set(prev); if (on) n.add(id); else n.delete(id); return n })
+    if (!on) patchScore(id, null, null)   // ปิด = ล้างน้ำหนัก+เกณฑ์ของชุดนี้ตอนบันทึก
   }
 
   if (loading) return <p className="text-xs text-gray-400 italic">กำลังโหลดชุดตัวชี้วัด...</p>
@@ -72,6 +85,21 @@ export default function KpiSetPicker({
                   <input value={p.targetProvince ?? ''} onChange={(e) => patch(s.id, 'targetProvince', e.target.value)} placeholder="≥ 95%" className={tField} /></div>
               </div>
             )}
+            {p && (() => {
+              const on = scoringOpen.has(s.id) || p.weight != null || p.scoreBands != null
+              return (
+                <div className="pl-1 mt-1.5">
+                  <label className="flex items-center gap-1.5 text-[11px] text-gray-600 cursor-pointer w-fit">
+                    <input type="checkbox" checked={on} onChange={(e) => toggleScoring(s.id, e.target.checked)} />
+                    ให้คะแนน 1-5 × น้ำหนัก (เช่น Ranking)
+                  </label>
+                  {on && (
+                    <ScoreBandsEditor key={s.id} weight={p.weight} bands={p.scoreBands} kpiOptions={kpiOptions}
+                      onChange={(w, b) => patchScore(s.id, w, b)} />
+                  )}
+                </div>
+              )
+            })()}
           </div>
         )
       })}

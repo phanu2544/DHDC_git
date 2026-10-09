@@ -4,6 +4,7 @@ import { classifyField } from '@/lib/mophEngine'
 import { isValidDirection, VALID_DIRECTIONS } from '@/lib/kpiStatus'
 import { reportFreqOf } from '@/lib/fiscalQuarter'
 import type { MophMapping } from '@/lib/types'
+import { parseScoreBands } from '@/lib/rankingScore'
 
 const VALID_CALC_MODES = new Set(['percent', 'sum', 'raw', 'noTarget', 'percentIncrease', 'percentDecrease'])
 
@@ -133,6 +134,17 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   const hasWorkGroups = Array.isArray(workGroups)
   // sets: ส่งมา = แทนที่ทั้งชุด · แต่ละตัว { setId:number, setCode?:string } (docs/kpi-sets-plan.md K3)
   const hasSets = Array.isArray(sets)
+  // L7: ตรวจน้ำหนัก/เกณฑ์คะแนนก่อนเริ่ม transaction — รูปแบบผิดต้อง 400 ไม่ใช่เก็บ JSON เสียลง DB เงียบๆ
+  if (hasSets) {
+    for (const s of sets as { setId: unknown; weight?: unknown; scoreBands?: unknown }[]) {
+      if (s && s.weight != null && !(Number.isFinite(Number(s.weight)) && Number(s.weight) > 0 && Number(s.weight) <= 100)) {
+        return NextResponse.json({ message: `น้ำหนักของชุด ${s.setId} ต้องเป็นตัวเลข 0-100` }, { status: 400 })
+      }
+      if (s && s.scoreBands != null && !parseScoreBands(s.scoreBands)) {
+        return NextResponse.json({ message: `เกณฑ์คะแนนของชุด ${s.setId} รูปแบบไม่ถูกต้อง` }, { status: 400 })
+      }
+    }
+  }
 
   const conn = await pool.getConnection()
   try {
@@ -186,22 +198,30 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     let setsWarning: string | null = null
     if (hasSets) {
       try {
+        // L7: น้ำหนัก/เกณฑ์คะแนน Ranking ไม่ได้อยู่ในฟอร์มแก้ไข KPI → เก็บของเดิมไว้ก่อน DELETE แล้วคืนให้ชุดเดิม
+        // (ไม่งั้นแค่แก้ชื่อ KPI ก็ลบน้ำหนัก+เกณฑ์ทิ้งเงียบๆ) · ถ้า payload ส่ง weight/scoreBands มาเอง = ใช้ค่าที่ส่งมา
+        const [prevRows] = await conn.execute('SELECT set_id, weight, score_bands FROM kpi_set_items WHERE kpi_id=?', [params.id])
+        const prevScore = new Map((prevRows as { set_id: number; weight: string | null; score_bands: string | null }[])
+          .map((r) => [Number(r.set_id), { weight: r.weight, bands: r.score_bands }]))
         await conn.execute('DELETE FROM kpi_set_items WHERE kpi_id=?', [params.id])
-        type SetIn = { setId: number; setCode?: string; targetRegion?: string; targetProvince?: string; targetHospital?: string }
+        type SetIn = { setId: number; setCode?: string; targetRegion?: string; targetProvince?: string; targetHospital?: string; weight?: number | null; scoreBands?: unknown }
         const trim = (v?: string) => (v?.toString().trim() || null)
         // กัน setId ซ้ำ (PK = kpi_id+set_id) — เก็บตัวสุดท้าย
         const items = (sets as SetIn[])
           .filter((s) => s && Number.isInteger(Number(s.setId)))
           .reduce((acc, s) => {
-            acc.set(Number(s.setId), { code: trim(s.setCode), reg: trim(s.targetRegion), prov: trim(s.targetProvince), hosp: trim(s.targetHospital) })
+            const prev = prevScore.get(Number(s.setId))
+            const weight = 'weight' in s ? (s.weight == null ? null : Number(s.weight)) : (prev?.weight ?? null)
+            const bands = 'scoreBands' in s ? (s.scoreBands == null ? null : JSON.stringify(s.scoreBands)) : (prev?.bands ?? null)
+            acc.set(Number(s.setId), { code: trim(s.setCode), reg: trim(s.targetRegion), prov: trim(s.targetProvince), hosp: trim(s.targetHospital), weight, bands })
             return acc
-          }, new Map<number, { code: string | null; reg: string | null; prov: string | null; hosp: string | null }>())
+          }, new Map<number, { code: string | null; reg: string | null; prov: string | null; hosp: string | null; weight: number | string | null; bands: string | null }>())
         if (items.size > 0) {
           const entries = [...items.entries()]
-          const placeholders = entries.map(() => '(?,?,?,?,?,?)').join(',')
-          const values = entries.flatMap(([setId, t]) => [params.id, setId, t.code, t.reg, t.prov, t.hosp])
+          const placeholders = entries.map(() => '(?,?,?,?,?,?,?,?)').join(',')
+          const values = entries.flatMap(([setId, t]) => [params.id, setId, t.code, t.reg, t.prov, t.hosp, t.weight, t.bands])
           await conn.execute(
-            `INSERT INTO kpi_set_items (kpi_id, set_id, set_code, target_region, target_province, target_hospital) VALUES ${placeholders}`,
+            `INSERT INTO kpi_set_items (kpi_id, set_id, set_code, target_region, target_province, target_hospital, weight, score_bands) VALUES ${placeholders}`,
             values,
           )
         }

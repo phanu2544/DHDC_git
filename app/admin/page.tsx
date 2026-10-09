@@ -8,6 +8,7 @@ import WorkGroupManager from '@/components/WorkGroupManager'
 import KpiSetManager from '@/components/KpiSetManager'
 import WorkGroupPicker from '@/components/WorkGroupPicker'
 import KpiSetPicker from '@/components/KpiSetPicker'
+import type { ScoreBands } from '@/lib/rankingScore'
 import ThaiMonthInput from '@/components/ThaiMonthInput'
 import { useAuth } from '@/lib/useAuth'
 import { formatThaiMonth } from '@/lib/formatMonth'
@@ -141,7 +142,7 @@ const PROVINCES = [
 
 // ฟอร์มเก็บ sets เป็น write-shape { setId, setCode } (ต่างจาก KPIReport.sets ที่เป็น read-shape KpiSetTag[])
 // เพราะ picker/PUT ใช้ setId+setCode ส่วนตาราง/GET ใช้ id/name/slug
-type KpiFormState = Omit<KPIReport, 'id' | 'sets'> & { sets: { setId: number; setCode: string; targetRegion?: string; targetProvince?: string; targetHospital?: string }[] }
+type KpiFormState = Omit<KPIReport, 'id' | 'sets'> & { sets: { setId: number; setCode: string; targetRegion?: string; targetProvince?: string; targetHospital?: string; weight?: number | null; scoreBands?: ScoreBands | null }[] }
 
 function emptyForm(): KpiFormState {
   return { name: '', category: '', mophUrl: '', mophTable: '', mophValueField: '', mophTargetField: 'target', mophCalcMode: 'percent', direction: 'gte', manualEntry: false, manualScope: 'unit', dataSource: 'HDC', measureType: 'numeric', textOptions: '', workGroups: [], sets: [], owner: '', deadline: '', status: 'in_progress', target: 0, unit: '%', description: '', ratePer: 100 }
@@ -305,7 +306,8 @@ export default function AdminPage() {
       textOptions: kpi.textOptions ?? '',
       workGroups: kpi.workGroups ?? [],
       sets: (kpi.sets ?? []).map((s) => ({ setId: s.id, setCode: s.setCode ?? '',
-        targetRegion: s.targetRegion ?? '', targetProvince: s.targetProvince ?? '', targetHospital: s.targetHospital ?? '' })),
+        targetRegion: s.targetRegion ?? '', targetProvince: s.targetProvince ?? '', targetHospital: s.targetHospital ?? '',
+        weight: s.weight ?? null, scoreBands: s.scoreBands ?? null })),
       owner: kpi.owner, deadline: kpi.deadline, status: kpi.status,
       target: kpi.target, unit: kpi.unit, description: kpi.description ?? '',
       // DECIMAL column กลับมาเป็น string จาก mysql2 (เช่น "100000.00") — <select> match ด้วย string เป๊ะ
@@ -1638,7 +1640,9 @@ export default function AdminPage() {
               </Field>
 
               <Field label="ชุด/ประเภทตัวชี้วัด (เลือกได้หลายชุด)">
-                <KpiSetPicker value={form.sets} onChange={(s) => setForm({ ...form, sets: s })} />
+                <KpiSetPicker value={form.sets} onChange={(s) => setForm({ ...form, sets: s })}
+                  kpiOptions={form.measureType === 'level' || form.measureType === 'text'
+                    ? (form.textOptions ?? '').split('\n').map((x) => x.trim()).filter(Boolean) : undefined} />
               </Field>
 
               <Field label="แหล่งข้อมูล">

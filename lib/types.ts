@@ -1,3 +1,4 @@
+import type { ScoreBands } from './rankingScore'
 export type UserRole = 'admin' | 'staff'
 export type KPIStatus = 'completed' | 'in_progress' | 'overdue'
 export type KPICategory = string
@@ -24,6 +25,9 @@ export interface KpiSetTag {
   targetRegion?: string | null    // เป้าเขต เช่น '≥ ร้อยละ 95'
   targetProvince?: string | null  // เป้าจังหวัด
   targetHospital?: string | null  // เป้า รพ.
+  // L7 Ranking: น้ำหนัก + เกณฑ์คะแนน 1-5 ต่อชุด (null = ชุดนี้ไม่ใช้ระบบคะแนน) — ดู lib/rankingScore.ts
+  weight?: number | null
+  scoreBands?: ScoreBands | null
 }
 
 export interface KPIReport {

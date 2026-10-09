@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { PoolConnection } from 'mysql2/promise'
+import { parseScoreBands, type ScoreBands } from '@/lib/rankingScore'
 import pool from '@/lib/db'
 import { isValidDirection, VALID_DIRECTIONS } from '@/lib/kpiStatus'
 import { reportFreqOf } from '@/lib/fiscalQuarter'
@@ -32,17 +33,19 @@ async function attachWorkGroups(conn: PoolConnection, rows: Record<string, unkno
 async function attachSets(conn: PoolConnection, rows: Record<string, unknown>[]) {
   try {
     const [siRows] = await conn.execute(
-      `SELECT i.kpi_id, i.set_code, i.target_region, i.target_province, i.target_hospital, s.id, s.name, s.slug
+      `SELECT i.kpi_id, i.set_code, i.target_region, i.target_province, i.target_hospital, i.weight, i.score_bands, s.id, s.name, s.slug
          FROM kpi_set_items i JOIN kpi_sets s ON s.id = i.set_id
          ORDER BY s.sort_order ASC, s.id ASC`,
     )
-    type SiRow = { kpi_id: string; set_code: string | null; target_region: string | null; target_province: string | null; target_hospital: string | null; id: number; name: string; slug: string }
-    type Tag = { id: number; name: string; slug: string; setCode: string | null; targetRegion: string | null; targetProvince: string | null; targetHospital: string | null }
+    type SiRow = { kpi_id: string; set_code: string | null; target_region: string | null; target_province: string | null; target_hospital: string | null; weight: string | null; score_bands: string | null; id: number; name: string; slug: string }
+    type Tag = { id: number; name: string; slug: string; setCode: string | null; targetRegion: string | null; targetProvince: string | null; targetHospital: string | null; weight: number | null; scoreBands: ScoreBands | null }
     const map = new Map<string, Tag[]>()
     for (const r of siRows as SiRow[]) {
       if (!map.has(r.kpi_id)) map.set(r.kpi_id, [])
       map.get(r.kpi_id)!.push({ id: r.id, name: r.name, slug: r.slug, setCode: r.set_code,
-        targetRegion: r.target_region, targetProvince: r.target_province, targetHospital: r.target_hospital })
+        targetRegion: r.target_region, targetProvince: r.target_province, targetHospital: r.target_hospital,
+        // DECIMAL มาเป็น string ("3.0") จาก mysql2 → Number ก่อน (บทเรียน HANDOFF §6)
+        weight: r.weight != null ? Number(r.weight) : null, scoreBands: parseScoreBands(r.score_bands) })
     }
     return rows.map((row) => ({ ...row, sets: map.get(row.id as string) ?? [] }))
   } catch {

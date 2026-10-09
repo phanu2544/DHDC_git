@@ -215,6 +215,8 @@ export async function POST(req: NextRequest) {
         target_region VARCHAR(100) NULL,
         target_province VARCHAR(100) NULL,
         target_hospital VARCHAR(100) NULL,
+        weight DECIMAL(4,1) NULL,
+        score_bands TEXT NULL,
         sort_order INT DEFAULT 0,
         PRIMARY KEY (kpi_id, set_id),
         KEY idx_ksi_set (set_id),
@@ -226,6 +228,9 @@ export async function POST(req: NextRequest) {
     await conn.execute('ALTER TABLE kpi_set_items ADD COLUMN IF NOT EXISTS target_region VARCHAR(100) NULL AFTER set_code').catch(() => {})
     await conn.execute('ALTER TABLE kpi_set_items ADD COLUMN IF NOT EXISTS target_province VARCHAR(100) NULL AFTER target_region').catch(() => {})
     await conn.execute('ALTER TABLE kpi_set_items ADD COLUMN IF NOT EXISTS target_hospital VARCHAR(100) NULL AFTER target_province').catch(() => {})
+    // L7: ระบบคะแนน Ranking — น้ำหนัก (2/3) + เกณฑ์คะแนน 1-5 (JSON · lib/rankingScore.ts) ต่อ (kpi,set) · ชุดอื่นเป็น NULL
+    await conn.execute('ALTER TABLE kpi_set_items ADD COLUMN IF NOT EXISTS weight DECIMAL(4,1) NULL AFTER target_hospital').catch(() => {})
+    await conn.execute('ALTER TABLE kpi_set_items ADD COLUMN IF NOT EXISTS score_bands TEXT NULL AFTER weight').catch(() => {})
     // seed 5 ชุดเริ่มต้น [name, slug, fiscal_year] — ตรวจราชการ/Ranking ผูกปีงบ, ที่เหลือใช้ยาว (NULL)
     const DEFAULT_KPI_SETS: [string, string, string | null][] = [
       ['ตัวชี้วัดตรวจราชการ เขต 3', 'inspection-r3', '2569'],

@@ -12,7 +12,17 @@ import { STATUS_META } from '@/lib/kpiStatus'
 import { detailViewHref } from '@/lib/detailView'
 import { formatThaiMonth } from '@/lib/formatMonth'
 import { quarterInfoOfMonth } from '@/lib/fiscalQuarter'
+import { scoreFor, rankingTotal, type ScoreBands } from '@/lib/rankingScore'
 import type { KPIReport, KpiEvalStatus, MonthlyData } from '@/lib/types'
+
+// คะแนน Ranking 0-5 → สี (0 = ต่ำกว่าเกณฑ์คะแนน 1)
+const SCORE_BADGE = ['bg-red-100 text-red-700', 'bg-red-100 text-red-700', 'bg-orange-100 text-orange-700', 'bg-amber-100 text-amber-700', 'bg-lime-100 text-lime-700', 'bg-green-100 text-green-700']
+
+/** เกณฑ์คะแนนแบบอ่านง่าย (tooltip) */
+function bandsText(b: ScoreBands | null | undefined): string {
+  if (!b) return 'ยังไม่ได้ตั้งเกณฑ์คะแนน'
+  return [...b.bands].sort((x, y) => x.score - y.score).map((x) => `${x.score} คะแนน = ${x.label ?? ''}`).join('\n')
+}
 
 const STATUS_BADGE: Record<KpiEvalStatus, string> = {
   fail: 'bg-red-100 text-red-700', watch: 'bg-amber-100 text-amber-700',
@@ -59,6 +69,18 @@ export default function SetDetailPage() {
     return summarizeSets(rows, sets).find((s) => s.set.slug === slug) ?? null
   }, [kpis, monthly, latestMonth, sets, slug])
 
+  // L7 — ชุดที่มีน้ำหนัก (Ranking) แสดงคะแนน 1-5 × น้ำหนัก แทนผ่าน/ไม่ผ่าน · ชุดอื่นไม่มีน้ำหนัก = หน้าเดิม
+  const ranking = useMemo(() => {
+    if (!summary) return null
+    const items = summary.rows.map((r) => {
+      const tag = r.kpi.sets?.find((s) => s.id === summary.set.id)
+      const res = scoreFor(tag?.scoreBands ?? null, r.value, r.valueText ?? null)
+      return { id: r.kpi.id, weight: tag?.weight ?? null, ...res }
+    })
+    if (!items.some((it) => it.weight != null)) return null
+    return { byId: new Map(items.map((it) => [it.id, it])), total: rankingTotal(items) }
+  }, [summary])
+
   // L6 — ส่งออกกลับเป็นฟอร์มตรวจราชการ (แทนการกรอก Excel ซ้ำ)
   // หมายเหตุเชิงคุณภาพอยู่คนละตาราง (kpi_period_notes) → ดึงทั้งรอบทีเดียวตอนกด ไม่ถ่วงตอนเปิดหน้า
   async function handleExport() {
@@ -99,7 +121,8 @@ export default function SetDetailPage() {
               <div className="flex items-center gap-2 flex-wrap mt-2">
                 <p className="text-gray-500 text-sm">
                   {summary.total} ตัวชี้วัด
-                  {summary.evaluated > 0 && <> · <b className="text-gray-700">ผ่าน {summary.pass}/{summary.evaluated} ที่ประเมิน</b></>}
+                  {/* ชุด Ranking ประเมินด้วยคะแนน 1-5 (การ์ดด้านล่าง) — จำนวนผ่าน/ไม่ผ่านไม่มีความหมาย */}
+                  {!ranking && summary.evaluated > 0 && <> · <b className="text-gray-700">ผ่าน {summary.pass}/{summary.evaluated} ที่ประเมิน</b></>}
                 </p>
                 {months.length > 0 && (
                   <label className="flex items-center gap-1.5 text-sm text-gray-500">
@@ -127,6 +150,31 @@ export default function SetDetailPage() {
               </div>
             </div>
 
+            {ranking && (
+              <div className="bg-white rounded-xl shadow-sm border p-5 mb-4 flex flex-wrap items-end gap-x-8 gap-y-3">
+                <div>
+                  <div className="text-xs text-gray-500">คะแนน Ranking (ถ่วงน้ำหนัก)</div>
+                  <div className="text-3xl font-bold text-indigo-700 tabular-nums">
+                    {ranking.total.total.toFixed(2)}
+                    <span className="text-base font-medium text-gray-400"> / {ranking.total.fullWeight}</span>
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500">คิดเป็นเต็ม 100</div>
+                  <div className="text-xl font-semibold text-gray-800 tabular-nums">
+                    {ranking.total.fullWeight > 0 ? ((ranking.total.total / ranking.total.fullWeight) * 100).toFixed(2) : '—'}
+                  </div>
+                </div>
+                <div className="text-sm text-gray-500">
+                  ได้คะแนนแล้ว <b className="text-gray-700">{ranking.total.scored}/{ranking.total.items}</b> ข้อ
+                  {ranking.total.scored < ranking.total.items && (
+                    <div className="text-xs text-amber-700">ข้อที่ยังไม่มีผลงานยังไม่ถูกนับ — ถ้าได้คะแนนเต็มทุกข้อที่มีผลงาน = {ranking.total.maxPossible}</div>
+                  )}
+                </div>
+                <div className="text-xs text-gray-400 basis-full">คะแนนแต่ละข้อ 1-5 ตามเกณฑ์ของชุด × น้ำหนัก ÷ 5 · ชี้ที่คะแนนเพื่อดูเกณฑ์</div>
+              </div>
+            )}
+
             {summary.total === 0 ? (
               <div className="bg-white rounded-xl border p-10 text-center text-gray-400">
                 ยังไม่มีตัวชี้วัดในชุดนี้ — ผูกได้ที่ /admin แท็บ KPI → แก้ไข KPI → ช่อง &quot;ชุด/ประเภทตัวชี้วัด&quot;
@@ -141,7 +189,15 @@ export default function SetDetailPage() {
                         <th className="text-left px-4 py-3 font-medium text-gray-600">ตัวชี้วัด</th>
                         <th className="text-right px-4 py-3 font-medium text-gray-600">ผล</th>
                         <th className="text-right px-4 py-3 font-medium text-gray-600">เป้า</th>
-                        <th className="text-center px-4 py-3 font-medium text-gray-600">สถานะ</th>
+                        {ranking ? (
+                          <>
+                            <th className="text-center px-3 py-3 font-medium text-gray-600">คะแนน</th>
+                            <th className="text-center px-3 py-3 font-medium text-gray-600">น้ำหนัก</th>
+                            <th className="text-right px-4 py-3 font-medium text-gray-600">ถ่วง</th>
+                          </>
+                        ) : (
+                          <th className="text-center px-4 py-3 font-medium text-gray-600">สถานะ</th>
+                        )}
                       </tr>
                     </thead>
                     <tbody className="divide-y">
@@ -179,9 +235,26 @@ export default function SetDetailPage() {
                                 : (r.direction === 'none' || r.kpi.measureType === 'level') ? '—' : r.target.toLocaleString()}</div>
                               {refTargets && <div className="text-[10px] text-gray-400 mt-0.5">{refTargets}</div>}
                             </td>
-                            <td className="px-4 py-3 text-center">
-                              <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[r.status]}`}>{STATUS_META[r.status].label}</span>
-                            </td>
+                            {ranking ? (() => {
+                              const it = ranking.byId.get(r.kpi.id)
+                              return (
+                                <>
+                                  <td className="px-3 py-3 text-center" title={bandsText(tag?.scoreBands)}>
+                                    {it?.score != null
+                                      ? <span className={`inline-block min-w-[2rem] px-2 py-0.5 rounded-full text-xs font-bold tabular-nums ${SCORE_BADGE[it.score] ?? ''}`}>{it.score}</span>
+                                      : <span className="text-[11px] text-gray-400">{it?.reason ?? '—'}</span>}
+                                  </td>
+                                  <td className="px-3 py-3 text-center text-gray-600 tabular-nums">{it?.weight ?? '—'}</td>
+                                  <td className="px-4 py-3 text-right tabular-nums font-medium text-gray-800">
+                                    {it?.score != null && it.weight != null ? ((it.score * it.weight) / 5).toFixed(2) : '—'}
+                                  </td>
+                                </>
+                              )
+                            })() : (
+                              <td className="px-4 py-3 text-center">
+                                <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[r.status]}`}>{STATUS_META[r.status].label}</span>
+                              </td>
+                            )}
                           </tr>
                         )
                       })}
